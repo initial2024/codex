@@ -35,7 +35,7 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("隐私优先的本地输入法。当前先保证基础输入体验：拼音、英文、剪贴板、翻译提示词和皮肤。当前皮肤：${skin.name}。", skin))
+        container.addView(paragraph("隐私优先的本地输入法。当前先保证基础输入体验：拼音、英文、短语、剪贴板、翻译提示词和皮肤。当前皮肤：${skin.name}。", skin))
         statusMessage?.let {
             container.addView(statusBox(it, skin))
         }
@@ -52,6 +52,9 @@ class MainActivity : Activity() {
 
         container.addView(section("拼音输入", skin))
         container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序、常用词和简拼联想。注意：这仍是轻量词库，不是搜狗/百度级完整中文输入法。", skin))
+
+        container.addView(section("快捷短语", skin))
+        container.addView(paragraph("空闲状态会显示快捷短语栏。拼音模式显示中文短语，英文模式显示英文短语；短语库已扩充为常用沟通、开发、学习和日常回复。", skin))
 
         container.addView(section("剪贴板", skin))
         container.addView(paragraph("Orbit 只能管理自己键盘里的剪贴板面板，不能替换微信、QQ 或系统长按输入框弹出的原生菜单。复制文字后，打开 Orbit 的剪贴板面板并点击“保存当前剪贴板”。", skin))
@@ -97,7 +100,7 @@ class MainActivity : Activity() {
         container.addView(section("高级功能", skin))
         container.addView(paragraph("Pro 入口只做占位：更多宠物、更多装扮、更高词库/剪贴板额度和离线短句包。当前版本没有支付、广告或联网逻辑。", skin))
 
-        container.addView(paragraph("About · v0.9.0", skin))
+        container.addView(paragraph("About · v0.10.0", skin))
 
         setContentView(scroll)
     }
