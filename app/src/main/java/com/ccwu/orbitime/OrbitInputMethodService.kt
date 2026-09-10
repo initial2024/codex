@@ -25,22 +25,26 @@ class OrbitInputMethodService : InputMethodService() {
     private var symbols = false
     private var showClips = false
     private var showTranslate = false
+    private var showPet = false
     private var sensitiveMode = false
     private var pinyinBuffer = ""
     private var translateDirection = TranslatePromptBuilder.Direction.ZH_TO_EN
     private var translateSourceText: String? = null
     private var translateSourceLabel: String? = null
     private var translatePromptPreview: String? = null
+    private var offlineTranslationPreview: String? = null
     private var translateDraftMode = false
     private var translateDraftBuffer = ""
     private var root: LinearLayout? = null
     private lateinit var store: ClipboardStore
     private lateinit var userDictionary: UserDictionaryStore
+    private lateinit var petRepository: PetRepository
 
     override fun onCreate() {
         super.onCreate()
         store = ClipboardStore(this)
         userDictionary = UserDictionaryStore(this)
+        petRepository = PetRepository(this)
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -48,6 +52,7 @@ class OrbitInputMethodService : InputMethodService() {
         sensitiveMode = PrivacyGuard.isSensitiveInput(attribute)
         if (sensitiveMode) {
             showClips = false
+            showPet = false
             clearPinyinComposition()
             clearTranslateState()
         }
@@ -74,6 +79,7 @@ class OrbitInputMethodService : InputMethodService() {
         layout.removeAllViews()
         buildTopBar(layout)
         when {
+            !sensitiveMode && showPet -> buildPetPanel(layout)
             !sensitiveMode && showTranslate -> buildTranslatePanel(layout)
             !sensitiveMode && showClips -> buildClipBar(layout)
             !sensitiveMode && inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> buildCandidateBar(layout)
@@ -109,6 +115,7 @@ class OrbitInputMethodService : InputMethodService() {
         row.addView(chip("Save") { saveClipboard() })
         row.addView(chip(if (showClips) "Keys" else "Clips") {
             showClips = !showClips
+            showPet = false
             if (showClips) clearTranslateState()
             root?.let { rebuild(it) }
         })
@@ -118,11 +125,19 @@ class OrbitInputMethodService : InputMethodService() {
             } else {
                 showTranslate = true
                 showClips = false
+                showPet = false
                 translateDraftMode = false
                 translatePromptPreview = null
+                offlineTranslationPreview = null
                 translateSourceText = null
                 translateSourceLabel = null
             }
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip(petRepository.compactStatus(), emphasized = showPet) {
+            showPet = !showPet
+            showClips = false
+            if (showPet) clearTranslateState()
             root?.let { rebuild(it) }
         })
 
@@ -138,16 +153,64 @@ class OrbitInputMethodService : InputMethodService() {
         ))
     }
 
+    private fun buildPetPanel(parent: LinearLayout) {
+        val profile = petRepository.profile()
+        val visible = profile.displayMode != PetRepository.DISPLAY_HIDDEN
+        parent.addView(labelBox("Pet · ${petRepository.panelLine()}", muted = false, accent = true))
+        parent.addView(labelBox(if (visible) petRepository.localChatLine() else "Pet is hidden. It stays local and quiet.", muted = !profile.chatUnlocked, accent = profile.chatUnlocked))
+
+        val scroller = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        row.addView(chip("签到", emphasized = true) {
+            val result = petRepository.checkIn()
+            toast(result.message)
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("开蛋") {
+            val result = petRepository.adoptRandom()
+            toast(result.message)
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip(if (visible) "隐藏" else "显示") {
+            val result = petRepository.toggleHidden()
+            toast(result.message)
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("聊天") {
+            toast(petRepository.localChatLine())
+        })
+        row.addView(chip("装扮") {
+            toast("Outfit slots are ready for Gemini assets")
+        })
+        row.addView(chip("关闭", warning = true) {
+            showPet = false
+            root?.let { rebuild(it) }
+        })
+
+        scroller.addView(row)
+        parent.addView(scroller, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(42),
+        ))
+    }
+
     private fun buildTranslatePanel(parent: LinearLayout) {
         val sourceLabel = translateSourceLabel ?: "choose source"
-        parent.addView(labelBox("Translate Preview · ${translateDirection.label} · $sourceLabel · local prompt only", muted = false, accent = true))
+        parent.addView(labelBox("Translate Preview · ${translateDirection.label} · $sourceLabel · local only", muted = false, accent = true))
 
         val previewText = when {
             translateDraftMode -> "draft: ${translateDraftBuffer.ifBlank { "type here before confirming" }.shortLabel(44)}"
+            offlineTranslationPreview != null -> "offline: ${offlineTranslationPreview.orEmpty().shortLabel(46)}"
             translatePromptPreview != null -> translatePromptPreview.orEmpty().shortLabel(56)
-            else -> "No text is sent anywhere. Choose a source, then insert the generated prompt."
+            else -> "Prompt Preview is free. Offline Pack is Pro and local-only."
         }
-        parent.addView(labelBox(previewText, muted = translatePromptPreview == null && !translateDraftMode, accent = false))
+        parent.addView(labelBox(previewText, muted = translatePromptPreview == null && !translateDraftMode, accent = offlineTranslationPreview != null))
 
         val scroller = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -159,8 +222,11 @@ class OrbitInputMethodService : InputMethodService() {
 
         when {
             translatePromptPreview != null -> {
-                row.addView(chip("插入") { insertTranslatePrompt() })
-                row.addView(chip("复制") { copyTranslatePrompt() })
+                offlineTranslationPreview?.let {
+                    row.addView(chip("插入译文", emphasized = true) { insertOfflineTranslation() })
+                }
+                row.addView(chip("插入Prompt") { insertTranslatePrompt() })
+                row.addView(chip("复制Prompt") { copyTranslatePrompt() })
                 row.addView(chip("换方向") { toggleTranslateDirection(regenerate = true) })
                 row.addView(chip("重选") { resetTranslateSelection() })
                 row.addView(chip("取消", warning = true) {
@@ -169,7 +235,7 @@ class OrbitInputMethodService : InputMethodService() {
                 })
             }
             translateDraftMode -> {
-                row.addView(chip("生成Prompt", emphasized = true) { captureTranslateSource("草稿", translateDraftBuffer) })
+                row.addView(chip("生成", emphasized = true) { captureTranslateSource("草稿", translateDraftBuffer) })
                 row.addView(chip("换方向") { toggleTranslateDirection(regenerate = false) })
                 row.addView(chip("清空", warning = true) {
                     translateDraftBuffer = ""
@@ -189,6 +255,9 @@ class OrbitInputMethodService : InputMethodService() {
                     row.addView(chip("拼音草稿") { captureTranslateSource("拼音草稿", pinyinBuffer) })
                 }
                 row.addView(chip("草稿") { startTranslateDraft() })
+                row.addView(chip(if (ProGate.isOfflineTranslationPackUnlocked(this)) "离线包ON" else "离线包Pro", warning = !ProGate.isOfflineTranslationPackUnlocked(this)) {
+                    toast(if (ProGate.isOfflineTranslationPackUnlocked(this)) "Offline Pack enabled" else OfflineTranslationPack.lockedMessage())
+                })
                 row.addView(chip("取消", warning = true) {
                     clearTranslateState()
                     root?.let { rebuild(it) }
@@ -410,6 +479,7 @@ class OrbitInputMethodService : InputMethodService() {
             return
         }
         translateDraftBuffer += text
+        if (!sensitiveMode) petRepository.recordTypedChars(text.length)
         root?.let { rebuild(it) }
     }
 
@@ -420,7 +490,9 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         commitPendingPinyin(rawFallback = true)
-        currentInputConnection?.commitText(mapPrintableText(rawKey), 1)
+        val mapped = mapPrintableText(rawKey)
+        currentInputConnection?.commitText(mapped, 1)
+        if (!sensitiveMode) petRepository.recordTypedChars(mapped.length)
     }
 
     private fun mapPrintableText(rawKey: String): String {
@@ -458,6 +530,7 @@ class OrbitInputMethodService : InputMethodService() {
             return
         }
         currentInputConnection?.commitText(" ", 1)
+        if (!sensitiveMode) petRepository.recordTypedChars(1)
     }
 
     private fun handleEnter() {
@@ -475,6 +548,8 @@ class OrbitInputMethodService : InputMethodService() {
         currentInputConnection?.setComposingText(pinyinBuffer, 1)
         showClips = false
         showTranslate = false
+        showPet = false
+        if (!sensitiveMode) petRepository.recordTypedChars(1)
         root?.let { rebuild(it) }
     }
 
@@ -510,6 +585,8 @@ class OrbitInputMethodService : InputMethodService() {
         inputConnection.finishComposingText()
         if (!sensitiveMode) {
             userDictionary.learn(learnedPinyin, candidate)
+            petRepository.recordCandidateCommit()
+            petRepository.recordTypedChars(candidate.length)
         }
         root?.let { rebuild(it) }
     }
@@ -525,6 +602,7 @@ class OrbitInputMethodService : InputMethodService() {
         symbols = false
         caps = false
         showClips = false
+        showPet = false
         clearTranslateState()
         root?.let { rebuild(it) }
     }
@@ -539,6 +617,7 @@ class OrbitInputMethodService : InputMethodService() {
         commitPendingPinyin(rawFallback = true)
         clearTranslateState()
         currentInputConnection?.commitText(text, 1)
+        if (!sensitiveMode) petRepository.recordTypedChars(text.length)
     }
 
     private fun captureTranslateSource(label: String, rawSource: String?) {
@@ -550,10 +629,16 @@ class OrbitInputMethodService : InputMethodService() {
         translateSourceText = source
         translateSourceLabel = label
         translatePromptPreview = TranslatePromptBuilder.build(source, translateDirection)
+        offlineTranslationPreview = if (ProGate.isOfflineTranslationPackUnlocked(this)) {
+            OfflineTranslationPack.translateOrNull(source, translateDirection)?.translatedText
+        } else {
+            null
+        }
         translateDraftMode = false
         translateDraftBuffer = ""
         showTranslate = true
         showClips = false
+        showPet = false
         root?.let { rebuild(it) }
     }
 
@@ -566,6 +651,11 @@ class OrbitInputMethodService : InputMethodService() {
         if (regenerate) {
             translateSourceText?.let {
                 translatePromptPreview = TranslatePromptBuilder.build(it, translateDirection)
+                offlineTranslationPreview = if (ProGate.isOfflineTranslationPackUnlocked(this)) {
+                    OfflineTranslationPack.translateOrNull(it, translateDirection)?.translatedText
+                } else {
+                    null
+                }
             }
         }
         root?.let { rebuild(it) }
@@ -576,10 +666,12 @@ class OrbitInputMethodService : InputMethodService() {
         translateDraftMode = true
         translateDraftBuffer = ""
         translatePromptPreview = null
+        offlineTranslationPreview = null
         translateSourceText = null
         translateSourceLabel = "草稿"
         showTranslate = true
         showClips = false
+        showPet = false
         symbols = false
         root?.let { rebuild(it) }
     }
@@ -588,6 +680,7 @@ class OrbitInputMethodService : InputMethodService() {
         translateSourceText = null
         translateSourceLabel = null
         translatePromptPreview = null
+        offlineTranslationPreview = null
         translateDraftMode = false
         translateDraftBuffer = ""
         root?.let { rebuild(it) }
@@ -597,6 +690,18 @@ class OrbitInputMethodService : InputMethodService() {
         val prompt = translatePromptPreview ?: return
         clearTranslateState()
         currentInputConnection?.commitText(prompt, 1)
+        if (!sensitiveMode) petRepository.recordTranslatePrompt()
+        root?.let { rebuild(it) }
+    }
+
+    private fun insertOfflineTranslation() {
+        val text = offlineTranslationPreview ?: return
+        clearTranslateState()
+        currentInputConnection?.commitText(text, 1)
+        if (!sensitiveMode) {
+            petRepository.recordTranslatePrompt()
+            petRepository.recordTypedChars(text.length)
+        }
         root?.let { rebuild(it) }
     }
 
@@ -614,6 +719,7 @@ class OrbitInputMethodService : InputMethodService() {
         translateSourceText = null
         translateSourceLabel = null
         translatePromptPreview = null
+        offlineTranslationPreview = null
     }
 
     private fun readSelectedText(): String? {
@@ -653,8 +759,10 @@ class OrbitInputMethodService : InputMethodService() {
             return
         }
         if (store.add(text)) {
+            petRepository.recordClipSave()
             toast("Saved locally")
             showClips = true
+            showPet = false
             clearTranslateState()
             root?.let { rebuild(it) }
         } else {
