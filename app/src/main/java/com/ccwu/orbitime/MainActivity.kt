@@ -35,13 +35,13 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("隐私优先的本地输入法。支持英文、拼音26键、本地词库、剪贴板、翻译提示词、键盘内宠物和皮肤。当前皮肤：${skin.name}。", skin))
+        container.addView(paragraph("隐私优先的本地输入法。当前先保证基础输入体验：拼音、英文、剪贴板、翻译提示词和皮肤。当前皮肤：${skin.name}。", skin))
         statusMessage?.let {
             container.addView(statusBox(it, skin))
         }
 
         container.addView(section("输入法设置", skin))
-        container.addView(paragraph("先在系统输入法设置中启用 Orbit IME。Android 会对所有第三方输入法显示风险提示，这是系统通用提醒。", skin))
+        container.addView(paragraph("先在系统输入法设置中启用 Orbit IME。键盘顶部也有“切换”按钮，可以打开系统输入法切换器。Android 左下角自带的小地球/切换气泡不是 Orbit 自己绘制的。", skin))
         container.addView(button("打开输入法设置", skin) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         })
@@ -51,16 +51,16 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("拼音输入", skin))
-        container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序和常用简拼联想。本地词库只记录你主动选择过的候选，不保存完整输入流。", skin))
+        container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序、常用词和简拼联想。注意：这仍是轻量词库，不是搜狗/百度级完整中文输入法。", skin))
 
         container.addView(section("剪贴板", skin))
-        container.addView(paragraph("Orbit 只能管理自己键盘里的 Clips 面板，不能替换微信、QQ 或系统长按输入框弹出的原生菜单。复制文字后，打开 Orbit 的剪贴板面板并点击保存。", skin))
+        container.addView(paragraph("Orbit 只能管理自己键盘里的剪贴板面板，不能替换微信、QQ 或系统长按输入框弹出的原生菜单。复制文字后，打开 Orbit 的剪贴板面板并点击“保存当前剪贴板”。", skin))
 
         container.addView(section("翻译", skin))
         container.addView(paragraph("免费功能是本地生成翻译提示词。Pro 离线包是本地短句包占位，不联网、不接外部翻译 API。当前状态：${if (ProGate.isOfflineTranslationPackUnlocked(this)) "已解锁" else "Pro 锁定"}。", skin))
 
         container.addView(section("宠物", skin))
-        container.addView(paragraph("当前宠物：${petProfile.petName}，Stage ${petProfile.stage}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars，连续签到 ${petProfile.checkInStreak} 天。宠物只在键盘内显示，不申请悬浮窗权限，不发通知，不播放声音。", skin))
+        container.addView(paragraph("当前宠物：${petProfile.petName}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars。宠物素材和交互还不完整，所以暂时不放在键盘一级入口；你可以先在这里签到、隐藏或重置。", skin))
         container.addView(button("今日签到", skin) {
             val result = petRepository.checkIn()
             render(result.message)
@@ -97,7 +97,7 @@ class MainActivity : Activity() {
         container.addView(section("高级功能", skin))
         container.addView(paragraph("Pro 入口只做占位：更多宠物、更多装扮、更高词库/剪贴板额度和离线短句包。当前版本没有支付、广告或联网逻辑。", skin))
 
-        container.addView(paragraph("About · v0.8.0", skin))
+        container.addView(paragraph("About · v0.9.0", skin))
 
         setContentView(scroll)
     }
