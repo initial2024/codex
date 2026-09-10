@@ -1,66 +1,78 @@
-# Orbit IME Privacy Policy Draft
+# Orbit IME Privacy
 
-Effective version: `0.1.0` MVP.
+Orbit IME is designed as a local-first input method.
 
-## Core statement
+## Version
 
-Orbit IME is designed as a local-first Android input method. Version `0.1.0` does not collect, upload, sell, or share user input.
+This policy applies to Orbit IME `0.2.0`.
 
-## Permissions
+## Network
 
-Version `0.1.0` does not request:
+Orbit IME `0.2.0` does not request `INTERNET` permission.
 
-- Internet access
-- Accessibility service
+The app cannot upload input text, clipboard text, Pinyin buffers, templates, or saved clips to a server because no network permission is declared.
+
+## Advertising and analytics
+
+Orbit IME `0.2.0` includes:
+
+- No ad SDK.
+- No analytics SDK.
+- No tracking SDK.
+- No remote configuration SDK.
+
+## Clipboard vault
+
+Orbit IME can save clipboard text into a local vault only after the user taps `Save`.
+
+The vault is stored locally using app-private `SharedPreferences` JSON.
+
+Orbit IME does not run a background clipboard harvesting service.
+
+Before saving, Orbit IME rejects text that looks like:
+
+- OTP-only numeric codes.
+- Password-like text.
+- API keys.
+- Bearer tokens.
+- Authorization headers.
+- Cookie/session strings.
+- Very long dense secret-like tokens.
+
+## Pinyin mode
+
+Orbit IME `0.2.0` includes a minimal local Pinyin 26-key mode.
+
+Pinyin candidates are generated from a small static local dictionary inside the app package. Pinyin buffers are not uploaded and are not persisted.
+
+Typed key streams are not saved.
+
+## Sensitive fields
+
+Orbit IME enters privacy mode for password-like fields and fields that request no personalized learning.
+
+In privacy mode:
+
+- Hub actions are hidden.
+- Clipboard vault actions are hidden.
+- Pinyin candidate tools are disabled.
+- Saving is blocked.
+
+## Permissions intentionally not requested
+
+Orbit IME does not request:
+
+- Internet
+- Accessibility
 - Contacts
 - SMS
 - Location
 - Camera
 - Microphone
 - External storage
-- Account access
 
-## Keyboard input
+## Commercial boundary
 
-Orbit IME sends key presses to the active text field through Android's input method APIs.
+Orbit IME `0.2.0` contains a Pro placeholder only.
 
-Version `0.1.0` does not store typed key streams.
-
-## Clipboard vault
-
-Orbit IME has a local clipboard vault. It works only when the user taps `Save` inside the keyboard toolbar.
-
-Saved clipboard items are stored locally in Android `SharedPreferences` as JSON.
-
-Orbit IME filters content that looks like:
-
-- One-time verification codes
-- Password labels
-- API keys
-- Bearer tokens
-- Cookies
-- Session IDs
-- Long dense secret-like tokens
-
-This filter is conservative but not perfect. Users should not save sensitive secrets into any clipboard manager.
-
-## Password and sensitive fields
-
-When the active field looks like a password field, number password field, web password field, or requests no personalized learning, Orbit IME enters privacy mode.
-
-Privacy mode hides Hub functions and clipboard vault UI.
-
-## Ads and analytics
-
-Version `0.1.0` contains:
-
-- No ad SDK
-- No analytics SDK
-- No tracking SDK
-- No remote logging
-
-## Future Pro features
-
-The code contains a `ProGate` placeholder. It is not connected to payment, subscriptions, ads, or network logic in version `0.1.0`.
-
-Before adding any paid, synced, or AI features, update this policy and keep privacy-sensitive keyboard behavior opt-in and explicit.
+It does not implement billing, advertising, analytics, cloud sync, or account login.
