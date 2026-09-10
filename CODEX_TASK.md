@@ -29,6 +29,12 @@ gradle assembleDebug --no-daemon
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## GitHub Actions artifact
+
+```text
+orbit-ime-v0.2-debug-apk
+```
+
 ## Non-negotiable constraints
 
 Do not add:
@@ -58,13 +64,14 @@ Do not add:
 8. Tapping a candidate commits it to the editor.
 9. Pressing space with a Pinyin buffer commits the first candidate.
 10. Pressing backspace with a Pinyin buffer deletes the buffer before deleting editor text.
-11. `123` and `ABC` mode switching work.
-12. Backspace, space, and enter work.
-13. Paste inserts the current system clipboard.
-14. Save persists the current clipboard only after a user tap.
-15. Clips panel can insert saved items.
-16. Password fields show `Privacy mode · Hub disabled` and hide Hub actions.
-17. No network, ad, analytics, Accessibility, or background harvesting behavior is introduced.
+11. Pressing punctuation or switching to `123` after an incomplete Pinyin buffer commits the exact candidate when available; otherwise it commits the raw Pinyin text.
+12. `123` and `ABC` mode switching work.
+13. Backspace, space, and enter work.
+14. Paste inserts the current system clipboard.
+15. Save persists the current clipboard only after a user tap.
+16. Clips panel can insert saved items.
+17. Password fields show `Privacy mode · Hub disabled` and hide Hub actions.
+18. No network, ad, analytics, Accessibility, or background harvesting behavior is introduced.
 
 ## Fix policy
 
