@@ -13,4 +13,10 @@ object ProGate {
     fun maxTemplates(context: Context): Int = if (isProUnlocked(context)) 200 else 20
 
     fun maxUserDictionaryItems(context: Context): Int = if (isProUnlocked(context)) 5000 else 300
+
+    fun maxOwnedPets(context: Context): Int = if (isProUnlocked(context)) 12 else 1
+
+    fun maxOutfits(context: Context): Int = if (isProUnlocked(context)) 60 else 8
+
+    fun isOfflineTranslationPackUnlocked(context: Context): Boolean = isProUnlocked(context)
 }
