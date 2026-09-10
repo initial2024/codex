@@ -10,12 +10,13 @@ Make the Translate feature feel real for common short phrases while keeping Orbi
 
 Translate now uses this order:
 
-1. Exact local phrase match in `OfflineTranslationPack.kt`.
-2. Exact local phrase match in `TranslationBoostData.kt`.
-3. Conservative rough local token assembly.
-4. Translate Preview prompt-generation fallback.
+1. Exact local phrase match in `ProfessionalTranslationData.kt`.
+2. Exact local phrase match in `OfflineTranslationPack.kt` built-ins.
+3. Exact local phrase match in `TranslationBoostData.kt`.
+4. Conservative rough local token assembly.
+5. Translate Preview prompt-generation fallback.
 
-If a phrase exists in the local table, the translated text can be inserted directly.
+If a phrase exists in the local table, the translated text is displayed as `译文：...` and can be inserted directly.
 
 If no local translation exists, Orbit does not pretend to translate. It falls back to a prompt the user can insert into another AI/chat app.
 
@@ -45,9 +46,12 @@ It does not:
 - `这是什么` -> `What is this?`
 - `怎么办` -> `What should I do?`
 - `还是有问题` -> `There is still a problem.`
+- `没有翻译结果` -> `There is no translation result.`
+- `只是提示词` -> `It is only a prompt.`
 - `请给出可执行步骤` -> `Please provide actionable steps.`
 - `不要添加 INTERNET 权限` -> `Do not add the INTERNET permission.`
 - `I will handle it later` -> `我晚点处理。`
+- `Where is the translation result?` -> `翻译结果在哪里？`
 
 ## Future professional path
 
