@@ -4,17 +4,17 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.11.0`.
+This policy applies to Orbit IME `0.12.0`.
 
 ## Network
 
-Orbit IME `0.11.0` does not request `INTERNET` permission.
+Orbit IME `0.12.0` does not request `INTERNET` permission.
 
 The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.11.0` includes:
+Orbit IME `0.12.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
@@ -35,11 +35,13 @@ Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, pa
 
 ## Pinyin mode and user dictionary
 
-Orbit IME `0.11.0` includes a minimal local Pinyin 26-key mode.
+Orbit IME `0.12.0` includes a local Pinyin 26-key mode.
 
-Pinyin candidates are generated from a generic static dictionary and a local user dictionary.
+Pinyin candidates are generated from:
 
-The static dictionary now includes common full-pinyin phrases and generic shorthand cases such as `nh`, `nisishei`, and `hsywt`.
+- A core packaged syllable dictionary.
+- A packaged boost dictionary in `PinyinBoostData.kt`.
+- A local user dictionary learned from explicit candidate commits.
 
 Pinyin buffers are not uploaded and are not persisted as typed streams.
 
@@ -60,7 +62,7 @@ The dictionary is stored locally using app-private `SharedPreferences` JSON.
 
 ## Local phrase translation and Translate Preview
 
-Orbit IME `0.11.0` first attempts local phrase translation using packaged phrase tables.
+Orbit IME `0.12.0` first attempts local phrase translation using packaged phrase tables in `OfflineTranslationPack.kt` and `TranslationBoostData.kt`.
 
 If a phrase exists in the local table, the translated text can be inserted directly.
 
@@ -80,7 +82,7 @@ Built-in skin tokens are packaged inside the app. Skin selection is not uploaded
 
 ## Keyboard Pet
 
-Orbit IME `0.11.0` includes local pet controls in settings while keyboard UX is stabilized.
+Orbit IME `0.12.0` includes local pet controls in settings while keyboard UX is stabilized.
 
 The pet system stores only local counters and state, including pet id, EXP, Stars, streak, typed character count, display mode, and equipped outfit id.
 
@@ -123,6 +125,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.11.0` contains a Pro placeholder only.
+Orbit IME `0.12.0` contains a Pro placeholder only.
 
 It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
