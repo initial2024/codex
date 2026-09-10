@@ -1,5 +1,6 @@
 package com.ccwu.orbitime
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
 import android.os.Build
@@ -23,8 +24,15 @@ class OrbitInputMethodService : InputMethodService() {
     private var caps = false
     private var symbols = false
     private var showClips = false
+    private var showTranslate = false
     private var sensitiveMode = false
     private var pinyinBuffer = ""
+    private var translateDirection = TranslatePromptBuilder.Direction.ZH_TO_EN
+    private var translateSourceText: String? = null
+    private var translateSourceLabel: String? = null
+    private var translatePromptPreview: String? = null
+    private var translateDraftMode = false
+    private var translateDraftBuffer = ""
     private var root: LinearLayout? = null
     private lateinit var store: ClipboardStore
 
@@ -39,6 +47,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (sensitiveMode) {
             showClips = false
             clearPinyinComposition()
+            clearTranslateState()
         }
         root?.let { rebuild(it) }
     }
@@ -62,11 +71,12 @@ class OrbitInputMethodService : InputMethodService() {
         layout.background = OrbitTheme.keyboardBackground(activeSkin())
         layout.removeAllViews()
         buildTopBar(layout)
-        if (!sensitiveMode && showClips) buildClipBar(layout)
-        if (!sensitiveMode && !showClips && inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) {
-            buildCandidateBar(layout)
+        when {
+            !sensitiveMode && showTranslate -> buildTranslatePanel(layout)
+            !sensitiveMode && showClips -> buildClipBar(layout)
+            !sensitiveMode && inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> buildCandidateBar(layout)
+            !sensitiveMode && pinyinBuffer.isEmpty() -> buildPhraseBar(layout)
         }
-        if (!sensitiveMode && !showClips && pinyinBuffer.isEmpty()) buildPhraseBar(layout)
         buildKeyboard(layout)
     }
 
@@ -97,6 +107,20 @@ class OrbitInputMethodService : InputMethodService() {
         row.addView(chip("Save") { saveClipboard() })
         row.addView(chip(if (showClips) "Keys" else "Clips") {
             showClips = !showClips
+            if (showClips) clearTranslateState()
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip(if (showTranslate) "Keys" else "Translate", emphasized = showTranslate) {
+            if (showTranslate) {
+                clearTranslateState()
+            } else {
+                showTranslate = true
+                showClips = false
+                translateDraftMode = false
+                translatePromptPreview = null
+                translateSourceText = null
+                translateSourceLabel = null
+            }
             root?.let { rebuild(it) }
         })
 
@@ -109,6 +133,71 @@ class OrbitInputMethodService : InputMethodService() {
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(44),
+        ))
+    }
+
+    private fun buildTranslatePanel(parent: LinearLayout) {
+        val sourceLabel = translateSourceLabel ?: "choose source"
+        parent.addView(labelBox("Translate Preview · ${translateDirection.label} · $sourceLabel · local prompt only", muted = false, accent = true))
+
+        val previewText = when {
+            translateDraftMode -> "draft: ${translateDraftBuffer.ifBlank { "type here before confirming" }.shortLabel(44)}"
+            translatePromptPreview != null -> translatePromptPreview.orEmpty().shortLabel(56)
+            else -> "No text is sent anywhere. Choose a source, then insert the generated prompt."
+        }
+        parent.addView(labelBox(previewText, muted = translatePromptPreview == null && !translateDraftMode, accent = false))
+
+        val scroller = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        when {
+            translatePromptPreview != null -> {
+                row.addView(chip("插入") { insertTranslatePrompt() })
+                row.addView(chip("复制") { copyTranslatePrompt() })
+                row.addView(chip("换方向") { toggleTranslateDirection(regenerate = true) })
+                row.addView(chip("重选") { resetTranslateSelection() })
+                row.addView(chip("取消", warning = true) {
+                    clearTranslateState()
+                    root?.let { rebuild(it) }
+                })
+            }
+            translateDraftMode -> {
+                row.addView(chip("生成Prompt", emphasized = true) { captureTranslateSource("草稿", translateDraftBuffer) })
+                row.addView(chip("换方向") { toggleTranslateDirection(regenerate = false) })
+                row.addView(chip("清空", warning = true) {
+                    translateDraftBuffer = ""
+                    root?.let { rebuild(it) }
+                })
+                row.addView(chip("取消", warning = true) {
+                    clearTranslateState()
+                    root?.let { rebuild(it) }
+                })
+            }
+            else -> {
+                row.addView(chip("方向 ${translateDirection.label}", emphasized = true) { toggleTranslateDirection(regenerate = false) })
+                row.addView(chip("前一句") { captureTranslateSource("前一句", readPreviousSentence()) })
+                row.addView(chip("选中文本") { captureTranslateSource("选中文本", readSelectedText()) })
+                row.addView(chip("剪贴板") { captureTranslateSource("剪贴板", readClipboardText()) })
+                if (pinyinBuffer.isNotEmpty()) {
+                    row.addView(chip("拼音草稿") { captureTranslateSource("拼音草稿", pinyinBuffer) })
+                }
+                row.addView(chip("草稿") { startTranslateDraft() })
+                row.addView(chip("取消", warning = true) {
+                    clearTranslateState()
+                    root?.let { rebuild(it) }
+                })
+            }
+        }
+
+        scroller.addView(row)
+        parent.addView(scroller, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(42),
         ))
     }
 
@@ -224,19 +313,19 @@ class OrbitInputMethodService : InputMethodService() {
     private fun keyView(rawKey: String): TextView {
         val skin = activeSkin()
         val display = when {
+            rawKey == "space" && translateDraftMode -> if (translateDraftBuffer.isEmpty()) "draft" else "space"
             rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else "space"
             inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
             else -> rawKey
         }
-        val controlKey = isControlKey(rawKey)
 
         return TextView(this).apply {
             text = display
             OrbitTheme.label(this, sizeSp = if (rawKey == "space") 13f else 18f, bold = rawKey.length == 1, skin = skin)
             background = OrbitTheme.rounded(
-                color = if (controlKey) skin.controlKeyColor else skin.keyColor,
+                color = if (isControlKey(rawKey)) skin.controlKeyColor else skin.keyColor,
                 radiusPx = dp(12).toFloat(),
-                strokeColor = if (controlKey) skin.accentColor else skin.borderColor,
+                strokeColor = if (isControlKey(rawKey)) skin.accentColor else skin.borderColor,
                 strokeWidthPx = dp(1),
             )
             setOnClickListener { handleKey(rawKey) }
@@ -262,6 +351,11 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun handleKey(rawKey: String) {
+        if (translateDraftMode) {
+            handleTranslateDraftKey(rawKey)
+            return
+        }
+
         when (rawKey) {
             "⇧" -> {
                 if (inputMode == InputMode.ENGLISH) caps = !caps
@@ -281,6 +375,39 @@ class OrbitInputMethodService : InputMethodService() {
             "↵" -> handleEnter()
             else -> handlePrintableKey(rawKey)
         }
+    }
+
+    private fun handleTranslateDraftKey(rawKey: String) {
+        when (rawKey) {
+            "⌫" -> {
+                translateDraftBuffer = translateDraftBuffer.dropLast(1)
+                root?.let { rebuild(it) }
+            }
+            "123" -> {
+                symbols = true
+                root?.let { rebuild(it) }
+            }
+            "ABC" -> {
+                symbols = false
+                root?.let { rebuild(it) }
+            }
+            "↵" -> captureTranslateSource("草稿", translateDraftBuffer)
+            "⇧" -> {
+                caps = !caps
+                root?.let { rebuild(it) }
+            }
+            "space" -> appendTranslateDraft(" ")
+            else -> appendTranslateDraft(mapPrintableText(rawKey))
+        }
+    }
+
+    private fun appendTranslateDraft(text: String) {
+        if (translateDraftBuffer.length + text.length > 1200) {
+            toast(TranslatePromptBuilder.sourceTooLongMessage())
+            return
+        }
+        translateDraftBuffer += text
+        root?.let { rebuild(it) }
     }
 
     private fun handlePrintableKey(rawKey: String) {
@@ -344,6 +471,7 @@ class OrbitInputMethodService : InputMethodService() {
         pinyinBuffer = normalized
         currentInputConnection?.setComposingText(pinyinBuffer, 1)
         showClips = false
+        showTranslate = false
         root?.let { rebuild(it) }
     }
 
@@ -376,6 +504,7 @@ class OrbitInputMethodService : InputMethodService() {
         symbols = false
         caps = false
         showClips = false
+        clearTranslateState()
         root?.let { rebuild(it) }
     }
 
@@ -387,7 +516,99 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun commitDirectText(text: String) {
         commitPendingPinyin(rawFallback = true)
+        clearTranslateState()
         currentInputConnection?.commitText(text, 1)
+    }
+
+    private fun captureTranslateSource(label: String, rawSource: String?) {
+        val source = rawSource?.trim().orEmpty()
+        if (!TranslatePromptBuilder.canUseSource(source)) {
+            toast(if (source.length > 1200) TranslatePromptBuilder.sourceTooLongMessage() else TranslatePromptBuilder.unsafeSourceMessage())
+            return
+        }
+        translateSourceText = source
+        translateSourceLabel = label
+        translatePromptPreview = TranslatePromptBuilder.build(source, translateDirection)
+        translateDraftMode = false
+        translateDraftBuffer = ""
+        showTranslate = true
+        showClips = false
+        root?.let { rebuild(it) }
+    }
+
+    private fun toggleTranslateDirection(regenerate: Boolean) {
+        translateDirection = if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) {
+            TranslatePromptBuilder.Direction.EN_TO_ZH
+        } else {
+            TranslatePromptBuilder.Direction.ZH_TO_EN
+        }
+        if (regenerate) {
+            translateSourceText?.let {
+                translatePromptPreview = TranslatePromptBuilder.build(it, translateDirection)
+            }
+        }
+        root?.let { rebuild(it) }
+    }
+
+    private fun startTranslateDraft() {
+        clearPinyinComposition()
+        translateDraftMode = true
+        translateDraftBuffer = ""
+        translatePromptPreview = null
+        translateSourceText = null
+        translateSourceLabel = "草稿"
+        showTranslate = true
+        showClips = false
+        symbols = false
+        root?.let { rebuild(it) }
+    }
+
+    private fun resetTranslateSelection() {
+        translateSourceText = null
+        translateSourceLabel = null
+        translatePromptPreview = null
+        translateDraftMode = false
+        translateDraftBuffer = ""
+        root?.let { rebuild(it) }
+    }
+
+    private fun insertTranslatePrompt() {
+        val prompt = translatePromptPreview ?: return
+        clearTranslateState()
+        currentInputConnection?.commitText(prompt, 1)
+        root?.let { rebuild(it) }
+    }
+
+    private fun copyTranslatePrompt() {
+        val prompt = translatePromptPreview ?: return
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Orbit Translate Prompt", prompt))
+        toast("Prompt copied locally")
+    }
+
+    private fun clearTranslateState() {
+        showTranslate = false
+        translateDraftMode = false
+        translateDraftBuffer = ""
+        translateSourceText = null
+        translateSourceLabel = null
+        translatePromptPreview = null
+    }
+
+    private fun readSelectedText(): String? {
+        return currentInputConnection?.getSelectedText(0)?.toString()
+    }
+
+    private fun readPreviousSentence(): String? {
+        val text = currentInputConnection?.getTextBeforeCursor(240, 0)?.toString() ?: return null
+        return extractLastSentence(text)
+    }
+
+    private fun extractLastSentence(raw: String): String? {
+        val cleaned = raw.trim().trimEnd('。', '！', '？', '.', '!', '?', '\n', '\r', ' ', '\t')
+        if (cleaned.isBlank()) return null
+        val lastBreak = cleaned.indexOfLast { it == '。' || it == '！' || it == '？' || it == '.' || it == '!' || it == '?' || it == '\n' || it == '\r' }
+        return cleaned.substring(lastBreak + 1).trim().ifBlank { null }
     }
 
     private fun pasteClipboard(saveAfterPaste: Boolean) {
@@ -413,6 +634,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (store.add(text)) {
             toast("Saved locally")
             showClips = true
+            clearTranslateState()
             root?.let { rebuild(it) }
         } else {
             toast("Skipped sensitive or unsupported text")
@@ -428,22 +650,21 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun chip(text: String, emphasized: Boolean = false, warning: Boolean = false, onClick: () -> Unit): TextView {
         val skin = activeSkin()
-        val stroke = when {
-            warning -> skin.warningColor
-            emphasized -> skin.accentColor
-            else -> skin.borderColor
-        }
-        val fill = when {
-            warning -> skin.controlKeyColor
-            emphasized -> skin.panelAltColor
-            else -> skin.panelColor
-        }
         return TextView(this).apply {
             this.text = text
             OrbitTheme.label(this, sizeSp = 13f, bold = true, skin = skin)
-            if (warning) setTextColor(skin.warningColor)
-            if (emphasized && !warning) setTextColor(skin.accentColor)
-            background = OrbitTheme.rounded(fill, dp(16).toFloat(), stroke, dp(1))
+            val stroke = when {
+                warning -> skin.warningColor
+                emphasized -> skin.accentColor
+                else -> skin.borderColor
+            }
+            val textColor = when {
+                warning -> skin.warningColor
+                emphasized -> skin.accentColor
+                else -> skin.textColor
+            }
+            setTextColor(textColor)
+            background = OrbitTheme.rounded(skin.panelAltColor, dp(16).toFloat(), stroke, dp(1))
             setPadding(dp(14), 0, dp(14), 0)
             setOnClickListener { onClick() }
             isClickable = true
@@ -458,21 +679,20 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun labelBox(text: String, muted: Boolean, accent: Boolean, warning: Boolean = false): TextView {
         val skin = activeSkin()
-        val strokeColor = when {
-            warning -> skin.warningColor
-            accent -> skin.accentColor
-            else -> skin.borderColor
-        }
         return TextView(this).apply {
             this.text = text
             OrbitTheme.label(this, sizeSp = 13f, muted = muted, bold = accent || warning, skin = skin)
+            if (accent) setTextColor(skin.accentColor)
             if (warning) setTextColor(skin.warningColor)
-            if (accent && !warning) setTextColor(skin.accentColor)
             background = OrbitTheme.rounded(
-                color = if (warning) skin.controlKeyColor else skin.panelColor,
+                color = skin.panelColor,
                 radiusPx = dp(12).toFloat(),
-                strokeColor = strokeColor,
-                strokeWidthPx = if (warning) dp(2) else dp(1),
+                strokeColor = when {
+                    warning -> skin.warningColor
+                    accent -> skin.accentColor
+                    else -> skin.borderColor
+                },
+                strokeWidthPx = dp(1),
             )
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(
@@ -484,11 +704,9 @@ class OrbitInputMethodService : InputMethodService() {
         }
     }
 
-    private fun activeSkin(): OrbitSkin = SkinManager.keyboardSkin(this, sensitiveMode)
-
-    private fun String.shortLabel(): String {
+    private fun String.shortLabel(maxLength: Int = 22): String {
         val normalized = replace("\n", " ").trim()
-        return if (normalized.length <= 22) normalized else normalized.take(21) + "…"
+        return if (normalized.length <= maxLength) normalized else normalized.take(maxLength - 1) + "…"
     }
 
     private fun toast(message: String) {
@@ -498,6 +716,8 @@ class OrbitInputMethodService : InputMethodService() {
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun activeSkin(): OrbitSkin = SkinManager.keyboardSkin(this, sensitiveMode)
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
