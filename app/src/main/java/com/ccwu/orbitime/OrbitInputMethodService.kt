@@ -14,10 +14,17 @@ import android.widget.TextView
 import android.widget.Toast
 
 class OrbitInputMethodService : InputMethodService() {
+    private enum class InputMode {
+        ENGLISH,
+        PINYIN,
+    }
+
+    private var inputMode = InputMode.ENGLISH
     private var caps = false
     private var symbols = false
     private var showClips = false
     private var sensitiveMode = false
+    private var pinyinBuffer = ""
     private var root: LinearLayout? = null
     private lateinit var store: ClipboardStore
 
@@ -29,7 +36,10 @@ class OrbitInputMethodService : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         sensitiveMode = PrivacyGuard.isSensitiveInput(attribute)
-        if (sensitiveMode) showClips = false
+        if (sensitiveMode) {
+            showClips = false
+            clearPinyinComposition()
+        }
         root?.let { rebuild(it) }
     }
 
@@ -52,7 +62,10 @@ class OrbitInputMethodService : InputMethodService() {
         layout.removeAllViews()
         buildTopBar(layout)
         if (!sensitiveMode && showClips) buildClipBar(layout)
-        if (!sensitiveMode && !showClips) buildPhraseBar(layout)
+        if (!sensitiveMode && !showClips && inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) {
+            buildCandidateBar(layout)
+        }
+        if (!sensitiveMode && !showClips && pinyinBuffer.isEmpty()) buildPhraseBar(layout)
         buildKeyboard(layout)
     }
 
@@ -76,6 +89,7 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        row.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN") { toggleInputMode() })
         row.addView(chip("Paste") { pasteClipboard(saveAfterPaste = false) })
         row.addView(chip("Save") { saveClipboard() })
         row.addView(chip(if (showClips) "Keys" else "Clips") {
@@ -84,7 +98,7 @@ class OrbitInputMethodService : InputMethodService() {
         })
 
         TemplateLibrary.defaultActions.take(ProGate.maxTemplates(this)).forEach { action ->
-            row.addView(chip(action.label) { commitText(action.insertText) })
+            row.addView(chip(action.label) { commitDirectText(action.insertText) })
         }
 
         scroller.addView(row)
@@ -108,7 +122,7 @@ class OrbitInputMethodService : InputMethodService() {
             row.addView(labelBox("No saved clips. Tap Save after copying text.", muted = true, accent = false))
         } else {
             clips.forEach { entry ->
-                row.addView(chip(entry.content.shortLabel()) { commitText(entry.content) })
+                row.addView(chip(entry.content.shortLabel()) { commitDirectText(entry.content) })
             }
             row.addView(chip("Clear") {
                 store.clear()
@@ -116,6 +130,32 @@ class OrbitInputMethodService : InputMethodService() {
                 root?.let { rebuild(it) }
             })
         }
+
+        scroller.addView(row)
+        parent.addView(scroller, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(42),
+        ))
+    }
+
+    private fun buildCandidateBar(parent: LinearLayout) {
+        val candidates = PinyinDictionary.candidatesFor(pinyinBuffer)
+        val scroller = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        row.addView(labelBox("py: $pinyinBuffer", muted = false, accent = true))
+        candidates.forEach { candidate ->
+            row.addView(chip(candidate) { commitPinyinCandidate(candidate) })
+        }
+        row.addView(chip("清空") {
+            clearPinyinComposition()
+            root?.let { rebuild(it) }
+        })
 
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
@@ -134,7 +174,7 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         TemplateLibrary.quickPhrases.take(5).forEach { phrase ->
-            row.addView(chip(phrase.shortLabel()) { commitText(phrase) })
+            row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
         }
 
         scroller.addView(row)
@@ -179,8 +219,8 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun keyView(rawKey: String): TextView {
         val display = when {
-            rawKey == "space" -> "space"
-            rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
+            rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else "space"
+            inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
             else -> rawKey
         }
 
@@ -216,14 +256,14 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun handleKey(rawKey: String) {
-        val inputConnection = currentInputConnection ?: return
         when (rawKey) {
             "⇧" -> {
-                caps = !caps
+                if (inputMode == InputMode.ENGLISH) caps = !caps
                 root?.let { rebuild(it) }
             }
-            "⌫" -> inputConnection.deleteSurroundingText(1, 0)
+            "⌫" -> handleBackspace()
             "123" -> {
+                commitPendingPinyin(rawFallback = true)
                 symbols = true
                 root?.let { rebuild(it) }
             }
@@ -231,13 +271,94 @@ class OrbitInputMethodService : InputMethodService() {
                 symbols = false
                 root?.let { rebuild(it) }
             }
-            "space" -> inputConnection.commitText(" ", 1)
-            "↵" -> sendEnterKey()
-            else -> {
-                val text = if (rawKey.length == 1 && rawKey[0].isLetter() && caps) rawKey.uppercase() else rawKey
-                inputConnection.commitText(text, 1)
-            }
+            "space" -> handleSpace()
+            "↵" -> handleEnter()
+            else -> handlePrintableKey(rawKey)
         }
+    }
+
+    private fun handlePrintableKey(rawKey: String) {
+        if (rawKey.length == 1 && rawKey[0].isLetter() && inputMode == InputMode.PINYIN && !symbols) {
+            appendPinyin(rawKey)
+            return
+        }
+
+        commitPendingPinyin(rawFallback = true)
+        val text = if (rawKey.length == 1 && rawKey[0].isLetter() && inputMode == InputMode.ENGLISH && caps) {
+            rawKey.uppercase()
+        } else {
+            rawKey
+        }
+        currentInputConnection?.commitText(text, 1)
+    }
+
+    private fun handleBackspace() {
+        val inputConnection = currentInputConnection ?: return
+        if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) {
+            pinyinBuffer = pinyinBuffer.dropLast(1)
+            if (pinyinBuffer.isEmpty()) {
+                inputConnection.finishComposingText()
+            } else {
+                inputConnection.setComposingText(pinyinBuffer, 1)
+            }
+            root?.let { rebuild(it) }
+            return
+        }
+        inputConnection.deleteSurroundingText(1, 0)
+    }
+
+    private fun handleSpace() {
+        if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) {
+            commitPendingPinyin(rawFallback = false)
+            return
+        }
+        currentInputConnection?.commitText(" ", 1)
+    }
+
+    private fun handleEnter() {
+        commitPendingPinyin(rawFallback = true)
+        sendEnterKey()
+    }
+
+    private fun appendPinyin(letter: String) {
+        val normalized = PinyinDictionary.normalize(pinyinBuffer + letter)
+        if (normalized.length > 32) {
+            toast("Pinyin buffer limit reached")
+            return
+        }
+        pinyinBuffer = normalized
+        currentInputConnection?.setComposingText(pinyinBuffer, 1)
+        showClips = false
+        root?.let { rebuild(it) }
+    }
+
+    private fun commitPendingPinyin(rawFallback: Boolean) {
+        if (inputMode != InputMode.PINYIN || pinyinBuffer.isEmpty()) return
+        val candidate = PinyinDictionary.candidatesFor(pinyinBuffer).firstOrNull()
+        val text = if (rawFallback && candidate == null) pinyinBuffer else candidate ?: pinyinBuffer
+        commitPinyinCandidate(text)
+    }
+
+    private fun commitPinyinCandidate(candidate: String) {
+        val inputConnection = currentInputConnection ?: return
+        inputConnection.commitText(candidate, 1)
+        pinyinBuffer = ""
+        inputConnection.finishComposingText()
+        root?.let { rebuild(it) }
+    }
+
+    private fun clearPinyinComposition() {
+        pinyinBuffer = ""
+        currentInputConnection?.finishComposingText()
+    }
+
+    private fun toggleInputMode() {
+        commitPendingPinyin(rawFallback = true)
+        inputMode = if (inputMode == InputMode.PINYIN) InputMode.ENGLISH else InputMode.PINYIN
+        symbols = false
+        caps = false
+        showClips = false
+        root?.let { rebuild(it) }
     }
 
     private fun sendEnterKey() {
@@ -246,7 +367,8 @@ class OrbitInputMethodService : InputMethodService() {
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
     }
 
-    private fun commitText(text: String) {
+    private fun commitDirectText(text: String) {
+        commitPendingPinyin(rawFallback = true)
         currentInputConnection?.commitText(text, 1)
     }
 
@@ -256,7 +378,7 @@ class OrbitInputMethodService : InputMethodService() {
             toast("Clipboard is empty")
             return
         }
-        commitText(text)
+        commitDirectText(text)
         if (saveAfterPaste && !sensitiveMode) store.add(text)
     }
 
@@ -315,7 +437,7 @@ class OrbitInputMethodService : InputMethodService() {
             )
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
                 dp(36),
             ).apply {
                 setMargins(dp(3), dp(3), dp(3), dp(5))
