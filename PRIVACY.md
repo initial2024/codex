@@ -4,17 +4,17 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.12.0`.
+This policy applies to Orbit IME `0.13.0`.
 
 ## Network
 
-Orbit IME `0.12.0` does not request `INTERNET` permission.
+Orbit IME `0.13.0` does not request `INTERNET` permission.
 
 The app cannot upload input text, clipboard text, Pinyin buffers, English buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.12.0` includes:
+Orbit IME `0.13.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
@@ -35,7 +35,7 @@ Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, pa
 
 ## Pinyin mode and user dictionary
 
-Orbit IME `0.12.0` includes a local Pinyin 26-key mode.
+Orbit IME `0.13.0` includes a local Pinyin 26-key mode.
 
 Pinyin candidates are generated from:
 
@@ -70,7 +70,7 @@ Typing English letters enters a temporary composing buffer. The user commits by 
 
 ## Local phrase translation and Translate Preview
 
-Orbit IME `0.12.0` first attempts local phrase translation using packaged phrase tables in `ProfessionalTranslationData.kt`, `OfflineTranslationPack.kt`, and `TranslationBoostData.kt`.
+Orbit IME `0.13.0` first attempts local phrase translation using packaged phrase tables in `ProfessionalTranslationData.kt`, `OfflineTranslationPack.kt`, and `TranslationBoostData.kt`.
 
 If a phrase exists in the local table, the translated text can be inserted directly.
 
@@ -90,15 +90,17 @@ Built-in skin tokens are packaged inside the app. Skin selection is not uploaded
 
 ## Keyboard Pet
 
-Orbit IME `0.12.0` includes local pet controls in settings while keyboard UX is stabilized.
+Orbit IME `0.13.0` includes a usable local keyboard pet panel.
 
-The pet system stores only local counters and state, including pet id, EXP, Stars, streak, typed character count, display mode, and equipped outfit id.
+The keyboard Hub has a `宠物` / `Pet` entry. The panel supports local check-in, daily free hatch, Stars-based hatch, owned-pet switching, outfit rotation, catalog display, show/hide, and local status chat.
+
+The pet system stores only local counters and state, including active pet id, owned pet ids, EXP, Stars, streak, total typed character count, today typed character count, display mode, and equipped outfit id.
 
 It does not store full input streams, surrounding sentences, app names, or target field identifiers.
 
 It does not request overlay / floating-window permission. The pet cannot draw outside the IME surface.
 
-It does not send notifications, play sounds, call a model, or use cloud chat.
+It does not send notifications, play sounds, call a model, use cloud chat, or upload pet data.
 
 ## Sensitive fields
 
@@ -134,6 +136,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.12.0` contains a Pro placeholder only.
+Orbit IME `0.13.0` contains a Pro placeholder only.
 
 It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
