@@ -44,7 +44,6 @@ object PinyinDictionary {
         "di" to listOf("地", "第", "低"),
         "dian" to listOf("点", "电"),
         "dong" to listOf("东", "懂", "动"),
-        "dongnan" to listOf("东南"),
         "dou" to listOf("都", "斗"),
         "du" to listOf("读", "度", "独"),
         "dui" to listOf("对", "队"),
@@ -85,7 +84,6 @@ object PinyinDictionary {
         "jiu" to listOf("就", "九"),
         "ju" to listOf("据", "句", "局"),
         "kao" to listOf("考", "靠"),
-        "kaoyan" to listOf("考研"),
         "ke" to listOf("可", "课", "科"),
         "keyi" to listOf("可以"),
         "kong" to listOf("空", "控"),
@@ -102,7 +100,6 @@ object PinyinDictionary {
         "men" to listOf("们", "门"),
         "ming" to listOf("明", "名"),
         "na" to listOf("那", "拿"),
-        "nai" to listOf("乃", "奶"),
         "nan" to listOf("南", "难"),
         "neng" to listOf("能"),
         "ni" to listOf("你", "尼"),
@@ -136,7 +133,6 @@ object PinyinDictionary {
         "shuxue" to listOf("数学"),
         "si" to listOf("四", "思"),
         "suan" to listOf("算"),
-        "suzhou" to listOf("苏州"),
         "ta" to listOf("他", "她", "它"),
         "tai" to listOf("太"),
         "ti" to listOf("题", "体"),
@@ -187,9 +183,6 @@ object PinyinDictionary {
         "zuo" to listOf("做", "作", "左"),
         "jichu" to listOf("基础"),
         "gongcheng" to listOf("工程"),
-        "dongda" to listOf("东大"),
-        "zheda" to listOf("浙大"),
-        "suda" to listOf("苏大"),
     )
 
     fun exactCandidatesFor(rawInput: String): List<String> {
