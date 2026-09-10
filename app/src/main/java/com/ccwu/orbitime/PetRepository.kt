@@ -205,7 +205,7 @@ class PetRepository(private val context: Context) {
         val chosen = unowned[(System.currentTimeMillis() % unowned.size).toInt()]
         owned.add(chosen.id)
         val editor = prefs.edit()
-            .putStringSet(KEY_OWNED_PET_IDS, owned)
+            .putStringSet(KEY_OWNED_PET_IDS, owned.toSet())
             .putString(KEY_PET_ID, chosen.id)
             .putString(KEY_DISPLAY_MODE, DISPLAY_KEYBOARD_ONLY)
         if (dailyFree) {
@@ -285,13 +285,15 @@ class PetRepository(private val context: Context) {
             prefs.edit()
                 .putString(KEY_PET_ID, PetCatalog.Orbi.id)
                 .putString(KEY_DISPLAY_MODE, DISPLAY_KEYBOARD_ONLY)
-                .putStringSet(KEY_OWNED_PET_IDS, mutableSetOf(PetCatalog.Orbi.id))
+                .putStringSet(KEY_OWNED_PET_IDS, setOf(PetCatalog.Orbi.id))
                 .apply()
         }
-        if (!ownedPetIds().contains(prefs.getString(KEY_PET_ID, PetCatalog.Orbi.id))) {
-            val owned = ownedPetIds()
+        val currentPet = prefs.getString(KEY_PET_ID, PetCatalog.Orbi.id) ?: PetCatalog.Orbi.id
+        val owned = ownedPetIds()
+        if (currentPet !in owned) {
+            owned.add(currentPet)
             owned.add(PetCatalog.Orbi.id)
-            prefs.edit().putStringSet(KEY_OWNED_PET_IDS, owned).apply()
+            prefs.edit().putStringSet(KEY_OWNED_PET_IDS, owned.toSet()).apply()
         }
     }
 
