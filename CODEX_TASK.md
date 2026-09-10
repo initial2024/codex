@@ -1,12 +1,12 @@
-# Codex handoff task: build Orbit IME v0.12 APK later
+# Codex handoff task: build Orbit IME v0.13 APK later
 
 ## Status
 
-Orbit IME `0.12.0` Pinyin sentence shortcuts, English candidate input, and local translation data expansion have been prepared. Build only after the user asks to start the APK build.
+Orbit IME `0.13.0` usable Keyboard Pet module has been prepared. Build only after the user asks to start the APK build.
 
 ## Goal
 
-Build the debug APK for Orbit IME Android `0.12.0` after the input and data-layer expansion is considered ready.
+Build the debug APK for Orbit IME Android `0.13.0` after the pet module changes are considered ready.
 
 ## Repository
 
@@ -36,7 +36,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ## GitHub Actions artifact
 
 ```text
-orbit-ime-v0.12-debug-apk
+orbit-ime-v0.13-debug-apk
 ```
 
 ## Build trigger policy
@@ -78,34 +78,26 @@ Do not add:
 ## Functional acceptance criteria
 
 1. APK builds successfully.
-2. `versionName` is `0.12.0`.
-3. `versionCode` is `12`.
-4. Settings page keeps the version only as `About · v0.12.0`.
-5. GitHub Actions artifact name is `orbit-ime-v0.12-debug-apk`.
-6. `PinyinSentenceDictionary.kt` exists and contains expanded shorthand and sentence candidates.
-7. `EnglishDictionary.kt` exists and contains English word, phrase, and shorthand candidates.
-8. `ProfessionalTranslationData.kt` exists and contains expanded local Chinese-English phrase translations.
-9. `OfflineTranslationPack.kt` checks `ProfessionalTranslationData` before older boost tables, rough token assembly, and prompt fallback.
-10. Exact Pinyin sentence candidates rank before core single-character candidates.
-11. `nh` shows `你好` as a candidate.
-12. `nisishei` shows `你是谁` as a candidate.
-13. `hsywt` shows `还是有问题` as a candidate.
-14. `myfyjg` shows `没有翻译结果` as a candidate.
-15. `bscgfy` shows `不是成功翻译` as a candidate.
-16. `bing`, `wgj`, `wj`, `wt`, `xg`, `srf`, `jqb`, `shurufa`, and `jianqieban` still show useful candidates.
-17. Candidate tap and space-to-select work in Pinyin mode.
-18. English mode does not commit each letter immediately.
-19. Typing `hi` in English mode shows candidates before commit.
-20. Typing `whq`, `build`, `translate`, and `problem` in English mode shows useful candidates before commit.
-21. Pressing space in English mode commits the first English candidate and appends a space.
-22. Tapping an English candidate commits that candidate directly.
-23. User dictionary ranking still works for Pinyin.
-24. Translate panel first tries local phrase translation.
-25. Known phrases like `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `没有翻译结果`, `只是提示词`, `请给出可执行步骤`, `不要添加 INTERNET 权限`, and `I will handle it later` show directly insertable local translations.
-26. Translate preview line clearly shows `译文：...` when a local translation is available.
-27. If no local translation exists, Translate falls back to prompt generation rather than pretending to translate.
-28. Password field shows privacy mode, hides Hub actions, clears Pinyin/English composition, clears Translate Preview, hides Pet, blocks learning/growth, and uses warning/border colors.
-29. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
+2. `versionName` is `0.13.0`.
+3. `versionCode` is `13`.
+4. Settings page keeps the version only as `About · v0.13.0`.
+5. GitHub Actions artifact name is `orbit-ime-v0.13-debug-apk`.
+6. The keyboard Hub shows `宠物` in Pinyin mode and `Pet` in English mode.
+7. Tapping `宠物` / `Pet` opens a usable keyboard pet panel.
+8. The pet panel shows current pet, species, stage, level, EXP, Stars, mood, today's typed characters, total typed characters, and outfit.
+9. The pet panel has working actions: `签到`, `开蛋`, `切换`, `装扮`, `图鉴`, `装扮库`, `隐藏/显示`, and `关闭`.
+10. `签到` gives Chinese feedback and grants Stars once per day.
+11. `开蛋` gives one free hatch per day; later hatches cost 30 Stars.
+12. Owned pets are stored locally and `切换` cycles owned pets.
+13. `装扮` cycles local outfit placeholders.
+14. `图鉴` shows owned/free/pro pet catalog status.
+15. `装扮库` shows available outfit placeholders.
+16. Pet growth still increments from local typing, candidate commits, clip saves, translate insertion, and check-in.
+17. Starting Pinyin or English composing hides the pet panel so it does not block candidates.
+18. Privacy mode hides Hub tools and clears the pet panel.
+19. Pinyin and English candidate improvements from v0.12 still work.
+20. Local translation improvements from v0.12 still work.
+21. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
 
 ## Fix policy
 
