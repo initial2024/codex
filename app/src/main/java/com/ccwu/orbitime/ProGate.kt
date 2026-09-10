@@ -11,4 +11,6 @@ object ProGate {
     fun maxClipboardItems(context: Context): Int = if (isProUnlocked(context)) 5000 else 50
 
     fun maxTemplates(context: Context): Int = if (isProUnlocked(context)) 200 else 20
+
+    fun maxUserDictionaryItems(context: Context): Int = if (isProUnlocked(context)) 5000 else 300
 }
