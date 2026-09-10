@@ -1,12 +1,12 @@
 # Orbit IME Android
 
-Orbit IME is a privacy-first Android input method MVP with local English input, Pinyin 26-key input, local dictionary ranking, expanded bilingual quick phrases, a user-controlled clipboard panel, local phrase translation, Translate Preview fallback, local skins, and pet controls in settings.
+Orbit IME is a privacy-first Android input method MVP with local English candidate input, Pinyin 26-key input, local dictionary ranking, expanded bilingual quick phrases, a user-controlled clipboard panel, local phrase translation, Translate Preview fallback, local skins, and pet controls in settings.
 
 ## Product boundary
 
 This project is still not a full Chinese IME and does not yet match mature commercial IMEs in prediction quality.
 
-Version `0.12.0` is a data-expansion and architecture cleanup release. It adds separate boost data layers for Pinyin candidates and local phrase translation so future dictionary imports can be added without rewriting the keyboard service.
+Version `0.12.0` is a data-expansion and input-behavior release. It adds separate data layers for Pinyin sentence shortcuts, English candidates, and local phrase translation so future dictionary imports can be added without rewriting the keyboard service.
 
 ## Privacy boundary
 
@@ -26,28 +26,34 @@ Version `0.12.0` deliberately avoids network and advertising logic.
 
 ## Pinyin improvements in v0.12.0
 
-- `PinyinDictionary.kt` now keeps the core syllable dictionary.
-- `PinyinBoostData.kt` contains common full-pinyin, shorthand, and sentence-level candidates.
-- Exact boost candidates rank before core single-character candidates.
-- The candidate limit is increased to 10.
-- Test cases include `nh -> 你好`, `nisishei -> 你是谁`, `hsywt -> 还是有问题`, `zsm -> 这是什么`, `zmb -> 怎么办`, `smqk -> 什么情况`, `wgj -> 文件夹`, and `jqb -> 剪贴板`.
+- `PinyinDictionary.kt` keeps the core syllable dictionary.
+- `PinyinSentenceDictionary.kt` contains common shorthand and sentence-level candidates.
+- Exact sentence candidates rank before core single-character candidates.
+- Test cases include `nh -> 你好`, `nisishei -> 你是谁`, `hsywt -> 还是有问题`, `myfyjg -> 没有翻译结果`, `bscgfy -> 不是成功翻译`, `wgj -> 文件夹`, and `jqb -> 剪贴板`.
 - This still does not implement a full commercial Pinyin decoder, statistical language model, or smart segmentation engine.
+
+## English improvements in v0.12.0
+
+- English mode now has a composing buffer instead of committing each letter immediately.
+- `EnglishDictionary.kt` provides word, phrase, and shorthand candidates.
+- Typing `hi` shows candidates such as `hi`, `Hi.`, and `Hi,` before commit.
+- Pressing space commits the first English candidate and appends a space.
+- Tapping an English candidate commits that candidate directly.
 
 ## Translation improvements in v0.12.0
 
-- `TranslationBoostData.kt` adds an expanded local Chinese-English phrase table and token map.
-- `OfflineTranslationPack.kt` checks the boost translation table before falling back to rough token assembly and prompt generation.
-- Known phrases such as `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `请给出可执行步骤`, `不要添加 INTERNET 权限`, and `I will handle it later` produce directly insertable local translations.
+- `ProfessionalTranslationData.kt` adds a larger local Chinese-English phrase table.
+- `TranslationBoostData.kt` remains as an additional local phrase and token table.
+- `OfflineTranslationPack.kt` checks the professional translation table first, then older boost tables, then conservative token assembly, then Translate Preview prompt fallback.
+- Known phrases such as `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `没有翻译结果`, `只是提示词`, `请给出可执行步骤`, and `I will handle it later` produce directly insertable local translations.
 - Unsupported text falls back to Translate Preview prompt generation instead of pretending to translate.
 - No server, model endpoint, external API, or network permission is used.
 
 ## Data source strategy
 
-See `DATA_SOURCES.md`.
+The current bundled boost data is project-authored. Do not copy arbitrary GitHub dictionary data into this repository without a compatible license and attribution plan.
 
-The current bundled boost data is project-authored. Public sources reviewed for future import pipelines include CC-CEDICT, AOSP Pinyin IME, RIME/Trime, and open phrase-pinyin datasets with explicit licenses.
-
-Do not copy arbitrary GitHub dictionary data into this repository without a compatible license and attribution plan.
+Reviewed public directions for future import pipelines include RIME-related dictionaries and open phrase-pinyin resources, but license compatibility must be verified before any import. Some RIME port metadata reports GPLv3 licensing, so direct copying into a future commercial product is not treated as safe by default.
 
 ## Quick phrase improvements
 
@@ -61,7 +67,7 @@ Do not copy arbitrary GitHub dictionary data into this repository without a comp
 
 - Android IME service declared in `AndroidManifest.xml`.
 - Settings activity with input method setup buttons.
-- English keyboard.
+- English keyboard with candidate buffer.
 - Pinyin 26-key mode.
 - Candidate bar with static boost data and local user dictionary ranking.
 - Candidate tap-to-commit and space-to-select.
@@ -89,7 +95,7 @@ A truly professional IME requires a large phrase dictionary, frequency data, seg
 - External translation APIs.
 - Ad monetization.
 - Paid billing implementation.
-- Smart segmentation.
+- Statistical Pinyin language model.
 - Large imported dictionary assets.
 - Canvas keyboard rewrite.
 - Compose migration.
@@ -128,10 +134,10 @@ orbit-ime-v0.12-debug-apk
 3. Enable Orbit IME in system input method settings.
 4. Switch to Orbit IME.
 5. Confirm version is `0.12.0`.
-6. Type `nh`, `nisishei`, `hsywt`, `zsm`, `zmb`, `smqk`, `wgj`, `jqb`, `shurufa`, and `jianqieban`; confirm useful candidates appear.
-7. Confirm candidate tap and space-to-select work.
-8. Confirm local user dictionary ranking still works.
-9. Use Translate on `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `请给出可执行步骤`, and `I will handle it later`; confirm a real local translation can be inserted.
+6. Type `nh`, `nisishei`, `hsywt`, `myfyjg`, `bscgfy`, `wgj`, `jqb`, `shurufa`, and `jianqieban`; confirm useful candidates appear.
+7. Switch to English mode and type `hi`, `whq`, `build`, `translate`, and `problem`; confirm English candidates appear before commit.
+8. Confirm candidate tap and space-to-select work in both Pinyin and English mode.
+9. Use Translate on `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `没有翻译结果`, `只是提示词`, `请给出可执行步骤`, and `I will handle it later`; confirm a real local translation can be inserted.
 10. Use Translate on an unsupported long sentence and confirm Orbit clearly falls back to prompt generation instead of pretending to translate.
 11. Confirm Clips, quick phrases, and privacy mode still work.
 12. Confirm Manifest still has no network, ad, analytics, Accessibility, or overlay permission.
