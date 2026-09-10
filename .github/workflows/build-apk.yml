@@ -37,5 +37,5 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: orbit-ime-v0.2-debug-apk
+          name: orbit-ime-v0.3-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
