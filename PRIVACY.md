@@ -10,7 +10,7 @@ This policy applies to Orbit IME `0.12.0`.
 
 Orbit IME `0.12.0` does not request `INTERNET` permission.
 
-The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
+The app cannot upload input text, clipboard text, Pinyin buffers, English buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
@@ -39,8 +39,8 @@ Orbit IME `0.12.0` includes a local Pinyin 26-key mode.
 
 Pinyin candidates are generated from:
 
-- A core packaged syllable dictionary.
-- A packaged boost dictionary in `PinyinBoostData.kt`.
+- A core packaged syllable dictionary in `PinyinDictionary.kt`.
+- A packaged sentence/shortcut dictionary in `PinyinSentenceDictionary.kt`.
 - A local user dictionary learned from explicit candidate commits.
 
 Pinyin buffers are not uploaded and are not persisted as typed streams.
@@ -60,9 +60,17 @@ Orbit IME does not store surrounding sentence text, app name, target field, or f
 
 The dictionary is stored locally using app-private `SharedPreferences` JSON.
 
+## English candidate mode
+
+English candidates are generated locally from `EnglishDictionary.kt`.
+
+The English composing buffer is not uploaded and is not persisted as a typed stream.
+
+Typing English letters enters a temporary composing buffer. The user commits by tapping a candidate or pressing space.
+
 ## Local phrase translation and Translate Preview
 
-Orbit IME `0.12.0` first attempts local phrase translation using packaged phrase tables in `OfflineTranslationPack.kt` and `TranslationBoostData.kt`.
+Orbit IME `0.12.0` first attempts local phrase translation using packaged phrase tables in `ProfessionalTranslationData.kt`, `OfflineTranslationPack.kt`, and `TranslationBoostData.kt`.
 
 If a phrase exists in the local table, the translated text can be inserted directly.
 
@@ -70,7 +78,7 @@ If no local phrase translation exists, Orbit falls back to local Translate Previ
 
 Orbit IME does not include cloud translation, external translation APIs, model endpoints, or automatic background translation.
 
-Source text is read only after explicit source-button taps such as `前一句`, `选中文本`, `剪贴板`, or `草稿`.
+Source text is read only after explicit source-button taps such as `前一句`, `选中文本`, `剪贴板`, `拼音草稿`, `英文草稿`, or `草稿`.
 
 Translate Preview source text, generated prompts, local translation inputs, and translated outputs are not persisted.
 
@@ -102,6 +110,7 @@ In privacy mode:
 - Clipboard vault actions are hidden.
 - Pinyin candidate tools are disabled.
 - Pinyin composition is cleared.
+- English composition is cleared.
 - Translate Preview is cleared.
 - Keyboard Pet panel is cleared.
 - User dictionary learning is blocked.
