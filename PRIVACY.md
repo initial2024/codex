@@ -4,17 +4,17 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.5.0`.
+This policy applies to Orbit IME `0.7.0`.
 
 ## Network
 
-Orbit IME `0.5.0` does not request `INTERNET` permission.
+Orbit IME `0.7.0` does not request `INTERNET` permission.
 
-The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, or user dictionary entries to a server because no network permission is declared.
+The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or offline translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.5.0` includes:
+Orbit IME `0.7.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
@@ -29,27 +29,15 @@ The vault is stored locally using app-private `SharedPreferences` JSON.
 
 Orbit IME does not run a background clipboard harvesting service.
 
-Before saving, Orbit IME rejects text that looks like:
+Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, passwords, API keys, bearer tokens, authorization headers, cookie/session strings, or very long dense secret-like tokens.
 
-- OTP-only numeric codes.
-- Password-like text.
-- API keys.
-- Bearer tokens.
-- Authorization headers.
-- Cookie/session strings.
-- Very long dense secret-like tokens.
+## Pinyin mode and user dictionary
 
-## Pinyin mode
-
-Orbit IME `0.5.0` includes a minimal local Pinyin 26-key mode.
+Orbit IME `0.7.0` includes a minimal local Pinyin 26-key mode.
 
 Pinyin candidates are generated from a small generic static dictionary and a local user dictionary.
 
 Pinyin buffers are not uploaded and are not persisted as typed streams.
-
-## User dictionary
-
-Orbit IME `0.5.0` includes a local user dictionary.
 
 The user dictionary learns only after explicit candidate commit:
 
@@ -66,29 +54,43 @@ Orbit IME does not store surrounding sentence text, app name, target field, or f
 
 The dictionary is stored locally using app-private `SharedPreferences` JSON.
 
-Free quota is 300 entries. Pro placeholder quota is 5000 entries.
-
-A settings button can clear the local user dictionary.
-
-Candidate learning is blocked in sensitive fields and for text that looks like OTP codes, passwords, API keys, tokens, authorization headers, cookies, sessions, or dense secret-like strings.
-
 ## Translate Preview
 
-Translate Preview is local prompt generation only.
+Translate Preview is local prompt generation.
 
-Orbit IME `0.5.0` does not include cloud translation, external translation APIs, or automatic translation.
+Orbit IME `0.7.0` does not include cloud translation, external translation APIs, or automatic background translation.
 
 Source text is read only after explicit source-button taps such as `前一句`, `选中文本`, `剪贴板`, or `草稿`.
 
 Translate Preview source text and generated prompts are not persisted.
 
-## Skin system
+## Pro Offline Translation Pack
 
-Orbit IME `0.5.0` includes a local skin system.
+Orbit IME `0.7.0` includes a Pro-gated local Offline Translation Pack placeholder for short exact or rough phrase translations.
+
+It does not call a server, external translation API, or model endpoint.
+
+It does not persist source text or translated output history.
+
+If the local pack cannot translate safely or usefully, the app falls back to the existing Translate Preview prompt-generation flow.
+
+## Skin system
 
 The selected skin ID is stored locally using app-private `SharedPreferences`.
 
 Built-in skin tokens are packaged inside the app. Skin selection is not uploaded, synced, tracked, or used for advertising.
+
+## Keyboard Pet
+
+Orbit IME `0.7.0` includes a local keyboard-only pet MVP.
+
+The pet system stores only local counters and state, including pet id, EXP, Stars, streak, typed character count, display mode, and equipped outfit id.
+
+It does not store full input streams, surrounding sentences, app names, or target field identifiers.
+
+It does not request overlay / floating-window permission. The pet cannot draw outside the IME surface.
+
+It does not send notifications, play sounds, call a model, or use cloud chat.
 
 ## Sensitive fields
 
@@ -101,7 +103,9 @@ In privacy mode:
 - Pinyin candidate tools are disabled.
 - Pinyin composition is cleared.
 - Translate Preview is cleared.
+- Keyboard Pet panel is cleared.
 - User dictionary learning is blocked.
+- Pet growth is blocked.
 - Saving is blocked.
 - The keyboard visual state uses warning/border colors derived from the selected skin.
 
@@ -111,6 +115,7 @@ Orbit IME does not request:
 
 - Internet
 - Accessibility
+- Overlay / floating window
 - Contacts
 - SMS
 - Location
@@ -120,6 +125,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.5.0` contains a Pro placeholder only.
+Orbit IME `0.7.0` contains a Pro placeholder only.
 
-It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, or a skin marketplace.
+It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
