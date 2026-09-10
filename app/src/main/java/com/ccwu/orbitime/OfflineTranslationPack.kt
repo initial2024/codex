@@ -12,8 +12,17 @@ object OfflineTranslationPack {
         if (!PrivacyGuard.isSafeToUseForPrompt(text)) return null
 
         val exact = when (direction) {
-            TranslatePromptBuilder.Direction.ZH_TO_EN -> zhToEn[text] ?: TranslationBoostData.zhToEn[text]
-            TranslatePromptBuilder.Direction.EN_TO_ZH -> enToZh[normalizeEnglishKey(text)] ?: TranslationBoostData.enToZh[normalizeEnglishKey(text)]
+            TranslatePromptBuilder.Direction.ZH_TO_EN ->
+                ProfessionalTranslationData.zhToEn[text]
+                    ?: zhToEn[text]
+                    ?: TranslationBoostData.zhToEn[text]
+
+            TranslatePromptBuilder.Direction.EN_TO_ZH -> {
+                val key = normalizeEnglishKey(text)
+                ProfessionalTranslationData.enToZh[key]
+                    ?: enToZh[key]
+                    ?: TranslationBoostData.enToZh[key]
+            }
         }
         if (exact != null) {
             return Result(exact, "exact-local", "本地短句精确匹配")
