@@ -18,5 +18,7 @@ object ProGate {
 
     fun maxOutfits(context: Context): Int = if (isProUnlocked(context)) 60 else 8
 
-    fun isOfflineTranslationPackUnlocked(context: Context): Boolean = isProUnlocked(context)
+    // v0.11: basic offline phrase translation is enabled for usability.
+    // Future Pro can still unlock a larger offline pack, but the keyboard must not feel broken.
+    fun isOfflineTranslationPackUnlocked(context: Context): Boolean = true
 }
