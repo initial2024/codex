@@ -43,6 +43,7 @@ Version `0.2.0` deliberately avoids network and advertising logic.
 - Candidate tap-to-commit.
 - Space commits the first Pinyin candidate when a buffer exists.
 - Backspace deletes the Pinyin buffer before deleting surrounding editor text.
+- Pinyin mode maps `,` to `，` and `.` to `。`.
 - Number/symbol mode.
 - Backspace, space, enter, caps toggle.
 - Orbit Hub toolbar:
@@ -134,11 +135,12 @@ app/build/outputs/apk/debug/app-debug.apk
 10. Tap `你好` or press space to commit it.
 11. Type `kaoyan`, `cailiao`, `shuxue`, `yingyu`, `dongnan`, or `zheda` and confirm local candidates appear.
 12. Press backspace while Pinyin text is composing and confirm it deletes the Pinyin buffer first.
-13. Toggle `123` and return with `ABC`.
-14. Copy normal text in another app.
-15. Tap `Save` in Orbit IME.
-16. Tap `Clips` and insert the saved text.
-17. Open a password field and confirm Hub functions are hidden.
+13. In Pinyin mode, press `,` and `.` and confirm they output `，` and `。`.
+14. Toggle `123` and return with `ABC`.
+15. Copy normal text in another app.
+16. Tap `Save` in Orbit IME.
+17. Tap `Clips` and insert the saved text.
+18. Open a password field and confirm Hub functions are hidden.
 
 ## Commercial direction
 
