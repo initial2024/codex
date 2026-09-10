@@ -35,13 +35,13 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("隐私优先的本地输入法。当前先保证基础输入体验：拼音、英文候选、短语、剪贴板、基础离线短句翻译和皮肤。当前皮肤：${skin.name}。", skin))
+        container.addView(paragraph("隐私优先的本地输入法。当前重点是基础输入体验、拼音/英文候选、本地短句翻译、剪贴板、皮肤和键盘内宠物。当前皮肤：${skin.name}。", skin))
         statusMessage?.let {
             container.addView(statusBox(it, skin))
         }
 
         container.addView(section("输入法设置", skin))
-        container.addView(paragraph("先在系统输入法设置中启用 Orbit IME。键盘顶部也有“切换”按钮，可以打开系统输入法切换器。Android 左下角自带的小地球/切换气泡不是 Orbit 自己绘制的。", skin))
+        container.addView(paragraph("先在系统输入法设置中启用 Orbit IME。键盘顶部有“切换”按钮，可以打开系统输入法切换器。Android 左下角自带的小地球/切换气泡不是 Orbit 自己绘制的。", skin))
         container.addView(button("打开输入法设置", skin) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         })
@@ -51,10 +51,7 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("拼音输入", skin))
-        container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序、常用词、简拼和部分整句联想。v0.12 已把整句/简拼候选拆到 PinyinSentenceDictionary，后续可继续批量扩展。示例：nh -> 你好，nisishei -> 你是谁，hsywt -> 还是有问题。注意：这仍是轻量词库，不是搜狗/百度级完整中文输入法。", skin))
-
-        container.addView(section("英文输入", skin))
-        container.addView(paragraph("英文模式现在有 composing buffer 和候选栏。输入 hi 不会立刻上屏，会先显示 hi / Hi. / Hi, 等候选；点候选或按空格后再提交。英文候选数据在 EnglishDictionary 中维护。", skin))
+        container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序、常用词、简拼和部分整句联想。示例：nh -> 你好，nisishei -> 你是谁，hsywt -> 还是有问题。注意：这仍是轻量词库，不是搜狗/百度级完整中文输入法。", skin))
 
         container.addView(section("快捷短语", skin))
         container.addView(paragraph("空闲状态会显示快捷短语栏。拼音模式显示中文短语，英文模式显示英文短语；短语库覆盖常用沟通、开发、学习和日常回复。", skin))
@@ -63,20 +60,35 @@ class MainActivity : Activity() {
         container.addView(paragraph("Orbit 只能管理自己键盘里的剪贴板面板，不能替换微信、QQ 或系统长按输入框弹出的原生菜单。复制文字后，打开 Orbit 的剪贴板面板并点击“保存当前剪贴板”。", skin))
 
         container.addView(section("翻译", skin))
-        container.addView(paragraph("翻译优先使用本地短句翻译表，命中后会显示“译文：...”并可直接插入译文；没命中时才回退为翻译提示词。v0.12 已新增 ProfessionalTranslationData 扩展常用短句。当前不联网、不接外部翻译 API，所以无法保证任意长句都能翻译。", skin))
+        container.addView(paragraph("翻译优先使用本地短句翻译表，命中后可直接插入译文；没命中时才回退为翻译提示词。当前不联网、不接外部翻译 API，所以无法保证任意长句都能翻译。", skin))
 
         container.addView(section("宠物", skin))
-        container.addView(paragraph("当前宠物：${petProfile.petName}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars。宠物素材和交互还不完整，所以暂时不放在键盘一级入口；你可以先在这里签到、隐藏或重置。", skin))
+        container.addView(paragraph("当前宠物：${petProfile.petName}（${petProfile.species}），${petProfile.stageName}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars。今日 ${petProfile.todayTypedChars} 字，累计 ${petProfile.totalTypedChars} 字，心情：${petProfile.moodLabel}，装扮：${petProfile.equippedOutfitName ?: "无"}。", skin))
+        container.addView(paragraph("键盘顶部现在有“宠物/Pet”入口。打开后可签到、开蛋、切换已有宠物、轮换装扮、查看图鉴和隐藏。每天第一次开蛋免费，之后每次 30 Stars。宠物数据只保存在本机。", skin))
         container.addView(button("今日签到", skin) {
             val result = petRepository.checkIn()
             render(result.message)
         })
-        container.addView(button(if (petProfile.displayMode == PetRepository.DISPLAY_HIDDEN) "显示键盘内宠物" else "隐藏键盘内宠物", skin) {
-            val result = petRepository.toggleHidden()
-            render(result.message)
-        })
         container.addView(button("开蛋 / 随机领养", skin) {
             val result = petRepository.adoptRandom()
+            render(result.message)
+        })
+        container.addView(button("切换已有宠物", skin) {
+            val result = petRepository.switchToNextOwned()
+            render(result.message)
+        })
+        container.addView(button("轮换装扮", skin) {
+            val result = petRepository.equipNextOutfit()
+            render(result.message)
+        })
+        container.addView(button("查看宠物图鉴", skin) {
+            render(petRepository.petCatalogLine())
+        })
+        container.addView(button("查看装扮库", skin) {
+            render(petRepository.outfitCatalogLine())
+        })
+        container.addView(button(if (petProfile.displayMode == PetRepository.DISPLAY_HIDDEN) "显示键盘内宠物" else "隐藏键盘内宠物", skin) {
+            val result = petRepository.toggleHidden()
             render(result.message)
         })
         container.addView(button("重置宠物本地数据", skin) {
@@ -103,7 +115,7 @@ class MainActivity : Activity() {
         container.addView(section("高级功能", skin))
         container.addView(paragraph("Pro 入口只做占位：更多宠物、更多装扮、更高词库/剪贴板额度和更大的离线短句包。当前版本没有支付、广告或联网逻辑。", skin))
 
-        container.addView(paragraph("About · v0.12.0", skin))
+        container.addView(paragraph("About · v0.13.0", skin))
 
         setContentView(scroll)
     }
@@ -148,7 +160,12 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = OrbitTheme.rounded(skin.panelColor, dp(14).toFloat(), skin.warningColor, dp(1))
             setPadding(dp(12), 0, dp(12), 0)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply { setMargins(0, 0, 0, dp(10)) }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42),
+            ).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
         }
     }
 
@@ -185,7 +202,12 @@ class MainActivity : Activity() {
             background = OrbitTheme.rounded(skin.panelAltColor, dp(14).toFloat(), skin.accentColor, dp(1))
             setOnClickListener { onClick() }
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(6)) }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                setMargins(0, dp(4), 0, dp(6))
+            }
         }
     }
 
