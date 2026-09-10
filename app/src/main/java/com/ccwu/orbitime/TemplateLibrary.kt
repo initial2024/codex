@@ -6,12 +6,13 @@ object TemplateLibrary {
         val insertText: String,
     )
 
+    // Kept for future secondary panels. v0.8 intentionally hides these from the first-level Hub.
     val defaultActions: List<HubAction> = listOf(
-        HubAction("Polish", "请润色下面这段文字，保持原意，减少废话："),
-        HubAction("Explain", "解释下面这句话，先给结论，再拆结构："),
-        HubAction("Study", "按考研英语一标准分析这个长难句："),
-        HubAction("Prompt", "请按【明确结论 -> 关键依据 -> 推理链路 -> 风险与熔断条件】回答："),
-        HubAction("Pro", "Orbit Pro 占位：高级模板、5000 条本地剪贴板、300/5000 条用户本地词库、主题皮肤。"),
+        HubAction("润色", "请润色下面这段文字，保持原意，减少废话："),
+        HubAction("解释", "解释下面这句话，先给结论，再拆结构："),
+        HubAction("学习", "按考研英语一标准分析这个长难句："),
+        HubAction("提示词", "请按【明确结论 -> 关键依据 -> 推理链路 -> 风险与熔断条件】回答："),
+        HubAction("Pro", "Orbit Pro 占位：高级模板、5000 条本地剪贴板、标签、主题皮肤、离线翻译包。"),
     )
 
     val quickPhrases: List<String> = listOf(
