@@ -1,68 +1,45 @@
-# Orbit IME v0.7 Pro Offline Translation Pack
+# Orbit IME Local Phrase Translation
 
-This file documents the accepted v0.7 offline translation feature scope.
+## Version
+
+This document applies to Orbit IME `0.11.0`.
 
 ## Goal
 
-Add a Pro-only local translation pack that can provide short exact or rough phrase translations without network access.
+Translate should not feel fake. Version `0.11.0` first tries to produce a real local phrase translation from packaged phrase tables.
+
+If no local phrase translation exists, Orbit falls back to Translate Preview prompt generation.
 
 ## Boundary
 
-The Offline Translation Pack is not cloud translation and not a full machine translation model.
+This is not cloud translation and not a full offline model.
 
-It does not:
+It does not use:
 
-- Add `INTERNET` permission.
-- Call external translation APIs.
-- Upload source text.
-- Persist Translate Preview history.
-- Persist source text.
-- Replace the free Translate Preview prompt-generation flow.
-- Claim high-quality long-form translation.
+- INTERNET permission
+- External translation API
+- Cloud model endpoint
+- Background translation
+- Translation history storage
 
-## Availability
+## Supported behavior
 
-The pack is unlocked only when:
+Known phrases can produce direct translations, for example:
 
-```kotlin
-ProGate.isOfflineTranslationPackUnlocked(context) == true
+```text
+你好 -> Hello.
+你是谁 -> Who are you?
+还是有问题 -> There is still a problem.
+我晚点处理 -> I will handle it later.
+I will handle it later -> 我晚点处理。
 ```
 
-For free users, Translate Preview still generates local prompts only.
+Unsupported long or complex text falls back to prompt generation instead of pretending to translate.
 
-## Supported directions
+## Acceptance examples
 
-- Chinese to English.
-- English to Chinese.
-
-## Translation behavior
-
-The pack first tries exact local phrase matches.
-
-If exact matching fails, it can try a conservative rough local phrase assembly for very short inputs.
-
-If no local match is safe or useful, Orbit IME falls back to the existing Translate Preview prompt output.
-
-## Safety filter
-
-Before local translation, source text must pass `PrivacyGuard.isSafeToUseForPrompt()`.
-
-This rejects OTP-like codes, password-like text, API keys, bearer tokens, authorization headers, cookies, sessions, dense secrets, and overly long text.
-
-## UI behavior
-
-When Pro is unlocked and a local offline translation is found:
-
-- Translate Preview shows an `offline:` preview line.
-- The user can tap `插入译文` to commit the local offline result.
-- The user can still insert or copy the generated prompt.
-
-When Pro is not unlocked:
-
-- The UI shows `离线包Pro`.
-- Tapping it shows a local lock message.
-- No network call is made.
-
-## Future expansion
-
-A real offline model pack would require a separate size, latency, memory, and quality evaluation. It should remain optional and local-only.
+- `你好` should show a directly insertable English translation.
+- `你是谁` should show a directly insertable English translation.
+- `还是有问题` should show a directly insertable English translation.
+- `I will handle it later` should show a directly insertable Chinese translation.
+- Unsupported text should show the prompt-generation fallback.
