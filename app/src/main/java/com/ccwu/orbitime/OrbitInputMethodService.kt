@@ -9,6 +9,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -63,8 +64,8 @@ class OrbitInputMethodService : InputMethodService() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = OrbitTheme.keyboardBackground(activeSkin())
-            // v0.8: leave a safe area for Android's own input-method switcher bubble.
-            setPadding(dp(8), dp(6), dp(8), dp(28))
+            // Keep the bottom row clear of Android's own input-method switcher bubble.
+            setPadding(dp(8), dp(6), dp(8), dp(36))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -112,14 +113,15 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         row.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN", emphasized = true) { toggleInputMode() })
+        row.addView(chip(label(pinyin = "切换", english = "Switch")) { showInputMethodPickerSafely() })
         row.addView(chip(label(pinyin = "粘贴", english = "Paste")) { pasteClipboard(saveAfterPaste = false) })
-        row.addView(chip(if (showClips) label("返回键盘", "Keyboard") else label("剪贴板", "Clips")) {
+        row.addView(chip(if (showClips) label("返回", "Keyboard") else label("剪贴板", "Clips")) {
             showClips = !showClips
             showPet = false
             if (showClips) clearTranslateState()
             root?.let { rebuild(it) }
         })
-        row.addView(chip(if (showTranslate) label("返回键盘", "Keyboard") else label("翻译", "Translate"), emphasized = showTranslate) {
+        row.addView(chip(if (showTranslate) label("返回", "Keyboard") else label("翻译", "Translate"), emphasized = showTranslate) {
             if (showTranslate) {
                 clearTranslateState()
             } else {
@@ -134,29 +136,21 @@ class OrbitInputMethodService : InputMethodService() {
             }
             root?.let { rebuild(it) }
         })
-        val petProfile = petRepository.profile()
-        if (petProfile.displayMode != PetRepository.DISPLAY_HIDDEN && pinyinBuffer.isEmpty()) {
-            row.addView(chip(label("宠物", "Pet"), emphasized = showPet) {
-                showPet = !showPet
-                showClips = false
-                if (showPet) clearTranslateState()
-                root?.let { rebuild(it) }
-            })
-        }
+        // Pet is intentionally not a first-level keyboard button until art/assets and UX are complete.
 
         scroller.setBackgroundColor(skin.backgroundColor)
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(40),
+            dp(38),
         ))
     }
 
     private fun buildPetPanel(parent: LinearLayout) {
         val profile = petRepository.profile()
         val visible = profile.displayMode != PetRepository.DISPLAY_HIDDEN
-        parent.addView(labelBox("宠物 · ${profile.petName} · Lv.${profile.level} · S${profile.stage} · ${profile.exp} EXP", muted = false, accent = true))
-        parent.addView(labelBox(if (visible) petRepository.localChatLine() else "宠物已隐藏，只保存在本机。", muted = !profile.chatUnlocked, accent = profile.chatUnlocked))
+        parent.addView(labelBox("宠物 · ${profile.petName} · Lv.${profile.level} · ${profile.exp} EXP", muted = false, accent = true))
+        parent.addView(labelBox(if (visible) "宠物仍在设置页管理，键盘内暂时弱化。" else "宠物已隐藏，只保存在本机。", muted = true, accent = false))
 
         val scroller = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -171,21 +165,10 @@ class OrbitInputMethodService : InputMethodService() {
             toast(result.message)
             root?.let { rebuild(it) }
         })
-        row.addView(chip("开蛋") {
-            val result = petRepository.adoptRandom()
-            toast(result.message)
-            root?.let { rebuild(it) }
-        })
         row.addView(chip(if (visible) "隐藏" else "显示") {
             val result = petRepository.toggleHidden()
             toast(result.message)
             root?.let { rebuild(it) }
-        })
-        row.addView(chip("聊天") {
-            toast(petRepository.localChatLine())
-        })
-        row.addView(chip("装扮") {
-            toast("装扮位已预留，等待素材")
         })
         row.addView(chip("关闭", warning = true) {
             showPet = false
@@ -195,7 +178,7 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(38),
+            dp(36),
         ))
     }
 
@@ -267,7 +250,7 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(38),
+            dp(36),
         ))
     }
 
@@ -298,7 +281,7 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(38),
+            dp(36),
         ))
     }
 
@@ -324,7 +307,7 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(38),
+            dp(36),
         ))
     }
 
@@ -337,14 +320,19 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        TemplateLibrary.quickPhrases.take(4).forEach { phrase ->
+        val phrases = if (inputMode == InputMode.PINYIN) {
+            listOf("收到，我晚点处理。", "请给出可执行步骤。", "先不要扩大范围。")
+        } else {
+            listOf("Got it.", "I will handle it later.", "Please give actionable steps.")
+        }
+        phrases.forEach { phrase ->
             row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
         }
 
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(36),
+            dp(34),
         ))
     }
 
@@ -362,7 +350,7 @@ class OrbitInputMethodService : InputMethodService() {
 
             parent.addView(row, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(46),
+                dp(44),
             ))
         }
     }
@@ -384,15 +372,16 @@ class OrbitInputMethodService : InputMethodService() {
     private fun keyView(rawKey: String): TextView {
         val skin = activeSkin()
         val display = when {
-            rawKey == "space" && translateDraftMode -> if (translateDraftBuffer.isEmpty()) "草稿" else "空格"
+            rawKey == "space" && translateDraftMode -> if (translateDraftBuffer.isEmpty()) "草稿" else label("空格", "space")
             rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else label("空格", "space")
+            rawKey == "↵" -> label("回车", "Enter")
             inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
             else -> rawKey
         }
 
         return TextView(this).apply {
             text = display
-            OrbitTheme.label(this, sizeSp = if (rawKey == "space") 13f else 18f, bold = rawKey.length == 1, skin = skin)
+            OrbitTheme.label(this, sizeSp = if (rawKey == "space" || rawKey == "↵") 13f else 18f, bold = rawKey.length == 1, skin = skin)
             background = OrbitTheme.rounded(
                 color = if (isControlKey(rawKey)) skin.controlKeyColor else skin.keyColor,
                 radiusPx = dp(12).toFloat(),
@@ -402,13 +391,13 @@ class OrbitInputMethodService : InputMethodService() {
             setOnClickListener { handleKey(rawKey) }
             isClickable = true
             isFocusable = true
-            minHeight = dp(40)
+            minHeight = dp(38)
         }
     }
 
     private fun keyLayoutParams(key: String): LinearLayout.LayoutParams {
         val weight = when (key) {
-            "space" -> 4.4f
+            "space" -> 4.6f
             "⇧", "⌫", "123", "ABC", "↵" -> 1.45f
             else -> 1f
         }
@@ -612,6 +601,15 @@ class OrbitInputMethodService : InputMethodService() {
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
     }
 
+    private fun showInputMethodPickerSafely() {
+        try {
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showInputMethodPicker()
+        } catch (_: Exception) {
+            toast("请从系统输入法按钮切换")
+        }
+    }
+
     private fun commitDirectText(text: String) {
         commitPendingPinyin(rawFallback = true)
         clearTranslateState()
@@ -798,7 +796,7 @@ class OrbitInputMethodService : InputMethodService() {
             isClickable = true
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(34),
+                dp(32),
             ).apply {
                 setMargins(dp(3), dp(3), dp(3), dp(3))
             }
@@ -825,7 +823,7 @@ class OrbitInputMethodService : InputMethodService() {
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(34),
+                dp(32),
             ).apply {
                 setMargins(dp(3), dp(2), dp(3), dp(3))
             }
