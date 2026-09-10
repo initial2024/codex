@@ -1,16 +1,16 @@
 # Orbit IME Android
 
-Orbit IME is a privacy-first Android input method MVP with local English input, Pinyin 26-key input, local dictionary ranking, a user-controlled clipboard panel, Translate Preview, local skins, a keyboard-only pet MVP, and a Pro offline translation pack placeholder.
+Orbit IME is a privacy-first Android input method MVP with local English input, Pinyin 26-key input, local dictionary ranking, a user-controlled clipboard panel, Translate Preview, local skins, a settings-managed pet MVP, and a Pro offline translation pack placeholder.
 
 ## Product boundary
 
 This project is still not a full Chinese IME and does not try to compete with mature commercial IMEs in prediction quality.
 
-Version `0.8.0` is a usability-fix release. It focuses on making the existing keyboard easier to use instead of adding new large features.
+Version `0.9.0` is another usability-fix release based on direct device feedback. It corrects confusing controls, weak candidate coverage, and pet UI interference instead of adding new large features.
 
 ## Privacy boundary
 
-Version `0.8.0` deliberately avoids network and advertising logic.
+Version `0.9.0` deliberately avoids network and advertising logic.
 
 - No `INTERNET` permission.
 - No ad SDK.
@@ -26,29 +26,19 @@ Version `0.8.0` deliberately avoids network and advertising logic.
 - Translate Preview source text and generated prompts are not persisted.
 - Offline Translation Pack is local-only and Pro-gated.
 
-## Usability fixes in v0.8.0
+## Usability fixes in v0.9.0
 
-- Hub buttons are localized in Pinyin mode:
-  - 粘贴
-  - 剪贴板
-  - 翻译
-  - 宠物
-  - 返回键盘
-- English mode keeps short English labels:
-  - Paste
-  - Clips
-  - Translate
-  - Pet
-  - Keyboard
-- Prompt-style actions are removed from the first-level Hub row.
-- Save is moved into the Clips panel as `保存当前剪贴板`.
-- Keyboard bottom padding is increased to reduce overlap with Android's input-method switcher bubble.
-- Key rows are slightly shorter to reduce total keyboard height.
-- Pet chip is hidden while Pinyin composition is active so candidates keep priority.
-- Settings page uses product sections instead of version-number section titles.
-- Settings page keeps the version only as `About · v0.8.0`.
-- Pinyin dictionary is expanded with generic chat, development, input-method, and study terms.
-- Generic shorthand candidates are added, such as `wgj -> 文件夹`, `wj -> 文件`, `wt -> 问题`, and `xg -> 修改`.
+- Adds a first-level `切换` / `Switch` Hub button that calls Android's input-method picker.
+- Makes the bottom-right key display `回车` / `Enter` instead of a bare arrow, so it is not mistaken for an input-method switcher.
+- Keeps Android's own switcher bubble as a system/host-app feature, not an Orbit-controlled UI.
+- Removes the pet chip from the first-level keyboard Hub until art assets and interaction quality are ready.
+- Keeps pet management in the settings screen for now.
+- Separates idle phrase suggestions by mode:
+  - Pinyin mode shows Chinese phrases.
+  - English mode shows English phrases.
+- Expands common Pinyin coverage, including `bing -> 并/病/冰/兵`.
+- Keeps the Clips save action inside the Clips panel as `保存当前剪贴板`.
+- Preserves the v0.8 simplified settings page and bottom safe area changes.
 
 ## Current features
 
@@ -65,7 +55,7 @@ Version `0.8.0` deliberately avoids network and advertising logic.
 - Translate Preview with previous sentence, selected text, clipboard, and draft sources.
 - Pro Offline Translation Pack for short local phrase translations.
 - Built-in skins: Orbit Dark, Orbit Light, AMOLED Black, Study Blue, and Pro Aurora.
-- Keyboard Pet MVP with keyboard-only display, check-in, local growth, open-egg, hide/show, local template chat, and outfit placeholder.
+- Pet MVP managed from settings while keyboard Hub placement is paused.
 
 ## Known limitation
 
@@ -127,7 +117,7 @@ It uses `workflow_dispatch` only. It does not build automatically on push.
 The debug APK artifact name is:
 
 ```text
-orbit-ime-v0.8-debug-apk
+orbit-ime-v0.9-debug-apk
 ```
 
 ## Local build
@@ -150,22 +140,26 @@ app/build/outputs/apk/debug/app-debug.apk
 2. Open Orbit IME app.
 3. Enable Orbit IME in system input method settings.
 4. Switch to Orbit IME.
-5. Type English letters in `EN` mode.
-6. Switch to `拼音` mode and confirm Hub labels are Chinese.
-7. Type `nihao` and confirm `你好` appears.
-8. Type `wgj`, `wj`, `wt`, `xg`, `shurufa`, `jianqieban`, and confirm useful candidates appear.
-9. Select candidates repeatedly and confirm local dictionary ranking changes.
-10. Open Clips and confirm `保存当前剪贴板` is inside the Clips panel.
-11. Confirm Android's long-press menu is not treated as an Orbit bug.
-12. Use Translate Preview sources.
-13. Confirm free users get prompt generation only.
-14. Open Pet panel from the Hub when not composing Pinyin.
-15. Confirm pet does not appear in password fields.
-16. Confirm privacy mode hides Hub actions and clears composition/Translate/Pet panels.
-17. Confirm Manifest still has no network, ad, analytics, Accessibility, or overlay permission.
+5. Tap `切换` / `Switch` and confirm Android's input-method picker opens.
+6. Confirm the bottom-right key is labeled `回车` / `Enter` and sends Enter, not input-method switching.
+7. Type English letters in `EN` mode.
+8. Confirm English mode idle phrases are English, not Chinese.
+9. Switch to `拼音` mode and confirm Hub labels are Chinese.
+10. Type `nihao` and confirm `你好` appears.
+11. Type `bing` and confirm `并/病/冰/兵` candidates appear.
+12. Type `wgj`, `wj`, `wt`, `xg`, `shurufa`, `jianqieban`, and confirm useful candidates appear.
+13. Select candidates repeatedly and confirm local dictionary ranking changes.
+14. Open Clips and confirm `保存当前剪贴板` is inside the Clips panel.
+15. Confirm Android's long-press menu is not treated as an Orbit bug.
+16. Use Translate Preview sources.
+17. Confirm free users get prompt generation only.
+18. Confirm pet controls remain available in settings, not first-level keyboard Hub.
+19. Confirm pet does not appear in password fields.
+20. Confirm privacy mode hides Hub actions and clears composition/Translate/Pet panels.
+21. Confirm Manifest still has no network, ad, analytics, Accessibility, or overlay permission.
 
 ## Commercial direction
 
 The intended business model is free base version plus paid Pro unlock.
 
-Pro can later unlock more pets, more outfits, higher local dictionary quota, higher clipboard quota, Pro Aurora, and optional offline packs. Do not put ads inside the keyboard input surface. Version `0.8.0` contains no advertising, billing, network, or cloud translation code.
+Pro can later unlock more pets, more outfits, higher local dictionary quota, higher clipboard quota, Pro Aurora, and optional offline packs. Do not put ads inside the keyboard input surface. Version `0.9.0` contains no advertising, billing, network, or cloud translation code.
