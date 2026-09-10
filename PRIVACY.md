@@ -4,28 +4,22 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.10.0`.
+This policy applies to Orbit IME `0.11.0`.
 
 ## Network
 
-Orbit IME `0.10.0` does not request `INTERNET` permission.
+Orbit IME `0.11.0` does not request `INTERNET` permission.
 
-The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or offline translation inputs to a server because no network permission is declared.
+The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.10.0` includes:
+Orbit IME `0.11.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
 - No tracking SDK.
 - No remote configuration SDK.
-
-## Quick phrases
-
-Orbit IME includes built-in Chinese and English quick phrases packaged inside the app.
-
-Tapping a quick phrase commits that phrase to the current input field. The quick phrase library is not generated from the user's private input and is not uploaded, synced, tracked, or used for advertising.
 
 ## Clipboard vault
 
@@ -41,9 +35,11 @@ Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, pa
 
 ## Pinyin mode and user dictionary
 
-Orbit IME includes a minimal local Pinyin 26-key mode.
+Orbit IME `0.11.0` includes a minimal local Pinyin 26-key mode.
 
 Pinyin candidates are generated from a generic static dictionary and a local user dictionary.
+
+The static dictionary now includes common full-pinyin phrases and generic shorthand cases such as `nh`, `nisishei`, and `hsywt`.
 
 Pinyin buffers are not uploaded and are not persisted as typed streams.
 
@@ -62,25 +58,19 @@ Orbit IME does not store surrounding sentence text, app name, target field, or f
 
 The dictionary is stored locally using app-private `SharedPreferences` JSON.
 
-## Translate Preview
+## Local phrase translation and Translate Preview
 
-Translate Preview is local prompt generation.
+Orbit IME `0.11.0` first attempts local phrase translation using packaged phrase tables.
 
-Orbit IME does not include cloud translation, external translation APIs, or automatic background translation.
+If a phrase exists in the local table, the translated text can be inserted directly.
+
+If no local phrase translation exists, Orbit falls back to local Translate Preview prompt generation.
+
+Orbit IME does not include cloud translation, external translation APIs, model endpoints, or automatic background translation.
 
 Source text is read only after explicit source-button taps such as `前一句`, `选中文本`, `剪贴板`, or `草稿`.
 
-Translate Preview source text and generated prompts are not persisted.
-
-## Pro Offline Translation Pack
-
-Orbit IME includes a Pro-gated local Offline Translation Pack placeholder for short exact or rough phrase translations.
-
-It does not call a server, external translation API, or model endpoint.
-
-It does not persist source text or translated output history.
-
-If the local pack cannot translate safely or usefully, the app falls back to the existing Translate Preview prompt-generation flow.
+Translate Preview source text, generated prompts, local translation inputs, and translated outputs are not persisted.
 
 ## Skin system
 
@@ -90,7 +80,7 @@ Built-in skin tokens are packaged inside the app. Skin selection is not uploaded
 
 ## Keyboard Pet
 
-Orbit IME includes a local keyboard-only pet MVP.
+Orbit IME `0.11.0` includes local pet controls in settings while keyboard UX is stabilized.
 
 The pet system stores only local counters and state, including pet id, EXP, Stars, streak, typed character count, display mode, and equipped outfit id.
 
@@ -133,6 +123,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.10.0` contains a Pro placeholder only.
+Orbit IME `0.11.0` contains a Pro placeholder only.
 
 It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
