@@ -4,17 +4,17 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.2.0`.
+This policy applies to Orbit IME `0.3.0`.
 
 ## Network
 
-Orbit IME `0.2.0` does not request `INTERNET` permission.
+Orbit IME `0.3.0` does not request `INTERNET` permission.
 
-The app cannot upload input text, clipboard text, Pinyin buffers, templates, or saved clips to a server because no network permission is declared.
+The app cannot upload input text, clipboard text, Pinyin buffers, templates, saved clips, or skin selection to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.2.0` includes:
+Orbit IME `0.3.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
@@ -41,11 +41,19 @@ Before saving, Orbit IME rejects text that looks like:
 
 ## Pinyin mode
 
-Orbit IME `0.2.0` includes a minimal local Pinyin 26-key mode.
+Orbit IME `0.3.0` includes a minimal local Pinyin 26-key mode.
 
 Pinyin candidates are generated from a small static local dictionary inside the app package. Pinyin buffers are not uploaded and are not persisted.
 
 Typed key streams are not saved.
+
+## Skin system
+
+Orbit IME `0.3.0` includes a local skin system.
+
+The selected skin ID is stored locally using app-private `SharedPreferences`.
+
+Built-in skin tokens are packaged inside the app. Skin selection is not uploaded, synced, tracked, or used for advertising.
 
 ## Sensitive fields
 
@@ -56,7 +64,9 @@ In privacy mode:
 - Hub actions are hidden.
 - Clipboard vault actions are hidden.
 - Pinyin candidate tools are disabled.
+- Pinyin composition is cleared.
 - Saving is blocked.
+- The keyboard visual state uses warning/border colors derived from the selected skin.
 
 ## Permissions intentionally not requested
 
@@ -73,6 +83,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.2.0` contains a Pro placeholder only.
+Orbit IME `0.3.0` contains a Pro placeholder only.
 
-It does not implement billing, advertising, analytics, cloud sync, or account login.
+It does not implement billing, advertising, analytics, cloud sync, account login, or a skin marketplace.
