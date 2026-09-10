@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Orbit IME</string>
     <string name="ime_name">Orbit IME</string>
-    <string name="ime_subtype_en">Orbit English Keyboard</string>
+    <string name="ime_subtype_en">Orbit EN/Pinyin Keyboard</string>
 </resources>
