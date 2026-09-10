@@ -6,6 +6,7 @@ object PinyinDictionary {
     private const val MAX_CANDIDATES = 8
 
     private val entries: Map<String, List<String>> = linkedMapOf(
+        // Base syllables
         "a" to listOf("啊", "阿"),
         "ai" to listOf("爱", "哎", "矮"),
         "an" to listOf("安", "按", "案"),
@@ -24,7 +25,6 @@ object PinyinDictionary {
         "bie" to listOf("别"),
         "bu" to listOf("不", "部", "步"),
         "cai" to listOf("才", "菜", "材"),
-        "cailiao" to listOf("材料"),
         "ce" to listOf("测", "策"),
         "cha" to listOf("查", "差", "茶"),
         "chang" to listOf("长", "常", "场"),
@@ -43,7 +43,7 @@ object PinyinDictionary {
         "deng" to listOf("等"),
         "di" to listOf("地", "第", "低"),
         "dian" to listOf("点", "电"),
-        "dong" to listOf("东", "懂", "动"),
+        "dong" to listOf("动", "懂", "东"),
         "dou" to listOf("都", "斗"),
         "du" to listOf("读", "度", "独"),
         "dui" to listOf("对", "队"),
@@ -85,7 +85,6 @@ object PinyinDictionary {
         "ju" to listOf("据", "句", "局"),
         "kao" to listOf("考", "靠"),
         "ke" to listOf("可", "课", "科"),
-        "keyi" to listOf("可以"),
         "kong" to listOf("空", "控"),
         "kuai" to listOf("快", "块"),
         "lai" to listOf("来"),
@@ -93,7 +92,7 @@ object PinyinDictionary {
         "le" to listOf("了", "乐"),
         "li" to listOf("里", "理", "力"),
         "liao" to listOf("了", "料"),
-        "ling" to listOf("灵", "零", "另"),
+        "ling" to listOf("零", "灵", "另"),
         "liu" to listOf("留", "六"),
         "ma" to listOf("吗", "嘛", "马"),
         "mei" to listOf("没", "美", "每"),
@@ -104,14 +103,12 @@ object PinyinDictionary {
         "neng" to listOf("能"),
         "ni" to listOf("你", "尼"),
         "nian" to listOf("年", "念"),
-        "nihao" to listOf("你好"),
         "nong" to listOf("弄"),
         "o" to listOf("哦"),
         "ou" to listOf("欧"),
         "pa" to listOf("怕", "爬"),
         "pian" to listOf("篇", "片"),
         "pin" to listOf("拼", "品"),
-        "pinyin" to listOf("拼音"),
         "qi" to listOf("起", "其", "期"),
         "qian" to listOf("前", "钱"),
         "qing" to listOf("请", "清"),
@@ -130,7 +127,6 @@ object PinyinDictionary {
         "shi" to listOf("是", "时", "事", "式"),
         "shou" to listOf("手", "收"),
         "shu" to listOf("书", "数", "输"),
-        "shuxue" to listOf("数学"),
         "si" to listOf("四", "思"),
         "suan" to listOf("算"),
         "ta" to listOf("他", "她", "它"),
@@ -161,28 +157,151 @@ object PinyinDictionary {
         "ye" to listOf("也", "页"),
         "yi" to listOf("一", "已", "以", "易"),
         "ying" to listOf("应", "英", "影"),
-        "yingyu" to listOf("英语"),
         "yong" to listOf("用"),
         "you" to listOf("有", "又", "由"),
         "yu" to listOf("与", "语", "于"),
         "zai" to listOf("在", "再"),
         "zen" to listOf("怎"),
-        "zenme" to listOf("怎么"),
         "zhe" to listOf("这"),
         "zhen" to listOf("真"),
         "zheng" to listOf("正", "证", "政"),
-        "zhengzhi" to listOf("政治"),
         "zhi" to listOf("只", "知", "直"),
         "zhong" to listOf("中", "种"),
-        "zhuan" to listOf("专", "转"),
-        "zhuanye" to listOf("专业"),
         "zhu" to listOf("主", "住"),
+        "zhuan" to listOf("专", "转"),
         "zi" to listOf("字", "自"),
-        "ziji" to listOf("自己"),
         "zou" to listOf("走"),
         "zuo" to listOf("做", "作", "左"),
+
+        // Chat and daily expressions
+        "nihao" to listOf("你好", "你号"),
+        "xiexie" to listOf("谢谢"),
+        "haode" to listOf("好的"),
+        "keyi" to listOf("可以"),
+        "buxing" to listOf("不行"),
+        "meiwenti" to listOf("没问题"),
+        "shaodeng" to listOf("稍等"),
+        "shoudao" to listOf("收到"),
+        "wanshang" to listOf("晚上"),
+        "mingtian" to listOf("明天"),
+        "jintian" to listOf("今天"),
+        "dengyixia" to listOf("等一下"),
+        "wozhidao" to listOf("我知道"),
+        "wolaichuli" to listOf("我来处理"),
+        "wandiandachuli" to listOf("晚点再处理", "晚点处理"),
+        "wancheng" to listOf("完成"),
+        "xianzai" to listOf("现在"),
+        "denghui" to listOf("等会"),
+        "yijing" to listOf("已经"),
+        "meiyou" to listOf("没有"),
+        "buneng" to listOf("不能"),
+        "xuyao" to listOf("需要"),
+        "buyong" to listOf("不用"),
+        "zhuyi" to listOf("注意"),
+        "qingwen" to listOf("请问"),
+        "mafannile" to listOf("麻烦你了"),
+
+        // Work, development, and input-method terms
+        "wenti" to listOf("问题"),
+        "xiugai" to listOf("修改"),
+        "wenjian" to listOf("文件"),
+        "wenjianjia" to listOf("文件夹"),
+        "daima" to listOf("代码"),
+        "goujian" to listOf("构建"),
+        "shibai" to listOf("失败"),
+        "chenggong" to listOf("成功"),
+        "rizhi" to listOf("日志"),
+        "cuowu" to listOf("错误"),
+        "quanxian" to listOf("权限"),
+        "shurufa" to listOf("输入法"),
+        "jianqieban" to listOf("剪贴板", "剪切板"),
+        "fanyi" to listOf("翻译"),
+        "gongneng" to listOf("功能"),
+        "shezhi" to listOf("设置"),
+        "youhua" to listOf("优化"),
+        "ceshi" to listOf("测试"),
+        "anzhuang" to listOf("安装"),
+        "xiazai" to listOf("下载"),
+        "baocun" to listOf("保存"),
+        "shanchu" to listOf("删除"),
+        "qingkong" to listOf("清空"),
+        "fuzhi" to listOf("复制"),
+        "zhantie" to listOf("粘贴"),
+        "tishi" to listOf("提示"),
+        "tishici" to listOf("提示词"),
+        "xuanze" to listOf("选择"),
+        "shuoming" to listOf("说明"),
+        "yinsi" to listOf("隐私"),
+        "bendi" to listOf("本地"),
+        "lixian" to listOf("离线"),
+        "chongqi" to listOf("重启"),
+        "huancun" to listOf("缓存"),
+        "lianxiang" to listOf("联想"),
+        "houxuan" to listOf("候选"),
+        "ciku" to listOf("词库"),
+        "danzi" to listOf("单字"),
+        "danci" to listOf("单词"),
+        "duanyu" to listOf("短语"),
+        "juzi" to listOf("句子"),
+
+        // Study terms
+        "xuexi" to listOf("学习"),
+        "yingyu" to listOf("英语"),
+        "shuxue" to listOf("数学"),
+        "cailiao" to listOf("材料"),
+        "zhengzhi" to listOf("政治"),
+        "fuxi" to listOf("复习"),
+        "timu" to listOf("题目"),
+        "jiexi" to listOf("解析"),
+        "biji" to listOf("笔记"),
+        "jihua" to listOf("计划"),
+        "kaoshi" to listOf("考试"),
+        "zhongdian" to listOf("重点"),
+        "nandian" to listOf("难点"),
         "jichu" to listOf("基础"),
         "gongcheng" to listOf("工程"),
+        "zhuanye" to listOf("专业"),
+
+        // Generic shorthand abbreviations. These are not user-specific.
+        "wj" to listOf("文件", "问题"),
+        "wjj" to listOf("文件夹"),
+        "wgj" to listOf("文件夹", "无关紧要"),
+        "wt" to listOf("问题"),
+        "xg" to listOf("修改"),
+        "dm" to listOf("代码"),
+        "gj" to listOf("构建", "工具"),
+        "sb" to listOf("失败"),
+        "cg" to listOf("成功"),
+        "rz" to listOf("日志"),
+        "cw" to listOf("错误"),
+        "qx" to listOf("权限", "取消"),
+        "srf" to listOf("输入法"),
+        "jqb" to listOf("剪贴板", "剪切板"),
+        "fy" to listOf("翻译"),
+        "gn" to listOf("功能"),
+        "sz" to listOf("设置"),
+        "yh" to listOf("优化"),
+        "cs" to listOf("测试"),
+        "az" to listOf("安装"),
+        "xz" to listOf("下载", "选择"),
+        "bc" to listOf("保存"),
+        "sc" to listOf("删除", "上传"),
+        "qk" to listOf("清空"),
+        "fz" to listOf("复制"),
+        "zt" to listOf("粘贴"),
+        "xx" to listOf("学习", "消息"),
+        "yy" to listOf("英语", "应用"),
+        "sx" to listOf("数学"),
+        "cl" to listOf("材料", "处理"),
+        "zz" to listOf("政治"),
+        "fx" to listOf("复习", "分析"),
+        "tm" to listOf("题目"),
+        "jx" to listOf("解析"),
+        "bj" to listOf("笔记"),
+        "jh" to listOf("计划"),
+        "ks" to listOf("考试"),
+        "zd" to listOf("重点", "知道"),
+        "nd" to listOf("难点"),
     )
 
     fun exactCandidatesFor(rawInput: String): List<String> {
@@ -196,21 +315,26 @@ object PinyinDictionary {
         if (query.isEmpty()) return emptyList()
 
         val exact = exactCandidatesFor(query)
-        if (exact.isNotEmpty()) return exact
-
         val prefixMatches = entries.asSequence()
-            .filter { (key, _) -> key.startsWith(query) }
-            .flatMap { (_, values) -> values.asSequence().take(1) }
+            .filter { (key, _) -> key != query && key.startsWith(query) }
+            .flatMap { (_, values) -> values.asSequence().take(2) }
             .distinct()
-            .take(MAX_CANDIDATES - 1)
-            .toMutableList()
+            .toList()
 
-        if (prefixMatches.isNotEmpty()) {
-            prefixMatches.add(query)
-            return prefixMatches
+        val containsMatches = if (exact.isEmpty() && prefixMatches.size < MAX_CANDIDATES / 2) {
+            entries.asSequence()
+                .filter { (key, _) -> key != query && key.contains(query) }
+                .flatMap { (_, values) -> values.asSequence().take(1) }
+                .distinct()
+                .toList()
+        } else {
+            emptyList()
         }
 
-        return listOf(query)
+        val combined = (exact + prefixMatches + containsMatches + query)
+            .distinct()
+            .take(MAX_CANDIDATES)
+        return combined.ifEmpty { listOf(query) }
     }
 
     fun normalize(value: String): String {
