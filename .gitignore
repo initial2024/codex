@@ -1,19 +1,13 @@
-# Gradle
 .gradle/
 build/
-**/build/
-
-# Android
 local.properties
-*.apk
-*.aab
-*.ap_
-
-# IDE
-.idea/
 *.iml
-.vscode/
-
-# OS
+.idea/
 .DS_Store
-Thumbs.db
+app/build/
+*.apk
+*.apks
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
