@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="orbit_background">#090D18</color>
+    <color name="orbit_panel">#121A2A</color>
+    <color name="orbit_panel_alt">#1B2840</color>
+    <color name="orbit_accent">#8AB4FF</color>
+    <color name="orbit_text">#F4F7FB</color>
+    <color name="orbit_text_muted">#A9B7D0</color>
+</resources>
