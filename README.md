@@ -1,12 +1,12 @@
 # Orbit IME Android
 
-Orbit IME is a privacy-first Android input method MVP with an Orbit Hub style toolbar, local prompt templates, a user-controlled local clipboard vault, and a minimal local Pinyin 26-key mode.
+Orbit IME is a privacy-first Android input method MVP with an Orbit Hub style toolbar, local prompt templates, a user-controlled local clipboard vault, a minimal local Pinyin 26-key mode, and a local skin system.
 
 ## Product boundary
 
 This project is not yet a full Chinese IME and does not try to compete with Gboard, Sogou, Baidu IME, or iFlytek IME in prediction quality.
 
-Version `0.2.0` focuses on six things:
+Version `0.3.0` focuses on seven things:
 
 1. A real Android IME based on `InputMethodService`.
 2. A dark Orbit Hub style keyboard surface.
@@ -14,12 +14,13 @@ Version `0.2.0` focuses on six things:
 4. User-initiated local clipboard saving.
 5. English / Pinyin mode switching.
 6. A minimal local Pinyin 26-key candidate bar.
+7. A local skin system using Gemini-provided design tokens.
 
-Skin design is intentionally unchanged in `0.2.0`; custom skins will be added after the design assets/specification are supplied.
+Skin design is implemented as color tokens only in `0.3.0`; the keyboard architecture remains the existing lightweight native View implementation.
 
 ## Privacy boundary
 
-Version `0.2.0` deliberately avoids network and advertising logic.
+Version `0.3.0` deliberately avoids network and advertising logic.
 
 - No `INTERNET` permission.
 - No ad SDK.
@@ -30,11 +31,13 @@ Version `0.2.0` deliberately avoids network and advertising logic.
 - Password-like input fields enter privacy mode and hide Hub functions.
 - Typed key streams are not persisted.
 - Pinyin candidates come from a small local static dictionary.
+- Skin selection is saved locally in `SharedPreferences`.
 
-## Features in v0.2.0
+## Features in v0.3.0
 
 - Android IME service declared in `AndroidManifest.xml`.
 - Settings activity with input method setup buttons.
+- Settings activity skin selector.
 - English keyboard.
 - Pinyin 26-key mode.
 - `EN` / `拼音` toggle in the Hub toolbar.
@@ -60,18 +63,41 @@ Version `0.2.0` deliberately avoids network and advertising logic.
 - Local clipboard vault backed by `SharedPreferences` JSON.
 - Secret/OTP filtering before persistence.
 - ProGate placeholder for later paid unlocks.
+- Built-in skins:
+  - Orbit Dark
+  - Orbit Light
+  - AMOLED Black
+  - Study Blue
+  - Pro Aurora, locked as a Pro placeholder until billing is implemented
+
+## Skin implementation
+
+Skin-related files:
+
+```text
+app/src/main/java/com/ccwu/orbitime/OrbitSkin.kt
+app/src/main/java/com/ccwu/orbitime/OrbitSkins.kt
+app/src/main/java/com/ccwu/orbitime/SkinManager.kt
+app/src/main/java/com/ccwu/orbitime/OrbitTheme.kt
+SKIN_DESIGN.md
+```
+
+`SkinManager` stores the selected skin in local `SharedPreferences`. `OrbitInputMethodService` and `MainActivity` both read the same selected skin. Password/privacy mode derives a stricter visual state from the current skin by replacing accent/border with warning colors.
 
 ## Not included yet
 
 - Pinyin 9-key.
 - Wubi.
 - Handwriting recognition.
+- User-generated local dictionary.
 - Cloud sync.
 - Ad monetization.
 - Paid billing implementation.
 - Smart segmentation.
 - Large user dictionary.
-- Custom skin system.
+- Canvas keyboard rewrite.
+- Compose migration.
+- Skin marketplace.
 
 ## Build with Codex
 
@@ -104,7 +130,7 @@ gradle assembleDebug --no-daemon
 The debug APK is uploaded as artifact:
 
 ```text
-orbit-ime-v0.2-debug-apk
+orbit-ime-v0.3-debug-apk
 ```
 
 ## Local build
@@ -140,10 +166,12 @@ app/build/outputs/apk/debug/app-debug.apk
 15. Copy normal text in another app.
 16. Tap `Save` in Orbit IME.
 17. Tap `Clips` and insert the saved text.
-18. Open a password field and confirm Hub functions are hidden.
+18. Open a password field and confirm Hub functions are hidden and the warning skin state is visible.
+19. Open the app settings page and switch among Orbit Dark, Orbit Light, AMOLED Black, and Study Blue.
+20. Confirm Pro Aurora is shown as a locked Pro placeholder.
 
 ## Commercial direction
 
 The intended business model is free base version plus paid Pro unlock.
 
-Do not put ads inside the keyboard input surface. If ads are ever tested later, restrict them to non-input surfaces such as settings, theme market, or template market. Version `0.2.0` contains no advertising code.
+Do not put ads inside the keyboard input surface. If ads are ever tested later, restrict them to non-input surfaces such as settings, theme market, or template market. Version `0.3.0` contains no advertising code.
