@@ -192,12 +192,18 @@ object PinyinDictionary {
         "suda" to listOf("苏大"),
     )
 
+    fun exactCandidatesFor(rawInput: String): List<String> {
+        val query = normalize(rawInput)
+        if (query.isEmpty()) return emptyList()
+        return entries[query].orEmpty().take(MAX_CANDIDATES)
+    }
+
     fun candidatesFor(rawInput: String): List<String> {
         val query = normalize(rawInput)
         if (query.isEmpty()) return emptyList()
 
-        val exact = entries[query].orEmpty()
-        if (exact.isNotEmpty()) return exact.take(MAX_CANDIDATES)
+        val exact = exactCandidatesFor(query)
+        if (exact.isNotEmpty()) return exact
 
         val prefixMatches = entries.asSequence()
             .filter { (key, _) -> key.startsWith(query) }
