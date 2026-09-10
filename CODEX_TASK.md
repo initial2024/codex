@@ -65,13 +65,14 @@ Do not add:
 9. Pressing space with a Pinyin buffer commits the first candidate.
 10. Pressing backspace with a Pinyin buffer deletes the buffer before deleting editor text.
 11. Pressing punctuation or switching to `123` after an incomplete Pinyin buffer commits the exact candidate when available; otherwise it commits the raw Pinyin text.
-12. `123` and `ABC` mode switching work.
-13. Backspace, space, and enter work.
-14. Paste inserts the current system clipboard.
-15. Save persists the current clipboard only after a user tap.
-16. Clips panel can insert saved items.
-17. Password fields show `Privacy mode · Hub disabled` and hide Hub actions.
-18. No network, ad, analytics, Accessibility, or background harvesting behavior is introduced.
+12. In Pinyin mode, `,` commits `，` and `.` commits `。` after resolving any pending Pinyin buffer.
+13. `123` and `ABC` mode switching work.
+14. Backspace, space, and enter work.
+15. Paste inserts the current system clipboard.
+16. Save persists the current clipboard only after a user tap.
+17. Clips panel can insert saved items.
+18. Password fields show `Privacy mode · Hub disabled` and hide Hub actions.
+19. No network, ad, analytics, Accessibility, or background harvesting behavior is introduced.
 
 ## Fix policy
 
