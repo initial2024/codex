@@ -37,6 +37,7 @@ class OrbitInputMethodService : InputMethodService() {
     private var offlineTranslationPreview: String? = null
     private var translateDraftMode = false
     private var translateDraftBuffer = ""
+    private var petPanelMessage: String? = null
     private var root: LinearLayout? = null
     private lateinit var store: ClipboardStore
     private lateinit var userDictionary: UserDictionaryStore
@@ -55,6 +56,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (sensitiveMode) {
             showClips = false
             showPet = false
+            petPanelMessage = null
             clearPinyinComposition()
             clearEnglishComposition()
             clearTranslateState()
@@ -95,14 +97,7 @@ class OrbitInputMethodService : InputMethodService() {
     private fun buildTopBar(parent: LinearLayout) {
         val skin = activeSkin()
         if (sensitiveMode) {
-            parent.addView(
-                labelBox(
-                    text = "🔒 隐私模式 · 工具已隐藏",
-                    muted = false,
-                    accent = true,
-                    warning = true,
-                ),
-            )
+            parent.addView(labelBox("🔒 隐私模式 · 工具已隐藏", muted = false, accent = true, warning = true))
             return
         }
 
@@ -119,6 +114,7 @@ class OrbitInputMethodService : InputMethodService() {
             commitPendingEnglish(rawFallback = true, appendSpace = false)
             showClips = !showClips
             showPet = false
+            petPanelMessage = null
             if (showClips) clearTranslateState()
             root?.let { rebuild(it) }
         })
@@ -129,11 +125,26 @@ class OrbitInputMethodService : InputMethodService() {
                 showTranslate = true
                 showClips = false
                 showPet = false
+                petPanelMessage = null
                 translateDraftMode = false
                 translatePromptPreview = null
                 offlineTranslationPreview = null
                 translateSourceText = null
                 translateSourceLabel = null
+            }
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip(if (showPet) label("返回", "Keyboard") else label("宠物", "Pet"), emphasized = showPet) {
+            commitPendingPinyin(rawFallback = true)
+            commitPendingEnglish(rawFallback = true, appendSpace = false)
+            if (showPet) {
+                showPet = false
+                petPanelMessage = null
+            } else {
+                showPet = true
+                showClips = false
+                clearTranslateState()
+                petPanelMessage = null
             }
             root?.let { rebuild(it) }
         })
@@ -146,8 +157,14 @@ class OrbitInputMethodService : InputMethodService() {
     private fun buildPetPanel(parent: LinearLayout) {
         val profile = petRepository.profile()
         val visible = profile.displayMode != PetRepository.DISPLAY_HIDDEN
-        parent.addView(labelBox("宠物 · ${profile.petName} · Lv.${profile.level} · ${profile.exp} EXP", muted = false, accent = true))
-        parent.addView(labelBox(if (visible) "宠物仍在设置页管理，键盘内暂时弱化。" else "宠物已隐藏，只保存在本机。", muted = true, accent = false))
+        val outfit = profile.equippedOutfitName ?: "无装扮"
+        val next = profile.nextStageExp?.let { "下阶段还差 ${it - profile.exp} EXP" } ?: "已成熟"
+
+        parent.addView(labelBox("宠物 · ${profile.petName} · ${profile.stageName} · Lv.${profile.level}", muted = false, accent = true))
+        parent.addView(labelBox("${profile.species} · ${profile.moodLabel} · ${profile.progressPercent}% · $next", muted = false, accent = false))
+        parent.addView(labelBox("今日 ${profile.todayTypedChars} 字 · 累计 ${profile.totalTypedChars} 字 · $outfit", muted = true, accent = false))
+        parent.addView(labelBox("聊天：${petRepository.localChatLine()}", muted = false, accent = true))
+        petPanelMessage?.let { parent.addView(labelBox(it.shortLabel(60), muted = false, accent = true)) }
 
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
@@ -157,16 +174,40 @@ class OrbitInputMethodService : InputMethodService() {
 
         row.addView(chip("签到", emphasized = true) {
             val result = petRepository.checkIn()
-            toast(result.message)
+            petPanelMessage = result.message
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("开蛋") {
+            val result = petRepository.adoptRandom()
+            petPanelMessage = result.message
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("切换") {
+            val result = petRepository.switchToNextOwned()
+            petPanelMessage = result.message
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("装扮") {
+            val result = petRepository.equipNextOutfit()
+            petPanelMessage = result.message
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("图鉴") {
+            petPanelMessage = petRepository.petCatalogLine()
+            root?.let { rebuild(it) }
+        })
+        row.addView(chip("装扮库") {
+            petPanelMessage = petRepository.outfitCatalogLine()
             root?.let { rebuild(it) }
         })
         row.addView(chip(if (visible) "隐藏" else "显示") {
             val result = petRepository.toggleHidden()
-            toast(result.message)
+            petPanelMessage = result.message
             root?.let { rebuild(it) }
         })
         row.addView(chip("关闭", warning = true) {
             showPet = false
+            petPanelMessage = null
             root?.let { rebuild(it) }
         })
 
@@ -531,6 +572,7 @@ class OrbitInputMethodService : InputMethodService() {
         showClips = false
         showTranslate = false
         showPet = false
+        petPanelMessage = null
         if (!sensitiveMode) petRepository.recordTypedChars(1)
         root?.let { rebuild(it) }
     }
@@ -546,6 +588,7 @@ class OrbitInputMethodService : InputMethodService() {
         showClips = false
         showTranslate = false
         showPet = false
+        petPanelMessage = null
         if (!sensitiveMode) petRepository.recordTypedChars(1)
         root?.let { rebuild(it) }
     }
@@ -618,6 +661,7 @@ class OrbitInputMethodService : InputMethodService() {
         caps = false
         showClips = false
         showPet = false
+        petPanelMessage = null
         clearTranslateState()
         root?.let { rebuild(it) }
     }
@@ -641,6 +685,8 @@ class OrbitInputMethodService : InputMethodService() {
         commitPendingPinyin(rawFallback = true)
         commitPendingEnglish(rawFallback = true, appendSpace = false)
         clearTranslateState()
+        showPet = false
+        petPanelMessage = null
         currentInputConnection?.commitText(text, 1)
         if (!sensitiveMode) petRepository.recordTypedChars(text.length)
     }
@@ -661,6 +707,7 @@ class OrbitInputMethodService : InputMethodService() {
         showTranslate = true
         showClips = false
         showPet = false
+        petPanelMessage = null
         root?.let { rebuild(it) }
     }
 
@@ -687,6 +734,7 @@ class OrbitInputMethodService : InputMethodService() {
         showTranslate = true
         showClips = false
         showPet = false
+        petPanelMessage = null
         symbols = false
         root?.let { rebuild(it) }
     }
@@ -783,6 +831,7 @@ class OrbitInputMethodService : InputMethodService() {
             toast("已保存到本机")
             showClips = true
             showPet = false
+            petPanelMessage = null
             clearTranslateState()
             root?.let { rebuild(it) }
         } else {
