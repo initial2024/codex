@@ -8,12 +8,12 @@ object OfflineTranslationPack {
     )
 
     fun translateOrNull(source: String, direction: TranslatePromptBuilder.Direction): Result? {
-        val text = source.trim().trimEnd('。', '！', '？', '.', '!', '?')
+        val text = normalizeSource(source)
         if (!PrivacyGuard.isSafeToUseForPrompt(text)) return null
 
         val exact = when (direction) {
-            TranslatePromptBuilder.Direction.ZH_TO_EN -> zhToEn[text]
-            TranslatePromptBuilder.Direction.EN_TO_ZH -> enToZh[text.lowercase()]
+            TranslatePromptBuilder.Direction.ZH_TO_EN -> zhToEn[text] ?: TranslationBoostData.zhToEn[text]
+            TranslatePromptBuilder.Direction.EN_TO_ZH -> enToZh[normalizeEnglishKey(text)] ?: TranslationBoostData.enToZh[normalizeEnglishKey(text)]
         }
         if (exact != null) {
             return Result(exact, "exact-local", "本地短句精确匹配")
@@ -28,13 +28,25 @@ object OfflineTranslationPack {
 
     fun unavailableMessage(): String = "暂无离线译文，可插入提示词。"
 
+    private fun normalizeSource(source: String): String {
+        return source.trim().trimEnd('。', '！', '？', '.', '!', '?', ' ', '\n', '\r', '\t')
+    }
+
+    private fun normalizeEnglishKey(text: String): String {
+        return text.lowercase()
+            .replace(Regex("[^a-z0-9\\s']"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
     private fun roughZhToEn(text: String): String? {
         if (text.length > 30) return null
+        val tokenMap = TranslationBoostData.zhTokens + zhTokens
         var remaining = text
         val output = mutableListOf<String>()
         while (remaining.isNotEmpty()) {
-            val match = zhTokens.keys.sortedByDescending { it.length }.firstOrNull { remaining.startsWith(it) } ?: return null
-            output.add(zhTokens.getValue(match))
+            val match = tokenMap.keys.sortedByDescending { it.length }.firstOrNull { remaining.startsWith(it) } ?: return null
+            output.add(tokenMap.getValue(match))
             remaining = remaining.removePrefix(match)
         }
         if (output.isEmpty()) return null
@@ -43,12 +55,12 @@ object OfflineTranslationPack {
 
     private fun roughEnToZh(text: String): String? {
         if (text.length > 80) return null
-        val tokens = text.lowercase()
-            .replace(Regex("[^a-z0-9\\s']"), " ")
+        val tokenMap = TranslationBoostData.enTokens + enTokens
+        val tokens = normalizeEnglishKey(text)
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
         if (tokens.isEmpty()) return null
-        val mapped = tokens.map { enTokens[it] ?: return null }
+        val mapped = tokens.map { tokenMap[it] ?: return null }
         return mapped.joinToString("") + "。"
     }
 
@@ -56,7 +68,7 @@ object OfflineTranslationPack {
         "你好" to "Hello.",
         "你是谁" to "Who are you?",
         "我是谁" to "Who am I?",
-        "我是" to "I am",
+        "我是" to "I am.",
         "谢谢" to "Thank you.",
         "收到" to "Got it.",
         "好的" to "Okay.",
@@ -74,7 +86,7 @@ object OfflineTranslationPack {
         "晚点处理" to "I will handle it later.",
         "晚点再处理" to "I will handle it later.",
         "请给出可执行步骤" to "Please provide actionable steps.",
-        "请给我完整指令" to "Please give me the complete instruction.",
+        "请给我完整指令" to "Please give me the complete instructions.",
         "先不要扩大范围" to "Do not expand the scope yet.",
         "先完成当前版本" to "Finish the current version first.",
         "不要继续加新功能" to "Do not continue adding new features.",
@@ -105,7 +117,7 @@ object OfflineTranslationPack {
         "i will handle it" to "我来处理。",
         "i will handle it later" to "我晚点处理。",
         "please provide actionable steps" to "请给出可执行步骤。",
-        "please give me the complete instruction" to "请给我完整指令。",
+        "please give me the complete instructions" to "请给我完整指令。",
         "do not expand the scope yet" to "先不要扩大范围。",
         "finish the current version first" to "先完成当前版本。",
         "do not continue adding new features" to "不要继续加新功能。",
