@@ -83,6 +83,7 @@ Run: gradle assembleDebug --no-daemon
 If the environment has no Gradle command, install/provision Gradle 8.10.2 first, then rerun the build.
 After building, return app/build/outputs/apk/debug/app-debug.apk.
 Do not add INTERNET permission, ad SDK, analytics SDK, Accessibility permission, or background services.
+Follow CODEX_TASK.md exactly.
 ```
 
 ## Build with GitHub Actions
@@ -102,7 +103,7 @@ gradle assembleDebug --no-daemon
 The debug APK is uploaded as artifact:
 
 ```text
-orbit-ime-debug-apk
+orbit-ime-v0.2-debug-apk
 ```
 
 ## Local build
