@@ -23,6 +23,8 @@ class MainActivity : Activity() {
         val skin = SkinManager.current(this)
         val userDictionary = UserDictionaryStore(this)
         val dictionaryStats = userDictionary.stats()
+        val petRepository = PetRepository(this)
+        val petProfile = petRepository.profile()
         val scroll = ScrollView(this).apply {
             setBackgroundColor(skin.backgroundColor)
         }
@@ -32,8 +34,8 @@ class MainActivity : Activity() {
         }
         scroll.addView(container)
 
-        container.addView(title("Orbit IME v0.5", skin))
-        container.addView(paragraph("隐私优先的 Orbit Hub 风格输入法。v0.5 增加用户本地词库；候选选择频次只保存在本机，不上传、不同步、不保存完整输入流。当前皮肤：${skin.name}。", skin))
+        container.addView(title("Orbit IME v0.7", skin))
+        container.addView(paragraph("隐私优先的 Orbit Hub 风格输入法。v0.7 增加键盘内宠物 MVP 和 Pro 离线翻译包占位；仍然不联网、不接广告、不上传输入内容。当前皮肤：${skin.name}。", skin))
         statusMessage?.let {
             container.addView(statusBox(it, skin))
         }
@@ -45,11 +47,33 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("第二步", skin))
-        container.addView(paragraph("启用后，点击下方按钮切换到 Orbit IME。顶部 Hub 栏可在 EN 和 拼音 模式之间切换。", skin))
+        container.addView(paragraph("启用后，点击下方按钮切换到 Orbit IME。顶部 Hub 栏可在 EN、拼音、Clips、Translate 和 Pet 面板之间切换。", skin))
         container.addView(button("显示输入法切换器", skin) {
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showInputMethodPicker()
         })
+
+        container.addView(section("v0.7 Keyboard Pet", skin))
+        container.addView(paragraph("当前宠物：${petProfile.petName}，Stage ${petProfile.stage}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars，连续签到 ${petProfile.checkInStreak} 天。宠物只在键盘内显示；不申请悬浮窗权限，不发通知，不播放声音，不读取完整输入流。", skin))
+        container.addView(button("今日签到", skin) {
+            val result = petRepository.checkIn()
+            render(result.message)
+        })
+        container.addView(button(if (petProfile.displayMode == PetRepository.DISPLAY_HIDDEN) "显示键盘内宠物" else "隐藏键盘内宠物", skin) {
+            val result = petRepository.toggleHidden()
+            render(result.message)
+        })
+        container.addView(button("开蛋 / 随机领养", skin) {
+            val result = petRepository.adoptRandom()
+            render(result.message)
+        })
+        container.addView(button("重置宠物本地数据", skin) {
+            petRepository.clear()
+            render("宠物本地数据已重置")
+        })
+
+        container.addView(section("v0.7 Pro 离线翻译包", skin))
+        container.addView(paragraph("Offline Translation Pack 是 Pro 高级功能。当前实现为本地短句/常用表达包，不是云翻译，不接外部翻译 API，不新增 INTERNET 权限。免费用户仍可使用 v0.4 Translate Preview 生成 Prompt。当前状态：${if (ProGate.isOfflineTranslationPackUnlocked(this)) "已解锁" else "Pro 锁定"}。", skin))
 
         container.addView(section("v0.5 用户本地词库", skin))
         container.addView(paragraph("当前本地词库：${dictionaryStats.entryCount}/${dictionaryStats.maxEntries} 条映射，累计选择 ${dictionaryStats.totalFrequency} 次。只有在拼音模式下点击候选或空格选首候选后，才会记录拼音→词条频次。密码框、验证码、疑似密钥内容不会学习。", skin))
@@ -59,7 +83,7 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("v0.4 Translate Preview", skin))
-        container.addView(paragraph("Translate Preview 仍然只是本地 Prompt 生成，不接云端翻译，不接外部翻译 API，不新增 INTERNET 权限。", skin))
+        container.addView(paragraph("Translate Preview 仍然保留：本地生成 Prompt；Pro 离线包只能对少量短句给出本地译文候选。默认路线仍不包含云端翻译。", skin))
 
         container.addView(section("v0.3 皮肤", skin))
         container.addView(paragraph("选择会保存到本机 SharedPreferences，并立即影响设置页；重新拉起键盘后输入法界面会使用同一套皮肤。Pro Aurora 是付费占位皮肤，当前未接支付，所以默认锁定。", skin))
@@ -68,11 +92,11 @@ class MainActivity : Activity() {
         }
 
         container.addView(section("当前功能", skin))
-        container.addView(paragraph("当前版本支持英文输入、拼音26键、本地静态候选、用户本地候选频次学习、空格选首候选、候选点击上屏、本地剪贴板 Save/Clips、Translate Preview、本地皮肤和快捷模板插入。暂不包含云同步、云翻译、9键、五笔、手写和大型分词词库。", skin))
+        container.addView(paragraph("当前版本支持英文输入、拼音26键、本地静态候选、用户本地候选频次学习、空格选首候选、候选点击上屏、本地剪贴板 Save/Clips、Translate Preview、Pro 离线短句翻译包占位、本地皮肤、键盘内宠物和快捷模板插入。暂不包含云同步、云翻译、9键、五笔、手写、系统悬浮窗和大型分词词库。", skin))
         container.addView(section("隐私边界", skin))
-        container.addView(paragraph("Orbit IME 不申请 INTERNET 权限；不会上传输入内容；不会在密码输入框显示 Hub；剪贴板内容只有在你主动点击 Save 时才会保存到本机；用户词库只记录候选选择频次，不保存完整输入流。", skin))
+        container.addView(paragraph("Orbit IME 不申请 INTERNET 权限；不会上传输入内容；不会在密码输入框显示 Hub；剪贴板内容只有在你主动点击 Save 时才会保存到本机；用户词库只记录候选选择频次；宠物只统计本地数量，不保存完整输入流。", skin))
         container.addView(section("ProGate", skin))
-        container.addView(paragraph("Pro 解锁入口已预留，但 v0.5 没有支付、广告或联网逻辑。免费版默认最多保存 50 条本地剪贴板、300 条用户本地词库。", skin))
+        container.addView(paragraph("Pro 解锁入口已预留，但 v0.7 没有支付、广告或联网逻辑。免费版默认最多保存 50 条本地剪贴板、300 条用户本地词库、1 个当前宠物；Pro 占位包含更多宠物、更多装扮、5000 条词库、5000 条剪贴板和离线翻译包。", skin))
 
         setContentView(scroll)
     }
