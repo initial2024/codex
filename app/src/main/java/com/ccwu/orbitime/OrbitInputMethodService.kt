@@ -29,6 +29,7 @@ class OrbitInputMethodService : InputMethodService() {
     private var showPet = false
     private var sensitiveMode = false
     private var pinyinBuffer = ""
+    private var englishBuffer = ""
     private var translateDirection = TranslatePromptBuilder.Direction.ZH_TO_EN
     private var translateSourceText: String? = null
     private var translateSourceLabel: String? = null
@@ -55,6 +56,7 @@ class OrbitInputMethodService : InputMethodService() {
             showClips = false
             showPet = false
             clearPinyinComposition()
+            clearEnglishComposition()
             clearTranslateState()
         }
         root?.let { rebuild(it) }
@@ -64,7 +66,6 @@ class OrbitInputMethodService : InputMethodService() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = OrbitTheme.keyboardBackground(activeSkin())
-            // Keep the bottom row clear of Android's own input-method switcher bubble.
             setPadding(dp(8), dp(6), dp(8), dp(36))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -84,8 +85,9 @@ class OrbitInputMethodService : InputMethodService() {
             !sensitiveMode && showPet -> buildPetPanel(layout)
             !sensitiveMode && showTranslate -> buildTranslatePanel(layout)
             !sensitiveMode && showClips -> buildClipBar(layout)
-            !sensitiveMode && inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> buildCandidateBar(layout)
-            !sensitiveMode && pinyinBuffer.isEmpty() -> buildPhraseBar(layout)
+            !sensitiveMode && inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> buildPinyinCandidateBar(layout)
+            !sensitiveMode && inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty() -> buildEnglishCandidateBar(layout)
+            !sensitiveMode && pinyinBuffer.isEmpty() && englishBuffer.isEmpty() -> buildPhraseBar(layout)
         }
         buildKeyboard(layout)
     }
@@ -104,9 +106,7 @@ class OrbitInputMethodService : InputMethodService() {
             return
         }
 
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -116,6 +116,7 @@ class OrbitInputMethodService : InputMethodService() {
         row.addView(chip(label(pinyin = "切换", english = "Switch")) { showInputMethodPickerSafely() })
         row.addView(chip(label(pinyin = "粘贴", english = "Paste")) { pasteClipboard(saveAfterPaste = false) })
         row.addView(chip(if (showClips) label("返回", "Keyboard") else label("剪贴板", "Clips")) {
+            commitPendingEnglish(rawFallback = true, appendSpace = false)
             showClips = !showClips
             showPet = false
             if (showClips) clearTranslateState()
@@ -136,14 +137,10 @@ class OrbitInputMethodService : InputMethodService() {
             }
             root?.let { rebuild(it) }
         })
-        // Pet is intentionally not a first-level keyboard button until art/assets and UX are complete.
 
         scroller.setBackgroundColor(skin.backgroundColor)
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(38),
-        ))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
     }
 
     private fun buildPetPanel(parent: LinearLayout) {
@@ -152,9 +149,7 @@ class OrbitInputMethodService : InputMethodService() {
         parent.addView(labelBox("宠物 · ${profile.petName} · Lv.${profile.level} · ${profile.exp} EXP", muted = false, accent = true))
         parent.addView(labelBox(if (visible) "宠物仍在设置页管理，键盘内暂时弱化。" else "宠物已隐藏，只保存在本机。", muted = true, accent = false))
 
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -176,10 +171,7 @@ class OrbitInputMethodService : InputMethodService() {
         })
 
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(36),
-        ))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
 
     private fun buildTranslatePanel(parent: LinearLayout) {
@@ -187,16 +179,14 @@ class OrbitInputMethodService : InputMethodService() {
         parent.addView(labelBox("翻译 · ${translateDirection.label} · $sourceLabel · 本地", muted = false, accent = true))
 
         val previewText = when {
-            translateDraftMode -> "草稿：${translateDraftBuffer.ifBlank { "先在这里输入，再生成" }.shortLabel(44)}"
-            offlineTranslationPreview != null -> "离线译文：${offlineTranslationPreview.orEmpty().shortLabel(46)}"
-            translatePromptPreview != null -> translatePromptPreview.orEmpty().shortLabel(56)
-            else -> "免费生成翻译提示词；Pro 可用本地短句包。"
+            translateDraftMode -> "草稿：${translateDraftBuffer.ifBlank { "先输入，再生成译文" }.shortLabel(44)}"
+            offlineTranslationPreview != null -> "译文：${offlineTranslationPreview.orEmpty().shortLabel(64)}"
+            translatePromptPreview != null -> "暂无离线译文，可插入提示词：${translatePromptPreview.orEmpty().shortLabel(40)}"
+            else -> "选择来源后会优先显示本地译文；没有命中才显示提示词。"
         }
-        parent.addView(labelBox(previewText, muted = translatePromptPreview == null && !translateDraftMode, accent = offlineTranslationPreview != null))
+        parent.addView(labelBox(previewText, muted = translatePromptPreview == null && !translateDraftMode && offlineTranslationPreview == null, accent = offlineTranslationPreview != null))
 
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -206,9 +196,12 @@ class OrbitInputMethodService : InputMethodService() {
             translatePromptPreview != null -> {
                 offlineTranslationPreview?.let {
                     row.addView(chip("插入译文", emphasized = true) { insertOfflineTranslation() })
+                    row.addView(chip("复制译文") { copyOfflineTranslation() })
                 }
-                row.addView(chip("插入提示词") { insertTranslatePrompt() })
-                row.addView(chip("复制提示词") { copyTranslatePrompt() })
+                if (offlineTranslationPreview == null) {
+                    row.addView(chip("插入提示词") { insertTranslatePrompt() })
+                    row.addView(chip("复制提示词") { copyTranslatePrompt() })
+                }
                 row.addView(chip("换方向") { toggleTranslateDirection(regenerate = true) })
                 row.addView(chip("重选") { resetTranslateSelection() })
                 row.addView(chip("取消", warning = true) {
@@ -217,7 +210,7 @@ class OrbitInputMethodService : InputMethodService() {
                 })
             }
             translateDraftMode -> {
-                row.addView(chip("生成", emphasized = true) { captureTranslateSource("草稿", translateDraftBuffer) })
+                row.addView(chip("生成译文", emphasized = true) { captureTranslateSource("草稿", translateDraftBuffer) })
                 row.addView(chip("换方向") { toggleTranslateDirection(regenerate = false) })
                 row.addView(chip("清空", warning = true) {
                     translateDraftBuffer = ""
@@ -234,12 +227,12 @@ class OrbitInputMethodService : InputMethodService() {
                 row.addView(chip("选中文本") { captureTranslateSource("选中文本", readSelectedText()) })
                 row.addView(chip("剪贴板") { captureTranslateSource("剪贴板", readClipboardText()) })
                 if (pinyinBuffer.isNotEmpty()) {
-                    row.addView(chip("拼音草稿") { captureTranslateSource("拼音草稿", pinyinBuffer) })
+                    row.addView(chip("拼音草稿") { captureTranslateSource("拼音草稿", candidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer) })
+                }
+                if (englishBuffer.isNotEmpty()) {
+                    row.addView(chip("英文草稿") { captureTranslateSource("英文草稿", candidatesForCurrentEnglish().firstOrNull() ?: englishBuffer) })
                 }
                 row.addView(chip("草稿") { startTranslateDraft() })
-                row.addView(chip(if (ProGate.isOfflineTranslationPackUnlocked(this)) "离线包开" else "离线包Pro", warning = !ProGate.isOfflineTranslationPackUnlocked(this)) {
-                    toast(if (ProGate.isOfflineTranslationPackUnlocked(this)) "离线包已启用" else OfflineTranslationPack.lockedMessage())
-                })
                 row.addView(chip("取消", warning = true) {
                     clearTranslateState()
                     root?.let { rebuild(it) }
@@ -248,17 +241,12 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(36),
-        ))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
 
     private fun buildClipBar(parent: LinearLayout) {
         val clips = store.load().take(8)
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -268,9 +256,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (clips.isEmpty()) {
             row.addView(labelBox("暂无保存内容。复制文字后点保存。", muted = true, accent = false))
         } else {
-            clips.forEach { entry ->
-                row.addView(chip(entry.content.shortLabel()) { commitDirectText(entry.content) })
-            }
+            clips.forEach { entry -> row.addView(chip(entry.content.shortLabel()) { commitDirectText(entry.content) }) }
             row.addView(chip("清空", warning = true) {
                 store.clear()
                 toast("剪贴板已清空")
@@ -279,17 +265,12 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(36),
-        ))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
 
-    private fun buildCandidateBar(parent: LinearLayout) {
+    private fun buildPinyinCandidateBar(parent: LinearLayout) {
         val candidates = candidatesForCurrentPinyin()
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -305,35 +286,42 @@ class OrbitInputMethodService : InputMethodService() {
         })
 
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(36),
-        ))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
 
-    private fun buildPhraseBar(parent: LinearLayout) {
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
+    private fun buildEnglishCandidateBar(parent: LinearLayout) {
+        val candidates = candidatesForCurrentEnglish()
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val phrases = if (inputMode == InputMode.PINYIN) {
-            TemplateLibrary.quickPhrasesForPinyin()
-        } else {
-            TemplateLibrary.quickPhrasesForEnglish()
+        row.addView(labelBox("word: $englishBuffer", muted = false, accent = true))
+        candidates.forEachIndexed { index, candidate ->
+            row.addView(chip(candidate, emphasized = index == 0) { commitEnglishCandidate(candidate, appendSpace = false) })
         }
-        phrases.forEach { phrase ->
-            row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
-        }
+        row.addView(chip("clear", warning = true) {
+            clearEnglishComposition()
+            root?.let { rebuild(it) }
+        })
 
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(34),
-        ))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+    }
+
+    private fun buildPhraseBar(parent: LinearLayout) {
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val phrases = if (inputMode == InputMode.PINYIN) TemplateLibrary.quickPhrasesForPinyin() else TemplateLibrary.quickPhrasesForEnglish()
+        phrases.forEach { phrase -> row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) }) }
+
+        scroller.addView(row)
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
     }
 
     private fun buildKeyboard(parent: LinearLayout) {
@@ -343,15 +331,8 @@ class OrbitInputMethodService : InputMethodService() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-
-            rowKeys.forEach { key ->
-                row.addView(keyView(key), keyLayoutParams(key))
-            }
-
-            parent.addView(row, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(44),
-            ))
+            rowKeys.forEach { key -> row.addView(keyView(key), keyLayoutParams(key)) }
+            parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
         }
     }
 
@@ -373,7 +354,11 @@ class OrbitInputMethodService : InputMethodService() {
         val skin = activeSkin()
         val display = when {
             rawKey == "space" && translateDraftMode -> if (translateDraftBuffer.isEmpty()) "草稿" else label("空格", "space")
-            rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else label("空格", "space")
+            rawKey == "space" -> when {
+                inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> "选词"
+                inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty() -> "select"
+                else -> label("空格", "space")
+            }
             rawKey == "↵" -> label("回车", "Enter")
             inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
             else -> rawKey
@@ -401,9 +386,7 @@ class OrbitInputMethodService : InputMethodService() {
             "⇧", "⌫", "123", "ABC", "↵" -> 1.45f
             else -> 1f
         }
-        return LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight).apply {
-            setMargins(dp(3), dp(2), dp(3), dp(2))
-        }
+        return LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) }
     }
 
     private fun isControlKey(key: String): Boolean {
@@ -424,6 +407,7 @@ class OrbitInputMethodService : InputMethodService() {
             "⌫" -> handleBackspace()
             "123" -> {
                 commitPendingPinyin(rawFallback = true)
+                commitPendingEnglish(rawFallback = true, appendSpace = false)
                 symbols = true
                 root?.let { rebuild(it) }
             }
@@ -476,17 +460,20 @@ class OrbitInputMethodService : InputMethodService() {
             appendPinyin(rawKey)
             return
         }
+        if (rawKey.length == 1 && rawKey[0].isLetter() && inputMode == InputMode.ENGLISH && !symbols) {
+            appendEnglish(rawKey)
+            return
+        }
 
         commitPendingPinyin(rawFallback = true)
+        commitPendingEnglish(rawFallback = true, appendSpace = false)
         val mapped = mapPrintableText(rawKey)
         currentInputConnection?.commitText(mapped, 1)
         if (!sensitiveMode) petRepository.recordTypedChars(mapped.length)
     }
 
     private fun mapPrintableText(rawKey: String): String {
-        if (inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps) {
-            return rawKey.uppercase()
-        }
+        if (inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps) return rawKey.uppercase()
         if (inputMode == InputMode.PINYIN && !symbols) {
             return when (rawKey) {
                 "," -> "，"
@@ -501,11 +488,13 @@ class OrbitInputMethodService : InputMethodService() {
         val inputConnection = currentInputConnection ?: return
         if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) {
             pinyinBuffer = pinyinBuffer.dropLast(1)
-            if (pinyinBuffer.isEmpty()) {
-                inputConnection.finishComposingText()
-            } else {
-                inputConnection.setComposingText(pinyinBuffer, 1)
-            }
+            if (pinyinBuffer.isEmpty()) inputConnection.finishComposingText() else inputConnection.setComposingText(pinyinBuffer, 1)
+            root?.let { rebuild(it) }
+            return
+        }
+        if (inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty()) {
+            englishBuffer = englishBuffer.dropLast(1)
+            if (englishBuffer.isEmpty()) inputConnection.finishComposingText() else inputConnection.setComposingText(englishBuffer, 1)
             root?.let { rebuild(it) }
             return
         }
@@ -517,18 +506,23 @@ class OrbitInputMethodService : InputMethodService() {
             commitPendingPinyin(rawFallback = false)
             return
         }
+        if (inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty()) {
+            commitPendingEnglish(rawFallback = false, appendSpace = true)
+            return
+        }
         currentInputConnection?.commitText(" ", 1)
         if (!sensitiveMode) petRepository.recordTypedChars(1)
     }
 
     private fun handleEnter() {
         commitPendingPinyin(rawFallback = true)
+        commitPendingEnglish(rawFallback = true, appendSpace = false)
         sendEnterKey()
     }
 
     private fun appendPinyin(letter: String) {
         val normalized = PinyinDictionary.normalize(pinyinBuffer + letter)
-        if (normalized.length > 32) {
+        if (normalized.length > 64) {
             toast("拼音太长")
             return
         }
@@ -541,29 +535,46 @@ class OrbitInputMethodService : InputMethodService() {
         root?.let { rebuild(it) }
     }
 
+    private fun appendEnglish(letter: String) {
+        val text = if (caps) letter.uppercase() else letter.lowercase()
+        if (englishBuffer.length + text.length > 64) {
+            toast("word too long")
+            return
+        }
+        englishBuffer += text
+        currentInputConnection?.setComposingText(englishBuffer, 1)
+        showClips = false
+        showTranslate = false
+        showPet = false
+        if (!sensitiveMode) petRepository.recordTypedChars(1)
+        root?.let { rebuild(it) }
+    }
+
     private fun commitPendingPinyin(rawFallback: Boolean) {
         if (inputMode != InputMode.PINYIN || pinyinBuffer.isEmpty()) return
-        val text = if (rawFallback) {
-            exactCandidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer
-        } else {
-            candidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer
-        }
+        val text = if (rawFallback) exactCandidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer else candidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer
         commitPinyinCandidate(text)
     }
 
+    private fun commitPendingEnglish(rawFallback: Boolean, appendSpace: Boolean) {
+        if (inputMode != InputMode.ENGLISH || englishBuffer.isEmpty()) return
+        val text = if (rawFallback) englishBuffer else candidatesForCurrentEnglish().firstOrNull() ?: englishBuffer
+        commitEnglishCandidate(text, appendSpace)
+    }
+
     private fun candidatesForCurrentPinyin(): List<String> {
-        return userDictionary.candidatesFor(
-            rawInput = pinyinBuffer,
-            staticCandidates = PinyinDictionary.candidatesFor(pinyinBuffer),
-        )
+        val boosted = PinyinSentenceDictionary.candidatesFor(pinyinBuffer)
+        val staticCandidates = (boosted + PinyinDictionary.candidatesFor(pinyinBuffer)).distinct()
+        return userDictionary.candidatesFor(rawInput = pinyinBuffer, staticCandidates = staticCandidates)
     }
 
     private fun exactCandidatesForCurrentPinyin(): List<String> {
-        return userDictionary.exactCandidatesFor(
-            rawInput = pinyinBuffer,
-            staticCandidates = PinyinDictionary.exactCandidatesFor(pinyinBuffer),
-        )
+        val boosted = PinyinSentenceDictionary.candidatesFor(pinyinBuffer)
+        val staticCandidates = (boosted + PinyinDictionary.exactCandidatesFor(pinyinBuffer)).distinct()
+        return userDictionary.exactCandidatesFor(rawInput = pinyinBuffer, staticCandidates = staticCandidates)
     }
+
+    private fun candidatesForCurrentEnglish(): List<String> = EnglishDictionary.candidatesFor(englishBuffer)
 
     private fun commitPinyinCandidate(candidate: String) {
         val inputConnection = currentInputConnection ?: return
@@ -579,13 +590,29 @@ class OrbitInputMethodService : InputMethodService() {
         root?.let { rebuild(it) }
     }
 
+    private fun commitEnglishCandidate(candidate: String, appendSpace: Boolean) {
+        val inputConnection = currentInputConnection ?: return
+        val text = if (appendSpace) "$candidate " else candidate
+        inputConnection.commitText(text, 1)
+        englishBuffer = ""
+        inputConnection.finishComposingText()
+        if (!sensitiveMode) petRepository.recordTypedChars(text.length)
+        root?.let { rebuild(it) }
+    }
+
     private fun clearPinyinComposition() {
         pinyinBuffer = ""
         currentInputConnection?.finishComposingText()
     }
 
+    private fun clearEnglishComposition() {
+        englishBuffer = ""
+        currentInputConnection?.finishComposingText()
+    }
+
     private fun toggleInputMode() {
         commitPendingPinyin(rawFallback = true)
+        commitPendingEnglish(rawFallback = true, appendSpace = false)
         inputMode = if (inputMode == InputMode.PINYIN) InputMode.ENGLISH else InputMode.PINYIN
         symbols = false
         caps = false
@@ -612,6 +639,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun commitDirectText(text: String) {
         commitPendingPinyin(rawFallback = true)
+        commitPendingEnglish(rawFallback = true, appendSpace = false)
         clearTranslateState()
         currentInputConnection?.commitText(text, 1)
         if (!sensitiveMode) petRepository.recordTypedChars(text.length)
@@ -625,12 +653,9 @@ class OrbitInputMethodService : InputMethodService() {
         }
         translateSourceText = source
         translateSourceLabel = label
+        val local = OfflineTranslationPack.translateOrNull(source, translateDirection)?.translatedText
+        offlineTranslationPreview = local
         translatePromptPreview = TranslatePromptBuilder.build(source, translateDirection)
-        offlineTranslationPreview = if (ProGate.isOfflineTranslationPackUnlocked(this)) {
-            OfflineTranslationPack.translateOrNull(source, translateDirection)?.translatedText
-        } else {
-            null
-        }
         translateDraftMode = false
         translateDraftBuffer = ""
         showTranslate = true
@@ -640,19 +665,11 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun toggleTranslateDirection(regenerate: Boolean) {
-        translateDirection = if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) {
-            TranslatePromptBuilder.Direction.EN_TO_ZH
-        } else {
-            TranslatePromptBuilder.Direction.ZH_TO_EN
-        }
+        translateDirection = if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) TranslatePromptBuilder.Direction.EN_TO_ZH else TranslatePromptBuilder.Direction.ZH_TO_EN
         if (regenerate) {
             translateSourceText?.let {
+                offlineTranslationPreview = OfflineTranslationPack.translateOrNull(it, translateDirection)?.translatedText
                 translatePromptPreview = TranslatePromptBuilder.build(it, translateDirection)
-                offlineTranslationPreview = if (ProGate.isOfflineTranslationPackUnlocked(this)) {
-                    OfflineTranslationPack.translateOrNull(it, translateDirection)?.translatedText
-                } else {
-                    null
-                }
             }
         }
         root?.let { rebuild(it) }
@@ -660,6 +677,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun startTranslateDraft() {
         clearPinyinComposition()
+        clearEnglishComposition()
         translateDraftMode = true
         translateDraftBuffer = ""
         translatePromptPreview = null
@@ -709,6 +727,13 @@ class OrbitInputMethodService : InputMethodService() {
         toast("提示词已复制")
     }
 
+    private fun copyOfflineTranslation() {
+        val text = offlineTranslationPreview ?: return
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Orbit Translation", text))
+        toast("译文已复制")
+    }
+
     private fun clearTranslateState() {
         showTranslate = false
         translateDraftMode = false
@@ -719,9 +744,7 @@ class OrbitInputMethodService : InputMethodService() {
         offlineTranslationPreview = null
     }
 
-    private fun readSelectedText(): String? {
-        return currentInputConnection?.getSelectedText(0)?.toString()
-    }
+    private fun readSelectedText(): String? = currentInputConnection?.getSelectedText(0)?.toString()
 
     private fun readPreviousSentence(): String? {
         val text = currentInputConnection?.getTextBeforeCursor(240, 0)?.toString() ?: return null
@@ -794,12 +817,7 @@ class OrbitInputMethodService : InputMethodService() {
             setPadding(dp(12), 0, dp(12), 0)
             setOnClickListener { onClick() }
             isClickable = true
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(32),
-            ).apply {
-                setMargins(dp(3), dp(3), dp(3), dp(3))
-            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
         }
     }
 
@@ -821,18 +839,11 @@ class OrbitInputMethodService : InputMethodService() {
                 strokeWidthPx = dp(1),
             )
             setPadding(dp(12), 0, dp(12), 0)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(32),
-            ).apply {
-                setMargins(dp(3), dp(2), dp(3), dp(3))
-            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { setMargins(dp(3), dp(2), dp(3), dp(3)) }
         }
     }
 
-    private fun label(pinyin: String, english: String): String {
-        return if (inputMode == InputMode.PINYIN) pinyin else english
-    }
+    private fun label(pinyin: String, english: String): String = if (inputMode == InputMode.PINYIN) pinyin else english
 
     private fun String.shortLabel(maxLength: Int = 22): String {
         val normalized = replace("\n", " ").trim()
@@ -840,11 +851,7 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun toast(message: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show() else Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun activeSkin(): OrbitSkin = SkinManager.keyboardSkin(this, sensitiveMode)
