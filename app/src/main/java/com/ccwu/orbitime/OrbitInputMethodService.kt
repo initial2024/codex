@@ -46,7 +46,7 @@ class OrbitInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(OrbitTheme.BACKGROUND)
+            background = OrbitTheme.keyboardBackground(activeSkin())
             setPadding(dp(8), dp(8), dp(8), dp(10))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -59,6 +59,7 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun rebuild(layout: LinearLayout) {
+        layout.background = OrbitTheme.keyboardBackground(activeSkin())
         layout.removeAllViews()
         buildTopBar(layout)
         if (!sensitiveMode && showClips) buildClipBar(layout)
@@ -70,12 +71,14 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun buildTopBar(parent: LinearLayout) {
+        val skin = activeSkin()
         if (sensitiveMode) {
             parent.addView(
                 labelBox(
-                    text = "Privacy mode · Hub disabled",
-                    muted = true,
-                    accent = false,
+                    text = "🔒 Privacy mode · Hub disabled",
+                    muted = false,
+                    accent = true,
+                    warning = true,
                 ),
             )
             return
@@ -89,7 +92,7 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        row.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN") { toggleInputMode() })
+        row.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN", emphasized = true) { toggleInputMode() })
         row.addView(chip("Paste") { pasteClipboard(saveAfterPaste = false) })
         row.addView(chip("Save") { saveClipboard() })
         row.addView(chip(if (showClips) "Keys" else "Clips") {
@@ -101,6 +104,7 @@ class OrbitInputMethodService : InputMethodService() {
             row.addView(chip(action.label) { commitDirectText(action.insertText) })
         }
 
+        scroller.setBackgroundColor(skin.backgroundColor)
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -124,7 +128,7 @@ class OrbitInputMethodService : InputMethodService() {
             clips.forEach { entry ->
                 row.addView(chip(entry.content.shortLabel()) { commitDirectText(entry.content) })
             }
-            row.addView(chip("Clear") {
+            row.addView(chip("Clear", warning = true) {
                 store.clear()
                 toast("Clipboard vault cleared")
                 root?.let { rebuild(it) }
@@ -149,10 +153,10 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         row.addView(labelBox("py: $pinyinBuffer", muted = false, accent = true))
-        candidates.forEach { candidate ->
-            row.addView(chip(candidate) { commitPinyinCandidate(candidate) })
+        candidates.forEachIndexed { index, candidate ->
+            row.addView(chip(candidate, emphasized = index == 0) { commitPinyinCandidate(candidate) })
         }
-        row.addView(chip("清空") {
+        row.addView(chip("清空", warning = true) {
             clearPinyinComposition()
             root?.let { rebuild(it) }
         })
@@ -218,19 +222,21 @@ class OrbitInputMethodService : InputMethodService() {
     )
 
     private fun keyView(rawKey: String): TextView {
+        val skin = activeSkin()
         val display = when {
             rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else "space"
             inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
             else -> rawKey
         }
+        val controlKey = isControlKey(rawKey)
 
         return TextView(this).apply {
             text = display
-            OrbitTheme.label(this, sizeSp = if (rawKey == "space") 13f else 18f, bold = rawKey.length == 1)
+            OrbitTheme.label(this, sizeSp = if (rawKey == "space") 13f else 18f, bold = rawKey.length == 1, skin = skin)
             background = OrbitTheme.rounded(
-                color = if (isControlKey(rawKey)) OrbitTheme.PANEL_ALT else OrbitTheme.PANEL,
+                color = if (controlKey) skin.controlKeyColor else skin.keyColor,
                 radiusPx = dp(12).toFloat(),
-                strokeColor = if (isControlKey(rawKey)) OrbitTheme.ACCENT else OrbitTheme.PANEL_ALT,
+                strokeColor = if (controlKey) skin.accentColor else skin.borderColor,
                 strokeWidthPx = dp(1),
             )
             setOnClickListener { handleKey(rawKey) }
@@ -420,11 +426,24 @@ class OrbitInputMethodService : InputMethodService() {
         return clip.getItemAt(0).coerceToText(this)?.toString()
     }
 
-    private fun chip(text: String, onClick: () -> Unit): TextView {
+    private fun chip(text: String, emphasized: Boolean = false, warning: Boolean = false, onClick: () -> Unit): TextView {
+        val skin = activeSkin()
+        val stroke = when {
+            warning -> skin.warningColor
+            emphasized -> skin.accentColor
+            else -> skin.borderColor
+        }
+        val fill = when {
+            warning -> skin.controlKeyColor
+            emphasized -> skin.panelAltColor
+            else -> skin.panelColor
+        }
         return TextView(this).apply {
             this.text = text
-            OrbitTheme.label(this, sizeSp = 13f, bold = true)
-            background = OrbitTheme.rounded(OrbitTheme.PANEL_ALT, dp(16).toFloat(), OrbitTheme.ACCENT, dp(1))
+            OrbitTheme.label(this, sizeSp = 13f, bold = true, skin = skin)
+            if (warning) setTextColor(skin.warningColor)
+            if (emphasized && !warning) setTextColor(skin.accentColor)
+            background = OrbitTheme.rounded(fill, dp(16).toFloat(), stroke, dp(1))
             setPadding(dp(14), 0, dp(14), 0)
             setOnClickListener { onClick() }
             isClickable = true
@@ -437,15 +456,23 @@ class OrbitInputMethodService : InputMethodService() {
         }
     }
 
-    private fun labelBox(text: String, muted: Boolean, accent: Boolean): TextView {
+    private fun labelBox(text: String, muted: Boolean, accent: Boolean, warning: Boolean = false): TextView {
+        val skin = activeSkin()
+        val strokeColor = when {
+            warning -> skin.warningColor
+            accent -> skin.accentColor
+            else -> skin.borderColor
+        }
         return TextView(this).apply {
             this.text = text
-            OrbitTheme.label(this, sizeSp = 13f, muted = muted, bold = false)
+            OrbitTheme.label(this, sizeSp = 13f, muted = muted, bold = accent || warning, skin = skin)
+            if (warning) setTextColor(skin.warningColor)
+            if (accent && !warning) setTextColor(skin.accentColor)
             background = OrbitTheme.rounded(
-                color = OrbitTheme.PANEL,
+                color = if (warning) skin.controlKeyColor else skin.panelColor,
                 radiusPx = dp(12).toFloat(),
-                strokeColor = if (accent) OrbitTheme.ACCENT else OrbitTheme.PANEL_ALT,
-                strokeWidthPx = dp(1),
+                strokeColor = strokeColor,
+                strokeWidthPx = if (warning) dp(2) else dp(1),
             )
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(
@@ -456,6 +483,8 @@ class OrbitInputMethodService : InputMethodService() {
             }
         }
     }
+
+    private fun activeSkin(): OrbitSkin = SkinManager.keyboardSkin(this, sensitiveMode)
 
     private fun String.shortLabel(): String {
         val normalized = replace("\n", " ").trim()
