@@ -35,6 +35,14 @@ object PrivacyGuard {
         return true
     }
 
+    fun isSafeToUseForPrompt(raw: CharSequence?): Boolean {
+        val text = raw?.toString()?.trim() ?: return false
+        if (text.length < 1 || text.length > 1200) return false
+        if (looksLikeSecret(text)) return false
+        if (looksLikeSingleOtp(text)) return false
+        return true
+    }
+
     private fun looksLikeSingleOtp(text: String): Boolean {
         return Regex("^\\d{4,8}$").matches(text)
     }
