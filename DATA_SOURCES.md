@@ -1,15 +1,17 @@
 # Orbit IME data source strategy
 
-Orbit IME needs better Pinyin candidates and local phrase translation, but the app must remain privacy-first and offline.
+Orbit IME needs better Pinyin candidates, English candidates, and local phrase translation, but the app must remain privacy-first and offline.
 
 ## v0.12 status
 
 Version `0.12.0` adds a maintainable data layer:
 
-- `PinyinBoostData.kt` for common full-pinyin, shorthand, and sentence candidates.
-- `TranslationBoostData.kt` for local exact phrase translation and conservative token translation.
-- `PinyinDictionary.kt` keeps the core syllable dictionary and merges boost entries at lookup time.
-- `OfflineTranslationPack.kt` checks boost translation data before falling back to prompt generation.
+- `PinyinDictionary.kt` keeps the core syllable dictionary.
+- `PinyinSentenceDictionary.kt` adds common shorthand and sentence-level Pinyin candidates.
+- `EnglishDictionary.kt` adds English word, phrase, and shorthand candidates.
+- `TranslationBoostData.kt` keeps earlier local exact phrase translation and conservative token translation.
+- `ProfessionalTranslationData.kt` adds a larger project-authored local phrase translation table.
+- `OfflineTranslationPack.kt` checks professional/local translation data before falling back to prompt generation.
 
 ## Public data sources reviewed
 
@@ -17,8 +19,8 @@ These sources are useful references for future import pipelines:
 
 - CC-CEDICT: Chinese-English dictionary with simplified/traditional headwords, pinyin, and English glosses. License: Creative Commons Attribution-ShareAlike.
 - Android Open Source Project Pinyin IME: historical Android Pinyin IME implementation and ideas under Android/AOSP licensing.
-- RIME / Trime ecosystem: mature open-source IME architecture and dictionary packaging ideas.
-- mozillazg phrase-pinyin-data / pinyin-data style datasets: useful for phrase-to-pinyin expansion where license allows reuse.
+- RIME / Trime ecosystem: mature open-source IME architecture and dictionary packaging ideas. Some RIME-related port metadata reports GPLv3 licensing, so direct copying is not assumed safe for a future commercial app.
+- phrase-pinyin-data / pinyin-data style datasets: useful for phrase-to-pinyin expansion only when license and attribution requirements are clear.
 
 ## License rule
 
