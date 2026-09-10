@@ -6,7 +6,7 @@ object PinyinDictionary {
     private const val MAX_CANDIDATES = 8
 
     private val entries: Map<String, List<String>> = linkedMapOf(
-        // Base syllables
+        // Common single syllables
         "a" to listOf("啊", "阿"),
         "ai" to listOf("爱", "哎", "矮"),
         "an" to listOf("安", "按", "案"),
@@ -23,14 +23,18 @@ object PinyinDictionary {
         "bian" to listOf("边", "变", "便"),
         "biao" to listOf("表", "标"),
         "bie" to listOf("别"),
+        "bing" to listOf("并", "病", "冰", "兵"),
+        "bo" to listOf("波", "播", "博"),
         "bu" to listOf("不", "部", "步"),
         "cai" to listOf("才", "菜", "材"),
         "ce" to listOf("测", "策"),
         "cha" to listOf("查", "差", "茶"),
         "chang" to listOf("长", "常", "场"),
         "chao" to listOf("超", "朝"),
+        "che" to listOf("车", "撤"),
         "cheng" to listOf("成", "程", "城"),
         "chi" to listOf("吃", "持"),
+        "chong" to listOf("重", "冲", "充"),
         "chu" to listOf("出", "处"),
         "ci" to listOf("次", "词"),
         "cong" to listOf("从"),
@@ -43,6 +47,7 @@ object PinyinDictionary {
         "deng" to listOf("等"),
         "di" to listOf("地", "第", "低"),
         "dian" to listOf("点", "电"),
+        "ding" to listOf("定", "顶"),
         "dong" to listOf("动", "懂", "东"),
         "dou" to listOf("都", "斗"),
         "du" to listOf("读", "度", "独"),
@@ -173,7 +178,7 @@ object PinyinDictionary {
         "zou" to listOf("走"),
         "zuo" to listOf("做", "作", "左"),
 
-        // Chat and daily expressions
+        // Common phrases
         "nihao" to listOf("你好", "你号"),
         "xiexie" to listOf("谢谢"),
         "haode" to listOf("好的"),
@@ -201,7 +206,7 @@ object PinyinDictionary {
         "qingwen" to listOf("请问"),
         "mafannile" to listOf("麻烦你了"),
 
-        // Work, development, and input-method terms
+        // Work, input, and study terms
         "wenti" to listOf("问题"),
         "xiugai" to listOf("修改"),
         "wenjian" to listOf("文件"),
@@ -243,8 +248,6 @@ object PinyinDictionary {
         "danci" to listOf("单词"),
         "duanyu" to listOf("短语"),
         "juzi" to listOf("句子"),
-
-        // Study terms
         "xuexi" to listOf("学习"),
         "yingyu" to listOf("英语"),
         "shuxue" to listOf("数学"),
@@ -262,7 +265,7 @@ object PinyinDictionary {
         "gongcheng" to listOf("工程"),
         "zhuanye" to listOf("专业"),
 
-        // Generic shorthand abbreviations. These are not user-specific.
+        // Generic shorthand abbreviations
         "wj" to listOf("文件", "问题"),
         "wjj" to listOf("文件夹"),
         "wgj" to listOf("文件夹", "无关紧要"),
@@ -302,6 +305,12 @@ object PinyinDictionary {
         "ks" to listOf("考试"),
         "zd" to listOf("重点", "知道"),
         "nd" to listOf("难点"),
+        "bg" to listOf("报告", "不够"),
+        "bd" to listOf("百度", "本地"),
+        "gg" to listOf("谷歌", "广告"),
+        "wx" to listOf("微信", "无效"),
+        "qq" to listOf("请求"),
+        "app" to listOf("应用"),
     )
 
     fun exactCandidatesFor(rawInput: String): List<String> {
