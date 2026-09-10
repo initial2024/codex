@@ -21,6 +21,8 @@ class MainActivity : Activity() {
 
     private fun render(statusMessage: String? = null) {
         val skin = SkinManager.current(this)
+        val userDictionary = UserDictionaryStore(this)
+        val dictionaryStats = userDictionary.stats()
         val scroll = ScrollView(this).apply {
             setBackgroundColor(skin.backgroundColor)
         }
@@ -30,8 +32,8 @@ class MainActivity : Activity() {
         }
         scroll.addView(container)
 
-        container.addView(title("Orbit IME v0.4", skin))
-        container.addView(paragraph("隐私优先的 Orbit Hub 风格输入法。v0.4 增加 Translate Preview：只生成本地翻译 Prompt，不联网、不调用云翻译、不上传输入内容。当前皮肤：${skin.name}。", skin))
+        container.addView(title("Orbit IME v0.5", skin))
+        container.addView(paragraph("隐私优先的 Orbit Hub 风格输入法。v0.5 增加用户本地词库；候选选择频次只保存在本机，不上传、不同步、不保存完整输入流。当前皮肤：${skin.name}。", skin))
         statusMessage?.let {
             container.addView(statusBox(it, skin))
         }
@@ -43,15 +45,21 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("第二步", skin))
-        container.addView(paragraph("启用后，点击下方按钮切换到 Orbit IME。顶部 Hub 栏可在 EN 和 拼音 模式之间切换，也可以打开 Translate Preview。", skin))
+        container.addView(paragraph("启用后，点击下方按钮切换到 Orbit IME。顶部 Hub 栏可在 EN 和 拼音 模式之间切换。", skin))
         container.addView(button("显示输入法切换器", skin) {
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showInputMethodPicker()
         })
 
+        container.addView(section("v0.5 用户本地词库", skin))
+        container.addView(paragraph("当前本地词库：${dictionaryStats.entryCount}/${dictionaryStats.maxEntries} 条映射，累计选择 ${dictionaryStats.totalFrequency} 次。只有在拼音模式下点击候选或空格选首候选后，才会记录拼音→词条频次。密码框、验证码、疑似密钥内容不会学习。", skin))
+        container.addView(button("清空用户词库", skin) {
+            userDictionary.clear()
+            render("用户本地词库已清空")
+        })
+
         container.addView(section("v0.4 Translate Preview", skin))
-        container.addView(paragraph("Translate Preview 支持从前一句、选中文本、剪贴板或输入法内草稿生成翻译 Prompt。草稿模式下，内容先进入输入法草稿区，点击生成后再由你决定插入或复制。当前版本不会产生真实翻译结果。", skin))
-        container.addView(paragraph("路线已调整：后续不把云端翻译作为默认规划。若以后接任何翻译服务，必须重新评估权限、隐私政策和成本，不在当前路线内。", skin))
+        container.addView(paragraph("Translate Preview 仍然只是本地 Prompt 生成，不接云端翻译，不接外部翻译 API，不新增 INTERNET 权限。", skin))
 
         container.addView(section("v0.3 皮肤", skin))
         container.addView(paragraph("选择会保存到本机 SharedPreferences，并立即影响设置页；重新拉起键盘后输入法界面会使用同一套皮肤。Pro Aurora 是付费占位皮肤，当前未接支付，所以默认锁定。", skin))
@@ -59,12 +67,12 @@ class MainActivity : Activity() {
             container.addView(skinButton(option, SkinManager.selectedSkinId(this) == option.id, skin))
         }
 
-        container.addView(section("v0.4 功能", skin))
-        container.addView(paragraph("当前版本支持英文输入、拼音26键、本地静态候选、空格选首候选、候选点击上屏、本地剪贴板 Save/Clips、快捷模板插入、5 套皮肤 token、隐私模式强化、Translate Preview 本地 Prompt 预览。暂不包含云端翻译、皮肤商城、9键、五笔、手写和用户自动词库。", skin))
+        container.addView(section("当前功能", skin))
+        container.addView(paragraph("当前版本支持英文输入、拼音26键、本地静态候选、用户本地候选频次学习、空格选首候选、候选点击上屏、本地剪贴板 Save/Clips、Translate Preview、本地皮肤和快捷模板插入。暂不包含云同步、云翻译、9键、五笔、手写和大型分词词库。", skin))
         container.addView(section("隐私边界", skin))
-        container.addView(paragraph("Orbit IME 不申请 INTERNET 权限；不会上传输入内容；不会在密码输入框显示 Hub；剪贴板内容只有在你主动点击 Save 时才会保存到本机。Translate Preview 只在本机生成 Prompt 文本。", skin))
+        container.addView(paragraph("Orbit IME 不申请 INTERNET 权限；不会上传输入内容；不会在密码输入框显示 Hub；剪贴板内容只有在你主动点击 Save 时才会保存到本机；用户词库只记录候选选择频次，不保存完整输入流。", skin))
         container.addView(section("ProGate", skin))
-        container.addView(paragraph("Pro 解锁入口已预留，但 v0.4 没有支付、广告、联网、云翻译或账号逻辑。免费版默认最多保存 50 条本地剪贴板。", skin))
+        container.addView(paragraph("Pro 解锁入口已预留，但 v0.5 没有支付、广告或联网逻辑。免费版默认最多保存 50 条本地剪贴板、300 条用户本地词库。", skin))
 
         setContentView(scroll)
     }
