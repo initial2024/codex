@@ -334,8 +334,11 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun commitPendingPinyin(rawFallback: Boolean) {
         if (inputMode != InputMode.PINYIN || pinyinBuffer.isEmpty()) return
-        val candidate = PinyinDictionary.candidatesFor(pinyinBuffer).firstOrNull()
-        val text = if (rawFallback && candidate == null) pinyinBuffer else candidate ?: pinyinBuffer
+        val text = if (rawFallback) {
+            PinyinDictionary.exactCandidatesFor(pinyinBuffer).firstOrNull() ?: pinyinBuffer
+        } else {
+            PinyinDictionary.candidatesFor(pinyinBuffer).firstOrNull() ?: pinyinBuffer
+        }
         commitPinyinCandidate(text)
     }
 
