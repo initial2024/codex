@@ -2,11 +2,11 @@
 
 ## Status
 
-Orbit IME `0.12.0` Pinyin and local translation data expansion has been prepared. Build only after the user asks to start the APK build.
+Orbit IME `0.12.0` Pinyin sentence shortcuts, English candidate input, and local translation data expansion have been prepared. Build only after the user asks to start the APK build.
 
 ## Goal
 
-Build the debug APK for Orbit IME Android `0.12.0` after the data-layer expansion is considered ready.
+Build the debug APK for Orbit IME Android `0.12.0` after the input and data-layer expansion is considered ready.
 
 ## Repository
 
@@ -82,26 +82,30 @@ Do not add:
 3. `versionCode` is `12`.
 4. Settings page keeps the version only as `About · v0.12.0`.
 5. GitHub Actions artifact name is `orbit-ime-v0.12-debug-apk`.
-6. `PinyinBoostData.kt` exists and contains expanded full-pinyin, shorthand, and sentence candidates.
-7. `PinyinDictionary.kt` merges `PinyinBoostData.entries` with the core syllable dictionary.
-8. Exact boost candidates rank before core single-character candidates.
-9. Candidate limit is at least 10.
-10. `nh` shows `你好` as a candidate.
-11. `nisishei` shows `你是谁` as a candidate.
-12. `hsywt` shows `还是有问题` as a candidate.
-13. `zsm` shows `这是什么` as a candidate.
-14. `zmb` shows `怎么办` as a candidate.
-15. `smqk` shows `什么情况` as a candidate.
+6. `PinyinSentenceDictionary.kt` exists and contains expanded shorthand and sentence candidates.
+7. `EnglishDictionary.kt` exists and contains English word, phrase, and shorthand candidates.
+8. `ProfessionalTranslationData.kt` exists and contains expanded local Chinese-English phrase translations.
+9. `OfflineTranslationPack.kt` checks `ProfessionalTranslationData` before older boost tables, rough token assembly, and prompt fallback.
+10. Exact Pinyin sentence candidates rank before core single-character candidates.
+11. `nh` shows `你好` as a candidate.
+12. `nisishei` shows `你是谁` as a candidate.
+13. `hsywt` shows `还是有问题` as a candidate.
+14. `myfyjg` shows `没有翻译结果` as a candidate.
+15. `bscgfy` shows `不是成功翻译` as a candidate.
 16. `bing`, `wgj`, `wj`, `wt`, `xg`, `srf`, `jqb`, `shurufa`, and `jianqieban` still show useful candidates.
-17. Candidate tap and space-to-select work.
-18. User dictionary ranking still works.
-19. `TranslationBoostData.kt` exists and contains expanded local phrase translation and token maps.
-20. `OfflineTranslationPack.kt` checks `TranslationBoostData` before rough token assembly and prompt fallback.
-21. Translate panel first tries local phrase translation.
-22. Known phrases like `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `请给出可执行步骤`, `不要添加 INTERNET 权限`, and `I will handle it later` show directly insertable local translations.
-23. If no local translation exists, Translate falls back to prompt generation rather than pretending to translate.
-24. `DATA_SOURCES.md` documents source strategy and licensing rules.
-25. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
+17. Candidate tap and space-to-select work in Pinyin mode.
+18. English mode does not commit each letter immediately.
+19. Typing `hi` in English mode shows candidates before commit.
+20. Typing `whq`, `build`, `translate`, and `problem` in English mode shows useful candidates before commit.
+21. Pressing space in English mode commits the first English candidate and appends a space.
+22. Tapping an English candidate commits that candidate directly.
+23. User dictionary ranking still works for Pinyin.
+24. Translate panel first tries local phrase translation.
+25. Known phrases like `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `没有翻译结果`, `只是提示词`, `请给出可执行步骤`, `不要添加 INTERNET 权限`, and `I will handle it later` show directly insertable local translations.
+26. Translate preview line clearly shows `译文：...` when a local translation is available.
+27. If no local translation exists, Translate falls back to prompt generation rather than pretending to translate.
+28. Password field shows privacy mode, hides Hub actions, clears Pinyin/English composition, clears Translate Preview, hides Pet, blocks learning/growth, and uses warning/border colors.
+29. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
 
 ## Fix policy
 
