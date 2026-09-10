@@ -1,45 +1,56 @@
-# Orbit IME Local Phrase Translation
+# Orbit IME v0.12 Local Phrase Translation
 
-## Version
-
-This document applies to Orbit IME `0.11.0`.
+This file documents the accepted v0.12 local translation scope.
 
 ## Goal
 
-Translate should not feel fake. Version `0.11.0` first tries to produce a real local phrase translation from packaged phrase tables.
+Make the Translate feature feel real for common short phrases while keeping Orbit IME offline and privacy-first.
 
-If no local phrase translation exists, Orbit falls back to Translate Preview prompt generation.
+## Behavior
+
+Translate now uses this order:
+
+1. Exact local phrase match in `OfflineTranslationPack.kt`.
+2. Exact local phrase match in `TranslationBoostData.kt`.
+3. Conservative rough local token assembly.
+4. Translate Preview prompt-generation fallback.
+
+If a phrase exists in the local table, the translated text can be inserted directly.
+
+If no local translation exists, Orbit does not pretend to translate. It falls back to a prompt the user can insert into another AI/chat app.
 
 ## Boundary
 
-This is not cloud translation and not a full offline model.
+The feature is not cloud translation and not a full machine-translation model.
 
-It does not use:
+It does not:
 
-- INTERNET permission
-- External translation API
-- Cloud model endpoint
-- Background translation
-- Translation history storage
+- Add `INTERNET` permission.
+- Call external translation APIs.
+- Upload source text.
+- Persist Translate Preview history.
+- Persist source text.
+- Persist translated output.
+- Claim high-quality long-form translation.
 
-## Supported behavior
+## Supported directions
 
-Known phrases can produce direct translations, for example:
+- Chinese to English.
+- English to Chinese.
 
-```text
-你好 -> Hello.
-你是谁 -> Who are you?
-还是有问题 -> There is still a problem.
-我晚点处理 -> I will handle it later.
-I will handle it later -> 我晚点处理。
-```
+## Example supported phrases
 
-Unsupported long or complex text falls back to prompt generation instead of pretending to translate.
+- `你好` -> `Hello.`
+- `你是谁` -> `Who are you?`
+- `这是什么` -> `What is this?`
+- `怎么办` -> `What should I do?`
+- `还是有问题` -> `There is still a problem.`
+- `请给出可执行步骤` -> `Please provide actionable steps.`
+- `不要添加 INTERNET 权限` -> `Do not add the INTERNET permission.`
+- `I will handle it later` -> `我晚点处理。`
 
-## Acceptance examples
+## Future professional path
 
-- `你好` should show a directly insertable English translation.
-- `你是谁` should show a directly insertable English translation.
-- `还是有问题` should show a directly insertable English translation.
-- `I will handle it later` should show a directly insertable Chinese translation.
-- Unsupported text should show the prompt-generation fallback.
+A more professional offline translation pack should be generated from a licensed bilingual dictionary or phrase corpus. The generated data should be stored as compact assets rather than very large Kotlin maps.
+
+A real arbitrary-sentence translator would require an offline model pack or an explicit online translation service. Neither is included in v0.12.
