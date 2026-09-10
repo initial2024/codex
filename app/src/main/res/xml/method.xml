@@ -4,7 +4,7 @@
     android:settingsActivity="com.ccwu.orbitime.MainActivity">
 
     <subtype
-        android:imeSubtypeLocale="en_US"
+        android:imeSubtypeLocale="zh_CN"
         android:imeSubtypeMode="keyboard"
         android:isAsciiCapable="true"
         android:label="@string/ime_subtype_en" />
