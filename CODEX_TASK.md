@@ -1,12 +1,12 @@
-# Codex handoff task: build Orbit IME v0.11 APK later
+# Codex handoff task: build Orbit IME v0.12 APK later
 
 ## Status
 
-Orbit IME `0.11.0` Pinyin shortcut and local translation usability fixes have been prepared. Build only after the user asks to start the APK build.
+Orbit IME `0.12.0` Pinyin and local translation data expansion has been prepared. Build only after the user asks to start the APK build.
 
 ## Goal
 
-Build the debug APK for Orbit IME Android `0.11.0` after the usability corrections are considered ready.
+Build the debug APK for Orbit IME Android `0.12.0` after the data-layer expansion is considered ready.
 
 ## Repository
 
@@ -36,7 +36,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ## GitHub Actions artifact
 
 ```text
-orbit-ime-v0.11-debug-apk
+orbit-ime-v0.12-debug-apk
 ```
 
 ## Build trigger policy
@@ -78,26 +78,30 @@ Do not add:
 ## Functional acceptance criteria
 
 1. APK builds successfully.
-2. `versionName` is `0.11.0`.
-3. `versionCode` is `11`.
-4. Settings page keeps the version only as `About · v0.11.0`.
-5. GitHub Actions artifact name is `orbit-ime-v0.11-debug-apk`.
-6. First-level Hub still has `切换` / `Switch` and it calls Android's input-method picker.
-7. Bottom-right key is labeled `回车` / `Enter` and sends Enter.
-8. Pinyin-mode Hub labels are Chinese: 切换, 粘贴, 剪贴板, 翻译, 返回.
-9. English-mode Hub labels remain short English labels: Switch, Paste, Clips, Translate, Keyboard.
-10. Prompt-style actions are not shown in the first-level Hub row.
-11. Save is inside the Clips panel as `保存当前剪贴板`.
-12. `nh` shows `你好` as a candidate.
-13. `nisishei` shows `你是谁` as a candidate.
-14. `hsywt` shows `还是有问题` as a candidate.
-15. `bing`, `wgj`, `wj`, `wt`, `xg`, `srf`, `jqb`, `shurufa`, and `jianqieban` still show useful candidates.
-16. Candidate tap and space-to-select work.
-17. User dictionary ranking still works.
-18. Translate panel first tries local phrase translation.
-19. For known phrases like `你好`, `你是谁`, `还是有问题`, and `I will handle it later`, Translate shows a real local translation that can be inserted.
-20. If no local translation exists, Translate falls back to prompt generation rather than pretending to translate.
-21. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
+2. `versionName` is `0.12.0`.
+3. `versionCode` is `12`.
+4. Settings page keeps the version only as `About · v0.12.0`.
+5. GitHub Actions artifact name is `orbit-ime-v0.12-debug-apk`.
+6. `PinyinBoostData.kt` exists and contains expanded full-pinyin, shorthand, and sentence candidates.
+7. `PinyinDictionary.kt` merges `PinyinBoostData.entries` with the core syllable dictionary.
+8. Exact boost candidates rank before core single-character candidates.
+9. Candidate limit is at least 10.
+10. `nh` shows `你好` as a candidate.
+11. `nisishei` shows `你是谁` as a candidate.
+12. `hsywt` shows `还是有问题` as a candidate.
+13. `zsm` shows `这是什么` as a candidate.
+14. `zmb` shows `怎么办` as a candidate.
+15. `smqk` shows `什么情况` as a candidate.
+16. `bing`, `wgj`, `wj`, `wt`, `xg`, `srf`, `jqb`, `shurufa`, and `jianqieban` still show useful candidates.
+17. Candidate tap and space-to-select work.
+18. User dictionary ranking still works.
+19. `TranslationBoostData.kt` exists and contains expanded local phrase translation and token maps.
+20. `OfflineTranslationPack.kt` checks `TranslationBoostData` before rough token assembly and prompt fallback.
+21. Translate panel first tries local phrase translation.
+22. Known phrases like `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `请给出可执行步骤`, `不要添加 INTERNET 权限`, and `I will handle it later` show directly insertable local translations.
+23. If no local translation exists, Translate falls back to prompt generation rather than pretending to translate.
+24. `DATA_SOURCES.md` documents source strategy and licensing rules.
+25. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
 
 ## Fix policy
 
