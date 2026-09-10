@@ -1,12 +1,33 @@
-# Orbit IME v0.5 User Dictionary
+# Orbit IME User Dictionary and Pinyin Candidates
 
-This file documents the accepted v0.5 feature scope.
+This file documents the accepted local dictionary behavior.
 
 ## Goal
 
-Add a local user dictionary that improves Pinyin candidate ordering based on explicit candidate selection.
+Improve Pinyin candidate ordering while keeping learning local and explicit.
 
-## Boundary
+## Static dictionary
+
+Orbit IME includes a generic built-in static dictionary for common syllables, common chat terms, development terms, input-method terms, and study terms.
+
+Version `0.8.0` also includes generic shorthand candidates such as:
+
+```text
+wgj -> 文件夹
+wj -> 文件 / 问题
+wt -> 问题
+xg -> 修改
+dm -> 代码
+gj -> 构建 / 工具
+srf -> 输入法
+jqb -> 剪贴板 / 剪切板
+fy -> 翻译
+sz -> 设置
+```
+
+The static dictionary must stay generic. Product-specific or developer-personal terms must not be hardcoded into `PinyinDictionary.kt`.
+
+## User dictionary
 
 The user dictionary is local learning only.
 
@@ -34,12 +55,6 @@ The stored record is limited to:
 
 ```text
 pinyin -> committed candidate text -> frequency -> updatedAt
-```
-
-Example:
-
-```text
-nihao -> 你好 -> 3 -> 1789020000000
 ```
 
 It does not store the surrounding sentence, app name, target field, or full input history.
@@ -95,7 +110,3 @@ The settings page shows:
 - Total learned selection count.
 - Current quota.
 - A button to clear the local user dictionary.
-
-## Static dictionary personalization policy
-
-The built-in static dictionary must stay generic. Product-specific or developer-personal terms must not be hardcoded into `PinyinDictionary.kt`. User-specific terms should enter ranking only through the local user dictionary on that user's device.
