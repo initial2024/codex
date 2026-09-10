@@ -321,9 +321,9 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         val phrases = if (inputMode == InputMode.PINYIN) {
-            listOf("收到，我晚点处理。", "请给出可执行步骤。", "先不要扩大范围。")
+            TemplateLibrary.quickPhrasesForPinyin()
         } else {
-            listOf("Got it.", "I will handle it later.", "Please give actionable steps.")
+            TemplateLibrary.quickPhrasesForEnglish()
         }
         phrases.forEach { phrase ->
             row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
