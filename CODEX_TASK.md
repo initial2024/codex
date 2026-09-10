@@ -1,8 +1,8 @@
-# Codex handoff task: build Orbit IME APK
+# Codex handoff task: build Orbit IME v0.2 APK
 
 ## Goal
 
-Build the first debug APK for Orbit IME Android.
+Build the debug APK for Orbit IME Android `0.2.0`.
 
 ## Repository
 
@@ -41,20 +41,31 @@ Do not add:
 - Notification spam
 - Clipboard background harvesting
 - Password-field saving
+- Pinyin 9-key
+- Wubi
+- Handwriting recognition
+- Skin redesign
 
 ## Functional acceptance criteria
 
 1. APK builds successfully.
 2. Orbit IME appears in Android input method settings.
 3. The settings activity opens.
-4. The IME can type English letters.
-5. `123` and `ABC` mode switching work.
-6. Backspace, space, and enter work.
-7. Paste inserts the current system clipboard.
-8. Save persists the current clipboard only after a user tap.
-9. Clips panel can insert saved items.
-10. Password fields show `Privacy mode · Hub disabled` and hide Hub actions.
+4. The IME can type English letters in `EN` mode.
+5. The Hub toolbar can switch between `EN` and `拼音`.
+6. Pinyin mode uses the same 26-key layout for Pinyin input.
+7. Typing `nihao` shows `你好` in the candidate bar.
+8. Tapping a candidate commits it to the editor.
+9. Pressing space with a Pinyin buffer commits the first candidate.
+10. Pressing backspace with a Pinyin buffer deletes the buffer before deleting editor text.
+11. `123` and `ABC` mode switching work.
+12. Backspace, space, and enter work.
+13. Paste inserts the current system clipboard.
+14. Save persists the current clipboard only after a user tap.
+15. Clips panel can insert saved items.
+16. Password fields show `Privacy mode · Hub disabled` and hide Hub actions.
+17. No network, ad, analytics, Accessibility, or background harvesting behavior is introduced.
 
 ## Fix policy
 
-If compilation fails, fix only the minimum necessary build or Kotlin issue. Do not expand product scope.
+If compilation fails, fix only the minimum necessary build, Kotlin, resource, or IME metadata issue. Do not expand product scope.
