@@ -63,7 +63,8 @@ class OrbitInputMethodService : InputMethodService() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = OrbitTheme.keyboardBackground(activeSkin())
-            setPadding(dp(8), dp(8), dp(8), dp(10))
+            // v0.8: leave a safe area for Android's own input-method switcher bubble.
+            setPadding(dp(8), dp(6), dp(8), dp(28))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -93,7 +94,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (sensitiveMode) {
             parent.addView(
                 labelBox(
-                    text = "🔒 Privacy mode · Hub disabled",
+                    text = "🔒 隐私模式 · 工具已隐藏",
                     muted = false,
                     accent = true,
                     warning = true,
@@ -111,15 +112,14 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         row.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN", emphasized = true) { toggleInputMode() })
-        row.addView(chip("Paste") { pasteClipboard(saveAfterPaste = false) })
-        row.addView(chip("Save") { saveClipboard() })
-        row.addView(chip(if (showClips) "Keys" else "Clips") {
+        row.addView(chip(label(pinyin = "粘贴", english = "Paste")) { pasteClipboard(saveAfterPaste = false) })
+        row.addView(chip(if (showClips) label("返回键盘", "Keyboard") else label("剪贴板", "Clips")) {
             showClips = !showClips
             showPet = false
             if (showClips) clearTranslateState()
             root?.let { rebuild(it) }
         })
-        row.addView(chip(if (showTranslate) "Keys" else "Translate", emphasized = showTranslate) {
+        row.addView(chip(if (showTranslate) label("返回键盘", "Keyboard") else label("翻译", "Translate"), emphasized = showTranslate) {
             if (showTranslate) {
                 clearTranslateState()
             } else {
@@ -134,30 +134,29 @@ class OrbitInputMethodService : InputMethodService() {
             }
             root?.let { rebuild(it) }
         })
-        row.addView(chip(petRepository.compactStatus(), emphasized = showPet) {
-            showPet = !showPet
-            showClips = false
-            if (showPet) clearTranslateState()
-            root?.let { rebuild(it) }
-        })
-
-        TemplateLibrary.defaultActions.take(ProGate.maxTemplates(this)).forEach { action ->
-            row.addView(chip(action.label) { commitDirectText(action.insertText) })
+        val petProfile = petRepository.profile()
+        if (petProfile.displayMode != PetRepository.DISPLAY_HIDDEN && pinyinBuffer.isEmpty()) {
+            row.addView(chip(label("宠物", "Pet"), emphasized = showPet) {
+                showPet = !showPet
+                showClips = false
+                if (showPet) clearTranslateState()
+                root?.let { rebuild(it) }
+            })
         }
 
         scroller.setBackgroundColor(skin.backgroundColor)
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(44),
+            dp(40),
         ))
     }
 
     private fun buildPetPanel(parent: LinearLayout) {
         val profile = petRepository.profile()
         val visible = profile.displayMode != PetRepository.DISPLAY_HIDDEN
-        parent.addView(labelBox("Pet · ${petRepository.panelLine()}", muted = false, accent = true))
-        parent.addView(labelBox(if (visible) petRepository.localChatLine() else "Pet is hidden. It stays local and quiet.", muted = !profile.chatUnlocked, accent = profile.chatUnlocked))
+        parent.addView(labelBox("宠物 · ${profile.petName} · Lv.${profile.level} · S${profile.stage} · ${profile.exp} EXP", muted = false, accent = true))
+        parent.addView(labelBox(if (visible) petRepository.localChatLine() else "宠物已隐藏，只保存在本机。", muted = !profile.chatUnlocked, accent = profile.chatUnlocked))
 
         val scroller = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -186,7 +185,7 @@ class OrbitInputMethodService : InputMethodService() {
             toast(petRepository.localChatLine())
         })
         row.addView(chip("装扮") {
-            toast("Outfit slots are ready for Gemini assets")
+            toast("装扮位已预留，等待素材")
         })
         row.addView(chip("关闭", warning = true) {
             showPet = false
@@ -196,19 +195,19 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(42),
+            dp(38),
         ))
     }
 
     private fun buildTranslatePanel(parent: LinearLayout) {
-        val sourceLabel = translateSourceLabel ?: "choose source"
-        parent.addView(labelBox("Translate Preview · ${translateDirection.label} · $sourceLabel · local only", muted = false, accent = true))
+        val sourceLabel = translateSourceLabel ?: label("选择来源", "choose source")
+        parent.addView(labelBox("翻译 · ${translateDirection.label} · $sourceLabel · 本地", muted = false, accent = true))
 
         val previewText = when {
-            translateDraftMode -> "draft: ${translateDraftBuffer.ifBlank { "type here before confirming" }.shortLabel(44)}"
-            offlineTranslationPreview != null -> "offline: ${offlineTranslationPreview.orEmpty().shortLabel(46)}"
+            translateDraftMode -> "草稿：${translateDraftBuffer.ifBlank { "先在这里输入，再生成" }.shortLabel(44)}"
+            offlineTranslationPreview != null -> "离线译文：${offlineTranslationPreview.orEmpty().shortLabel(46)}"
             translatePromptPreview != null -> translatePromptPreview.orEmpty().shortLabel(56)
-            else -> "Prompt Preview is free. Offline Pack is Pro and local-only."
+            else -> "免费生成翻译提示词；Pro 可用本地短句包。"
         }
         parent.addView(labelBox(previewText, muted = translatePromptPreview == null && !translateDraftMode, accent = offlineTranslationPreview != null))
 
@@ -225,8 +224,8 @@ class OrbitInputMethodService : InputMethodService() {
                 offlineTranslationPreview?.let {
                     row.addView(chip("插入译文", emphasized = true) { insertOfflineTranslation() })
                 }
-                row.addView(chip("插入Prompt") { insertTranslatePrompt() })
-                row.addView(chip("复制Prompt") { copyTranslatePrompt() })
+                row.addView(chip("插入提示词") { insertTranslatePrompt() })
+                row.addView(chip("复制提示词") { copyTranslatePrompt() })
                 row.addView(chip("换方向") { toggleTranslateDirection(regenerate = true) })
                 row.addView(chip("重选") { resetTranslateSelection() })
                 row.addView(chip("取消", warning = true) {
@@ -255,8 +254,8 @@ class OrbitInputMethodService : InputMethodService() {
                     row.addView(chip("拼音草稿") { captureTranslateSource("拼音草稿", pinyinBuffer) })
                 }
                 row.addView(chip("草稿") { startTranslateDraft() })
-                row.addView(chip(if (ProGate.isOfflineTranslationPackUnlocked(this)) "离线包ON" else "离线包Pro", warning = !ProGate.isOfflineTranslationPackUnlocked(this)) {
-                    toast(if (ProGate.isOfflineTranslationPackUnlocked(this)) "Offline Pack enabled" else OfflineTranslationPack.lockedMessage())
+                row.addView(chip(if (ProGate.isOfflineTranslationPackUnlocked(this)) "离线包开" else "离线包Pro", warning = !ProGate.isOfflineTranslationPackUnlocked(this)) {
+                    toast(if (ProGate.isOfflineTranslationPackUnlocked(this)) "离线包已启用" else OfflineTranslationPack.lockedMessage())
                 })
                 row.addView(chip("取消", warning = true) {
                     clearTranslateState()
@@ -268,7 +267,7 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(42),
+            dp(38),
         ))
     }
 
@@ -282,15 +281,16 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        row.addView(chip("保存当前剪贴板", emphasized = true) { saveClipboard() })
         if (clips.isEmpty()) {
-            row.addView(labelBox("No saved clips. Tap Save after copying text.", muted = true, accent = false))
+            row.addView(labelBox("暂无保存内容。复制文字后点保存。", muted = true, accent = false))
         } else {
             clips.forEach { entry ->
                 row.addView(chip(entry.content.shortLabel()) { commitDirectText(entry.content) })
             }
-            row.addView(chip("Clear", warning = true) {
+            row.addView(chip("清空", warning = true) {
                 store.clear()
-                toast("Clipboard vault cleared")
+                toast("剪贴板已清空")
                 root?.let { rebuild(it) }
             })
         }
@@ -298,13 +298,12 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(42),
+            dp(38),
         ))
     }
 
     private fun buildCandidateBar(parent: LinearLayout) {
         val candidates = candidatesForCurrentPinyin()
-        val stats = userDictionary.stats()
         val scroller = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
         }
@@ -313,7 +312,7 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        row.addView(labelBox("py: $pinyinBuffer · local ${stats.entryCount}", muted = false, accent = true))
+        row.addView(labelBox("拼音：$pinyinBuffer", muted = false, accent = true))
         candidates.forEachIndexed { index, candidate ->
             row.addView(chip(candidate, emphasized = index == 0) { commitPinyinCandidate(candidate) })
         }
@@ -325,7 +324,7 @@ class OrbitInputMethodService : InputMethodService() {
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(42),
+            dp(38),
         ))
     }
 
@@ -338,14 +337,14 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        TemplateLibrary.quickPhrases.take(5).forEach { phrase ->
+        TemplateLibrary.quickPhrases.take(4).forEach { phrase ->
             row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
         }
 
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(40),
+            dp(36),
         ))
     }
 
@@ -363,7 +362,7 @@ class OrbitInputMethodService : InputMethodService() {
 
             parent.addView(row, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48),
+                dp(46),
             ))
         }
     }
@@ -385,8 +384,8 @@ class OrbitInputMethodService : InputMethodService() {
     private fun keyView(rawKey: String): TextView {
         val skin = activeSkin()
         val display = when {
-            rawKey == "space" && translateDraftMode -> if (translateDraftBuffer.isEmpty()) "draft" else "space"
-            rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else "space"
+            rawKey == "space" && translateDraftMode -> if (translateDraftBuffer.isEmpty()) "草稿" else "空格"
+            rawKey == "space" -> if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) "选词" else label("空格", "space")
             inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
             else -> rawKey
         }
@@ -403,7 +402,7 @@ class OrbitInputMethodService : InputMethodService() {
             setOnClickListener { handleKey(rawKey) }
             isClickable = true
             isFocusable = true
-            minHeight = dp(42)
+            minHeight = dp(40)
         }
     }
 
@@ -414,7 +413,7 @@ class OrbitInputMethodService : InputMethodService() {
             else -> 1f
         }
         return LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight).apply {
-            setMargins(dp(3), dp(3), dp(3), dp(3))
+            setMargins(dp(3), dp(2), dp(3), dp(2))
         }
     }
 
@@ -541,7 +540,7 @@ class OrbitInputMethodService : InputMethodService() {
     private fun appendPinyin(letter: String) {
         val normalized = PinyinDictionary.normalize(pinyinBuffer + letter)
         if (normalized.length > 32) {
-            toast("Pinyin buffer limit reached")
+            toast("拼音太长")
             return
         }
         pinyinBuffer = normalized
@@ -709,7 +708,7 @@ class OrbitInputMethodService : InputMethodService() {
         val prompt = translatePromptPreview ?: return
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Orbit Translate Prompt", prompt))
-        toast("Prompt copied locally")
+        toast("提示词已复制")
     }
 
     private fun clearTranslateState() {
@@ -741,7 +740,7 @@ class OrbitInputMethodService : InputMethodService() {
     private fun pasteClipboard(saveAfterPaste: Boolean) {
         val text = readClipboardText()
         if (text.isNullOrBlank()) {
-            toast("Clipboard is empty")
+            toast("剪贴板为空")
             return
         }
         commitDirectText(text)
@@ -750,23 +749,23 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun saveClipboard() {
         if (sensitiveMode) {
-            toast("Privacy mode")
+            toast("隐私模式")
             return
         }
         val text = readClipboardText()
         if (text.isNullOrBlank()) {
-            toast("Clipboard is empty")
+            toast("剪贴板为空")
             return
         }
         if (store.add(text)) {
             petRepository.recordClipSave()
-            toast("Saved locally")
+            toast("已保存到本机")
             showClips = true
             showPet = false
             clearTranslateState()
             root?.let { rebuild(it) }
         } else {
-            toast("Skipped sensitive or unsupported text")
+            toast("疑似敏感内容，已跳过")
         }
     }
 
@@ -794,14 +793,14 @@ class OrbitInputMethodService : InputMethodService() {
             }
             setTextColor(textColor)
             background = OrbitTheme.rounded(skin.panelAltColor, dp(16).toFloat(), stroke, dp(1))
-            setPadding(dp(14), 0, dp(14), 0)
+            setPadding(dp(12), 0, dp(12), 0)
             setOnClickListener { onClick() }
             isClickable = true
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 dp(34),
             ).apply {
-                setMargins(dp(3), dp(4), dp(3), dp(4))
+                setMargins(dp(3), dp(3), dp(3), dp(3))
             }
         }
     }
@@ -826,11 +825,15 @@ class OrbitInputMethodService : InputMethodService() {
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(36),
+                dp(34),
             ).apply {
-                setMargins(dp(3), dp(3), dp(3), dp(5))
+                setMargins(dp(3), dp(2), dp(3), dp(3))
             }
         }
+    }
+
+    private fun label(pinyin: String, english: String): String {
+        return if (inputMode == InputMode.PINYIN) pinyin else english
     }
 
     private fun String.shortLabel(maxLength: Int = 22): String {
