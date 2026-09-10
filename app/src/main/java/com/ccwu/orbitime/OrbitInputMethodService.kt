@@ -35,10 +35,12 @@ class OrbitInputMethodService : InputMethodService() {
     private var translateDraftBuffer = ""
     private var root: LinearLayout? = null
     private lateinit var store: ClipboardStore
+    private lateinit var userDictionary: UserDictionaryStore
 
     override fun onCreate() {
         super.onCreate()
         store = ClipboardStore(this)
+        userDictionary = UserDictionaryStore(this)
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -232,7 +234,8 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun buildCandidateBar(parent: LinearLayout) {
-        val candidates = PinyinDictionary.candidatesFor(pinyinBuffer)
+        val candidates = candidatesForCurrentPinyin()
+        val stats = userDictionary.stats()
         val scroller = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
         }
@@ -241,7 +244,7 @@ class OrbitInputMethodService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        row.addView(labelBox("py: $pinyinBuffer", muted = false, accent = true))
+        row.addView(labelBox("py: $pinyinBuffer · local ${stats.entryCount}", muted = false, accent = true))
         candidates.forEachIndexed { index, candidate ->
             row.addView(chip(candidate, emphasized = index == 0) { commitPinyinCandidate(candidate) })
         }
@@ -478,18 +481,36 @@ class OrbitInputMethodService : InputMethodService() {
     private fun commitPendingPinyin(rawFallback: Boolean) {
         if (inputMode != InputMode.PINYIN || pinyinBuffer.isEmpty()) return
         val text = if (rawFallback) {
-            PinyinDictionary.exactCandidatesFor(pinyinBuffer).firstOrNull() ?: pinyinBuffer
+            exactCandidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer
         } else {
-            PinyinDictionary.candidatesFor(pinyinBuffer).firstOrNull() ?: pinyinBuffer
+            candidatesForCurrentPinyin().firstOrNull() ?: pinyinBuffer
         }
         commitPinyinCandidate(text)
     }
 
+    private fun candidatesForCurrentPinyin(): List<String> {
+        return userDictionary.candidatesFor(
+            rawInput = pinyinBuffer,
+            staticCandidates = PinyinDictionary.candidatesFor(pinyinBuffer),
+        )
+    }
+
+    private fun exactCandidatesForCurrentPinyin(): List<String> {
+        return userDictionary.exactCandidatesFor(
+            rawInput = pinyinBuffer,
+            staticCandidates = PinyinDictionary.exactCandidatesFor(pinyinBuffer),
+        )
+    }
+
     private fun commitPinyinCandidate(candidate: String) {
         val inputConnection = currentInputConnection ?: return
+        val learnedPinyin = pinyinBuffer
         inputConnection.commitText(candidate, 1)
         pinyinBuffer = ""
         inputConnection.finishComposingText()
+        if (!sensitiveMode) {
+            userDictionary.learn(learnedPinyin, candidate)
+        }
         root?.let { rebuild(it) }
     }
 
