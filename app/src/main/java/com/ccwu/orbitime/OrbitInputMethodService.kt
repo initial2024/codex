@@ -284,12 +284,21 @@ class OrbitInputMethodService : InputMethodService() {
         }
 
         commitPendingPinyin(rawFallback = true)
-        val text = if (rawKey.length == 1 && rawKey[0].isLetter() && inputMode == InputMode.ENGLISH && caps) {
-            rawKey.uppercase()
-        } else {
-            rawKey
+        currentInputConnection?.commitText(mapPrintableText(rawKey), 1)
+    }
+
+    private fun mapPrintableText(rawKey: String): String {
+        if (inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps) {
+            return rawKey.uppercase()
         }
-        currentInputConnection?.commitText(text, 1)
+        if (inputMode == InputMode.PINYIN && !symbols) {
+            return when (rawKey) {
+                "," -> "，"
+                "." -> "。"
+                else -> rawKey
+            }
+        }
+        return rawKey
     }
 
     private fun handleBackspace() {
