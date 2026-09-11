@@ -1,4 +1,21 @@
-# token1<TAB>token2<TAB>[token3<TAB>]count
+# token<TAB>count OR token1<TAB>token2<TAB>count OR token1<TAB>token2<TAB>token3<TAB>count
+你	980000
+我	995000
+好	970000
+是	990000
+的	1000000
+问题	880000
+翻译	800000
+结果	850000
+输入法	850000
+学习	850000
+优化	810000
+修改	830000
+本地	790000
+词库	760000
+候选	730000
+继续	800000
+完善	740000
 你	好	950000
 你	是	谁	900000
 你	好	吗	880000
