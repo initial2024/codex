@@ -172,6 +172,20 @@ def iter_ngram_tsv(spec: SourceSpec) -> Iterable[tuple[tuple[str, ...], int]]:
             yield tokens, count
 
 
+def prepare_output_dir(out_dir: Path) -> None:
+    """Delete only files owned by this generator so stale shards cannot survive."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("manifest.json", "english.odict", "ngram1.odict", "ngram2.odict", "ngram3.odict"):
+        path = out_dir / name
+        if path.is_file():
+            path.unlink()
+    lexicon_dir = out_dir / "lexicon"
+    if lexicon_dir.is_dir():
+        for path in lexicon_dir.glob("*.odict"):
+            if path.is_file():
+                path.unlink()
+
+
 def write_lexicon_assets(records: dict[tuple[str, str], int], out_dir: Path) -> dict[str, int]:
     lexicon_dir = out_dir / "lexicon"
     lexicon_dir.mkdir(parents=True, exist_ok=True)
@@ -284,7 +298,7 @@ def build(args: argparse.Namespace) -> int:
         else:
             raise ValueError(f"unsupported source format: {spec.format}")
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    prepare_output_dir(out_dir)
     lexicon_counts = write_lexicon_assets(lexicon, out_dir)
     english_count = write_english_asset(english, out_dir) if english else 0
     ngram_counts = write_ngram_assets(ngrams, out_dir)
