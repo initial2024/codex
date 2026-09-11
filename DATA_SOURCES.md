@@ -1,55 +1,170 @@
 # Orbit IME data source strategy
 
-Orbit IME needs better Pinyin candidates, English candidates, and local phrase translation, but the app must remain privacy-first and offline.
+Orbit IME needs professional-scale Pinyin candidates and frequency data while remaining offline, privacy-first, and suitable for future commercial distribution.
 
-## v0.14 status
+## v0.15 status
 
-Version `0.14.0` expands the maintainable local data layer:
+Version `0.15.0` completes the first import/runtime architecture:
 
-- `PinyinDictionary.kt` keeps the core syllable dictionary.
-- `PinyinBoostData.kt` keeps earlier project-authored Pinyin phrase data.
-- `PinyinExpandedData.kt` adds more project-authored common words, shorthand, input-method feedback phrases, study phrases, development phrases, and sentence candidates.
-- `PinyinSentenceDictionary.kt` merges sentence shortcuts, expanded data, and fuzzy correction candidates.
-- `PinyinCorrectionEngine.kt` adds small local typo/fuzzy matching, including direct handling for cases such as `xhfnivh`.
-- `EnglishDictionary.kt` adds English word, phrase, shorthand, and typo-correction candidates.
-- `TranslationBoostData.kt` keeps earlier local exact phrase translation and conservative token translation.
-- `ProfessionalTranslationData.kt` keeps the larger project-authored local phrase translation table.
-- `TranslationExpansionData.kt` adds more local phrase translations for feedback, input-method, development, and study scenarios.
-- `OfflineTranslationPack.kt` checks professional/expanded/local translation data before falling back to prompt generation.
+- `tools/ime_importer.py`: build-time licensed-data importer.
+- `data/ime_sources/manifest.example.json`: source/license manifest example.
+- `CompactLexiconAsset.kt`: compact lexicon asset reader with shard LRU cache.
+- `PinyinSegmenter.kt`: continuous-Pinyin dynamic-programming segmenter.
+- `NGramLanguageModel.kt`: local 1/2/3-gram scoring.
+- `CandidateRanker.kt`: static/user/N-gram/fuzzy score combiner.
+- `PinyinImeEngine.kt`: sentence beam search and candidate generation.
+- `UserDictionaryStore.kt`: local personalization with an in-memory read cache.
 
-## Public data sources reviewed
+The committed `.odict` data is still a project-authored seed/fallback pack. A future large pack should be generated through the importer rather than manually pasted into Kotlin.
 
-These sources are useful references for future import pipelines:
+## Source manifest requirement
 
-- CC-CEDICT: Chinese-English dictionary with simplified/traditional headwords, pinyin, and English glosses. License: Creative Commons Attribution-ShareAlike.
-- Android Open Source Project Pinyin IME: historical Android Pinyin IME implementation and ideas under Android/AOSP licensing.
-- RIME / Trime ecosystem: mature open-source IME architecture and dictionary packaging ideas. Some RIME-related port metadata reports GPLv3 licensing, so direct copying is not assumed safe for a future commercial app.
-- phrase-pinyin-data / pinyin-data style datasets: useful for phrase-to-pinyin expansion only when license and attribution requirements are clear.
+Every bulk imported dataset must declare:
 
-## License rule
+```text
+name
+path
+format
+license
+source URL
+redistribution_allowed
+attribution
+optional default frequency
+```
 
-Do not copy arbitrary GitHub dictionary data into this repository unless the license is explicit and compatible with redistribution.
+The importer fails closed when redistribution is not explicitly allowed or, in strict mode, when the license is unknown.
 
-For CC-CEDICT-like sources, attribution and share-alike requirements must be preserved if bundled data is imported.
+Current strict allow-list:
 
-For MIT/Apache-licensed data, include attribution in this file and keep the original license notice when required.
+```text
+PROJECT
+Apache-2.0
+MIT
+BSD-2-Clause
+BSD-3-Clause
+CC-BY-4.0
+CC-BY-SA-4.0
+```
 
-Version `0.14.0` does not directly import a full public dictionary. The bundled boost data remains project-authored to avoid licensing ambiguity.
+This allow-list is not a legal conclusion. It is an engineering guardrail. Before shipping third-party data, confirm the specific dataset terms and required notices.
 
-## Future professional path
+## Public sources reviewed
 
-A professional-quality offline IME requires:
+### Android Open Source Project PinyinIME
 
-1. A large phrase dictionary.
-2. Word frequency data.
-3. Pinyin segmentation for continuous input.
-4. Ranking using static frequency + local user frequency.
-5. Compact asset storage instead of huge hardcoded Kotlin maps.
-6. Build-time importer scripts that generate app-private assets.
-7. Runtime lookup from indexed assets or SQLite-like compact tables.
+Reference:
 
-Version `0.14.0` improves local coverage, but the next professional step should be a licensed-data importer instead of manually growing Kotlin maps forever.
+```text
+https://android.googlesource.com/platform/packages/inputmethods/PinyinIME/
+```
+
+The AOSP PinyinIME source files reviewed carry Apache License 2.0 headers. This makes its implementation ideas useful as an architectural reference, but each data/binary artifact still needs its own provenance check before redistribution.
+
+Do not assume that every mirror or bundled dictionary file inherits the same license merely because the surrounding code is Apache-licensed.
+
+### CC-CEDICT
+
+Official project/download information:
+
+```text
+https://cc-cedict.org/
+```
+
+CC-CEDICT is published under Creative Commons Attribution-ShareAlike 4.0. It permits commercial use subject to attribution and share-alike obligations.
+
+The importer supports standard CC-CEDICT text records, but Orbit IME does not silently bundle CC-CEDICT. If it is imported for distribution:
+
+- preserve attribution;
+- record the source URL/version/date;
+- preserve required license text;
+- treat modified/derived dictionary data according to share-alike requirements.
+
+### RIME / related ecosystems
+
+RIME is valuable for architecture and packaging ideas, but the ecosystem contains multiple repositories/data packs with different licenses. Do not copy a RIME schema or dictionary solely because it is publicly visible on GitHub.
+
+Check the exact repository/data-pack license first.
+
+### English frequency data
+
+No third-party English frequency corpus is bundled in v0.15.
+
+For future English frequency/N-gram imports, treat source corpus licensing and generated frequency-statistics licensing as separate questions. Wikipedia/web/news/spoken corpora also represent different domains and should not be merged into one unexplained score.
+
+## Project-authored seed data
+
+Current project-authored import examples:
+
+```text
+data/ime_sources/seed_lexicon.tsv
+data/ime_sources/seed_english.tsv
+data/ime_sources/seed_ngram.tsv
+```
+
+These exist to test the importer/runtime path. They are not intended to be the final professional-scale dictionary.
+
+## Import formats
+
+### Orbit lexicon TSV
+
+```text
+pinyin<TAB>text<TAB>frequency
+```
+
+### CC-CEDICT
+
+Standard lines are parsed into simplified headword + normalized tone-less Pinyin. CC-CEDICT does not provide a general usage frequency, so a separate licensed frequency source is preferable for serious ranking.
+
+### English TSV
+
+```text
+word<TAB>frequency<TAB>optional candidate 1<TAB>optional candidate 2...
+```
+
+### N-gram TSV
+
+```text
+token<TAB>count
+```
+
+or
+
+```text
+token1<TAB>token2<TAB>count
+```
+
+or
+
+```text
+token1<TAB>token2<TAB>token3<TAB>count
+```
+
+## Generated runtime format
+
+The importer outputs `ORBIT_ODICT` assets.
+
+Preferred large lexicon layout:
+
+```text
+app/src/main/assets/ime/lexicon/a.odict
+...
+app/src/main/assets/ime/lexicon/z.odict
+```
+
+Frequency/count values are encoded in base36 to reduce text size. Runtime parsing is streaming and the lexicon reader keeps only a small number of letter shards in memory.
+
+## What not to do
+
+Do not:
+
+- paste an arbitrary GitHub word list into the app;
+- import data with no license file;
+- assume “open source code” means bundled dictionary data has the same license;
+- remove attribution from CC-BY/CC-BY-SA data;
+- mix corpora/frequency scores without recording source and methodology;
+- store a huge dictionary as a Kotlin `Map`;
+- make the keyboard depend on network access for prediction.
 
 ## Product boundary
 
-Orbit IME still does not request `INTERNET` permission and still does not upload user input, dictionary data, clipboard data, translation text, or pet data.
+Orbit IME v0.15 still does not request `INTERNET` permission and does not upload user input, dictionary data, clipboard data, translation text, pet data, or local ranking state.
