@@ -26,7 +26,7 @@ Gradle 8.10.2 or compatible
 Python 3.10+ for importer validation
 ```
 
-## v0.15 architecture that must remain intact
+## v0.15 Chinese architecture that must remain intact
 
 ```text
 raw Pinyin
@@ -39,7 +39,17 @@ raw Pinyin
 -> top candidates
 ```
 
-Do not replace this with another hardcoded giant Kotlin map.
+English imported-data path:
+
+```text
+English composing buffer
+-> CompactEnglishAsset
+-> EnglishImeEngine
+-> EnglishDictionary phrase/typo fallback
+-> top candidates
+```
+
+Do not replace these paths with another hardcoded giant Kotlin map.
 
 ## Stage A — importer validation
 
@@ -67,60 +77,63 @@ Do not copy any third-party dictionary into the repo merely to make this test la
 
 ## Stage B — static Kotlin review
 
-Inspect these v0.15 files:
+Inspect:
 
 ```text
 app/src/main/java/com/ccwu/orbitime/CompactLexiconAsset.kt
+app/src/main/java/com/ccwu/orbitime/CompactEnglishAsset.kt
+app/src/main/java/com/ccwu/orbitime/EnglishImeEngine.kt
 app/src/main/java/com/ccwu/orbitime/PinyinSegmenter.kt
 app/src/main/java/com/ccwu/orbitime/NGramLanguageModel.kt
 app/src/main/java/com/ccwu/orbitime/CandidateRanker.kt
 app/src/main/java/com/ccwu/orbitime/PinyinImeEngine.kt
 app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt
 app/src/main/java/com/ccwu/orbitime/PinyinSentenceDictionary.kt
+app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt
 ```
 
 Confirm:
 
 1. `CompactLexiconAsset` reads `ORBIT_ODICT` and falls back safely when a shard is absent.
 2. Lexicon shards are cached with a bounded LRU, not loaded all at once.
-3. `PinyinSegmenter` uses dynamic programming and does not prefer pathological over-segmentation such as `hao -> ha + o`.
-4. `nihaoma` can produce segmentation `ni / hao / ma`.
-5. `nishishei` can produce `ni / shi / shei`.
-6. `shurufa` can produce `shu / ru / fa`.
-7. `PinyinImeEngine` uses bounded phrase spans and bounded beam width.
-8. `NGramLanguageModel` supports local 1/2/3-gram files and has a safe fallback.
-9. `CandidateRanker` combines static frequency, N-gram, segmentation, user frequency, source priority, and correction penalty.
-10. Fuzzy/typo candidates are penalized rather than treated as exact spellings.
-11. `UserDictionaryStore` routes through the new engine but retains the legacy fallback path.
-12. `UserDictionaryStore` does not recursively call its own candidate API from the engine.
-13. User-dictionary records remain limited to pinyin/text/frequency/updatedAt.
-14. User-dictionary JSON is cached in memory instead of reparsed for every candidate score.
+3. `CompactEnglishAsset` reads `ime/english.odict` once and caches parsed entries.
+4. `EnglishImeEngine` ranks packaged-frequency candidates and merges the existing phrase/typo fallback.
+5. `OrbitInputMethodService` initializes `EnglishImeEngine` and uses it for the English candidate bar.
+6. `PinyinSegmenter` uses dynamic programming and does not prefer pathological over-segmentation such as `hao -> ha + o`.
+7. `nihaoma` can produce segmentation `ni / hao / ma`.
+8. `nishishei` can produce `ni / shi / shei`.
+9. `shurufa` can produce `shu / ru / fa`.
+10. `PinyinImeEngine` uses bounded phrase spans and bounded beam width.
+11. `NGramLanguageModel` supports local 1/2/3-gram files and has a safe fallback.
+12. Exact multi-character Chinese candidates receive both phrase-token and character-sequence N-gram evaluation; character N-gram scoring must not replace stronger phrase-token evidence.
+13. `CandidateRanker` combines static frequency, N-gram, segmentation, user frequency, source priority, and correction penalty.
+14. Fuzzy/typo candidates are penalized rather than treated as exact spellings.
+15. `UserDictionaryStore` routes through the new engine but retains the legacy fallback path.
+16. `UserDictionaryStore` does not recursively call its own candidate API from the engine.
+17. User-dictionary records remain limited to pinyin/text/frequency/updatedAt.
+18. User-dictionary JSON is cached in memory instead of reparsed for every candidate score.
 
-## Stage C — version and privacy checks
+## Stage C — asset/version/privacy checks
+
+Confirm committed development fallback assets include:
+
+```text
+app/src/main/assets/ime/manifest.json
+app/src/main/assets/ime/lexicon.odict
+app/src/main/assets/ime/english.odict
+app/src/main/assets/ime/ngram1.odict
+app/src/main/assets/ime/ngram2.odict
+app/src/main/assets/ime/ngram3.odict
+```
 
 Confirm:
 
 ```text
 versionCode = 15
 versionName = 0.15.0
-```
-
-Settings page should show only:
-
-```text
-About · v0.15.0
-```
-
-GitHub Actions artifact:
-
-```text
-orbit-ime-v0.15-debug-apk
-```
-
-Workflow must remain manual-only:
-
-```text
-workflow_dispatch
+Settings footer = About · v0.15.0
+Actions artifact = orbit-ime-v0.15-debug-apk
+Actions trigger = workflow_dispatch only
 ```
 
 Manifest must not add:
@@ -149,8 +162,6 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## Stage E — on-device functional acceptance
 
-At minimum verify:
-
 ### Continuous Pinyin / segmentation
 
 ```text
@@ -170,6 +181,17 @@ bscgfy -> 不是成功翻译
 sjkb -> 数据库不够
 xhfnivh -> includes 喜欢你
 ```
+
+### English imported/fallback data
+
+```text
+build -> build / build failed / build succeeded
+translate -> translate / translation
+trasnlate -> translate
+permision -> permission
+```
+
+Confirm letters still stay in the composing buffer until candidate selection/space instead of immediately committing each key.
 
 ### Personal ranking
 
