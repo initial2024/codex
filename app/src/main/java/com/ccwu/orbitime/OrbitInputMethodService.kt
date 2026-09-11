@@ -42,12 +42,14 @@ class OrbitInputMethodService : InputMethodService() {
     private lateinit var store: ClipboardStore
     private lateinit var userDictionary: UserDictionaryStore
     private lateinit var petRepository: PetRepository
+    private lateinit var englishImeEngine: EnglishImeEngine
 
     override fun onCreate() {
         super.onCreate()
         store = ClipboardStore(this)
         userDictionary = UserDictionaryStore(this)
         petRepository = PetRepository(this)
+        englishImeEngine = EnglishImeEngine(this)
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -617,7 +619,7 @@ class OrbitInputMethodService : InputMethodService() {
         return userDictionary.exactCandidatesFor(rawInput = pinyinBuffer, staticCandidates = staticCandidates)
     }
 
-    private fun candidatesForCurrentEnglish(): List<String> = EnglishDictionary.candidatesFor(englishBuffer)
+    private fun candidatesForCurrentEnglish(): List<String> = englishImeEngine.candidatesFor(englishBuffer)
 
     private fun commitPinyinCandidate(candidate: String) {
         val inputConnection = currentInputConnection ?: return
