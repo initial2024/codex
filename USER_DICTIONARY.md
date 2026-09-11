@@ -1,128 +1,128 @@
-# Orbit IME User Dictionary and Pinyin Candidates
+# Orbit IME User Dictionary and Candidate Personalization
 
-This file documents the accepted local dictionary behavior.
+This file documents local personalized ranking in Orbit IME `0.15.0`.
 
 ## Goal
 
-Improve Pinyin candidate ordering while keeping learning local and explicit.
+Repeated user choices should move upward over time without uploading, syncing, or persisting full typed text.
 
-## Static dictionary
+## v0.15 candidate stack
 
-Orbit IME includes a generic built-in static dictionary for common syllables, common chat terms, development terms, input-method terms, and study terms.
+The visible Chinese candidate list can now combine:
 
-Version `0.14.0` includes:
+1. Exact local user-dictionary matches.
+2. Exact packaged `.odict` lexicon matches.
+3. Project-authored sentence/shortcut matches.
+4. Continuous-Pinyin segmented and beam-generated candidates.
+5. Static word/phrase frequency.
+6. Local 1/2/3-gram scores.
+7. Fuzzy/typo candidates with an explicit penalty.
+8. Local user-selection frequency.
 
-- `PinyinDictionary.kt`: core syllables.
-- `PinyinBoostData.kt`: earlier project-authored boost data.
-- `PinyinExpandedData.kt`: expanded words, shorthand, and sentence candidates.
-- `PinyinSentenceDictionary.kt`: merged sentence/shortcut lookup.
-- `PinyinCorrectionEngine.kt`: small local fuzzy/typo correction.
-
-Example candidates:
-
-```text
-nh -> 你好 / 你好吗
-nisishei -> 你是谁
-hsywt -> 还是有问题
-myfyjg -> 没有翻译结果
-bscgfy -> 不是成功翻译
-sjkb -> 数据库不够
-xhfnivh -> 喜欢你 / 想和你说 / 需要优化
-wgj -> 文件夹
-wj -> 文件 / 问题
-wt -> 问题
-xg -> 修改
-dm -> 代码
-gj -> 构建 / 工具
-srf -> 输入法
-jqb -> 剪贴板 / 剪切板
-fy -> 翻译
-sz -> 设置
-```
-
-The static dictionary must stay generic. Product-specific or developer-personal terms must not be hardcoded into `PinyinDictionary.kt`.
-
-## User dictionary
-
-The user dictionary is local learning only.
-
-It does not:
-
-- Upload dictionary entries.
-- Sync dictionary entries.
-- Persist full typed key streams.
-- Learn from password fields.
-- Learn from OTP-only text.
-- Learn from secret-like text.
-- Read background clipboard content.
-- Add `INTERNET` permission.
-- Add cloud translation.
-- Add any external API.
+The final list is de-duplicated and capped at 12 candidates.
 
 ## What gets learned
 
 Orbit IME learns only after the user explicitly commits a Pinyin candidate by:
 
-- Tapping a candidate.
-- Pressing space while a Pinyin buffer exists.
+- tapping a candidate;
+- pressing space while a Pinyin buffer exists.
 
-The stored record is limited to:
+The persistent record is limited to:
 
 ```text
-pinyin -> committed candidate text -> frequency -> updatedAt
+pinyin
+committed candidate text
+frequency
+updatedAt
 ```
 
-It does not store the surrounding sentence, app name, target field, or full input history.
+It does not store:
 
-## Candidate ranking
+- surrounding sentence text;
+- app/package name;
+- target field identity;
+- full input history;
+- clipboard contents unless the user separately saves them in Clips.
 
-When a Pinyin buffer exists, candidate ranking is:
+## Ranking effect
 
-1. Exact user dictionary matches, ordered by frequency and recency.
-2. Built-in static dictionary, expanded dictionary, sentence shortcut, and fuzzy correction candidates.
-3. Prefix user dictionary matches, ordered by frequency and recency.
-4. Contains-match user dictionary candidates as a last local-learning boost.
+`CandidateRanker` treats local user frequency as a strong ranking feature.
 
-The displayed candidate list is de-duplicated and capped at 12 candidates.
+Conceptually:
+
+```text
+score =
+  static-frequency score
+  + N-gram score
+  + segmentation score
+  + local user-frequency boost
+  + source priority
+  - fuzzy/typo penalty
+```
+
+This means a repeatedly selected candidate can rise above the default packaged order without rewriting the packaged dictionary.
+
+## In-memory cache
+
+v0.15 keeps parsed user-dictionary entries in a process-local memory cache.
+
+Purpose:
+
+- avoid parsing the same `SharedPreferences` JSON for every candidate score;
+- reduce candidate latency;
+- keep ranking deterministic.
+
+The cache contains only the same four fields already stored persistently. It is replaced after learning, cleared when the user clears the dictionary, and disappears with the app process.
 
 ## Storage
 
-The dictionary is stored using app-private `SharedPreferences` JSON:
+Persistent storage remains app-private `SharedPreferences` JSON:
 
 ```text
 prefs: orbit_user_dictionary
 key: entries_json
 ```
 
-Free quota:
+Current quotas remain controlled by `ProGate`.
 
-```text
-300 entries
-```
-
-Pro placeholder quota:
-
-```text
-5000 entries
-```
-
-When the quota is exceeded, the dictionary keeps the highest-frequency and most-recent entries.
+When quota is exceeded, the store keeps the highest-frequency and most-recent entries.
 
 ## Safety filters
 
-A candidate is learned only when:
+A learned mapping must satisfy all current safety checks:
 
-- Pinyin length is 1 to 64 characters.
-- Candidate text length is 1 to 40 characters.
-- Candidate text contains CJK characters.
-- Candidate text is not equal to the raw Pinyin string.
-- Candidate text does not look like an OTP, password, token, API key, authorization header, cookie, session value, or long dense secret.
+- normalized Pinyin length: 1 to 64 characters;
+- candidate text length: 1 to 40 characters;
+- candidate contains CJK characters;
+- candidate is not identical to raw Pinyin;
+- candidate does not look like an OTP, password, token, API key, authorization header, cookie/session value, or long dense secret.
+
+Password-like fields enter privacy mode and do not learn.
+
+## Large packaged dictionaries are separate
+
+User learning is not the same thing as the large packaged lexicon.
+
+The packaged lexicon is generated at build time with:
+
+```text
+tools/ime_importer.py
+```
+
+and stored as compact `.odict` assets. User selections are never written back into those files.
+
+## Failure behavior
+
+`UserDictionaryStore.candidatesFor()` routes through the v0.15 local IME engine first.
+
+If the new engine returns no candidates or throws because an asset is malformed, the code keeps a legacy static/user-dictionary fallback path so the keyboard does not become unusable.
 
 ## Settings controls
 
-The settings page shows:
+The settings page continues to show:
 
-- Local dictionary entry count.
-- Total learned selection count.
-- Current quota.
-- A button to clear the local user dictionary.
+- local learned-entry count;
+- cumulative learned selection count;
+- current quota;
+- a button to clear the local user dictionary.
