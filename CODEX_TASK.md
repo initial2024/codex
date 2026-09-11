@@ -1,12 +1,12 @@
-# Codex handoff task: build Orbit IME v0.13 APK later
+# Codex handoff task: build Orbit IME v0.14 APK later
 
 ## Status
 
-Orbit IME `0.13.0` usable Keyboard Pet module has been prepared. Build only after the user asks to start the APK build.
+Orbit IME `0.14.0` local data expansion has been prepared. Build only after the user asks to start the APK build.
 
 ## Goal
 
-Build the debug APK for Orbit IME Android `0.13.0` after the pet module changes are considered ready.
+Build the debug APK for Orbit IME Android `0.14.0` after the input-data, fuzzy-correction, English-candidate, translation, and local-learning changes are considered ready.
 
 ## Repository
 
@@ -36,7 +36,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ## GitHub Actions artifact
 
 ```text
-orbit-ime-v0.13-debug-apk
+orbit-ime-v0.14-debug-apk
 ```
 
 ## Build trigger policy
@@ -78,26 +78,35 @@ Do not add:
 ## Functional acceptance criteria
 
 1. APK builds successfully.
-2. `versionName` is `0.13.0`.
-3. `versionCode` is `13`.
-4. Settings page keeps the version only as `About · v0.13.0`.
-5. GitHub Actions artifact name is `orbit-ime-v0.13-debug-apk`.
-6. The keyboard Hub shows `宠物` in Pinyin mode and `Pet` in English mode.
-7. Tapping `宠物` / `Pet` opens a usable keyboard pet panel.
-8. The pet panel shows current pet, species, stage, level, EXP, Stars, mood, today's typed characters, total typed characters, and outfit.
-9. The pet panel has working actions: `签到`, `开蛋`, `切换`, `装扮`, `图鉴`, `装扮库`, `隐藏/显示`, and `关闭`.
-10. `签到` gives Chinese feedback and grants Stars once per day.
-11. `开蛋` gives one free hatch per day; later hatches cost 30 Stars.
-12. Owned pets are stored locally and `切换` cycles owned pets.
-13. `装扮` cycles local outfit placeholders.
-14. `图鉴` shows owned/free/pro pet catalog status.
-15. `装扮库` shows available outfit placeholders.
-16. Pet growth still increments from local typing, candidate commits, clip saves, translate insertion, and check-in.
-17. Starting Pinyin or English composing hides the pet panel so it does not block candidates.
-18. Privacy mode hides Hub tools and clears the pet panel.
-19. Pinyin and English candidate improvements from v0.12 still work.
-20. Local translation improvements from v0.12 still work.
-21. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
+2. `versionName` is `0.14.0`.
+3. `versionCode` is `14`.
+4. Settings page keeps the version only as `About · v0.14.0`.
+5. GitHub Actions artifact name is `orbit-ime-v0.14-debug-apk`.
+6. `PinyinExpandedData.kt` exists and contains expanded local Pinyin words, shorthand, and sentence candidates.
+7. `PinyinCorrectionEngine.kt` exists and returns fuzzy/typo candidates.
+8. `PinyinSentenceDictionary.kt` merges base sentence shortcuts, expanded data, and fuzzy correction.
+9. `xhfnivh` shows Chinese candidates, including `喜欢你`.
+10. `nh` shows `你好` / `你好吗`.
+11. `nisishei` shows `你是谁`.
+12. `hsywt` shows `还是有问题`.
+13. `myfyjg` shows `没有翻译结果`.
+14. `bscgfy` shows `不是成功翻译`.
+15. `sjkb` shows `数据库不够`.
+16. `wgj`, `wj`, `wt`, `xg`, `srf`, `jqb`, `shurufa`, and `jianqieban` still show useful candidates.
+17. User dictionary local learning still works after candidate tap and space-to-select.
+18. User dictionary stores only pinyin, committed candidate text, frequency, and updatedAt.
+19. User dictionary allows longer local learned phrases and returns up to 12 candidates.
+20. `EnglishDictionary.kt` includes expanded English word, phrase, shorthand, and typo-correction candidates.
+21. Typing `hi`, `whq`, `build`, `translate`, `problem`, `professional`, `dictionary`, `trasnlate`, and `permision` shows useful English candidates before commit.
+22. Pressing space in English mode commits the first English candidate and appends a space.
+23. `TranslationExpansionData.kt` exists and expands local Chinese-English phrase translation.
+24. `OfflineTranslationPack.kt` checks `TranslationExpansionData` before rough token assembly and prompt fallback.
+25. Known phrases like `翻译不知道去哪里了`, `没有翻译结果`, `只是提示词`, `不是成功翻译`, `英文没有选择`, `不能形成句子`, `数据库不够`, `加入个人学习功能`, `接近专业版本`, and `I will handle it later` show directly insertable local translations.
+26. Unsupported text still falls back to prompt generation instead of pretending to translate.
+27. The keyboard Hub still has `宠物` / `Pet`, and the pet panel remains usable.
+28. Starting Pinyin or English composing hides the pet panel so it does not block candidates.
+29. Privacy mode hides Hub tools and clears Pinyin, English, Translate, and Pet state.
+30. No network, cloud translation, external API, ad, analytics, Accessibility, overlay, billing, dictionary upload, pet upload, or background harvesting behavior is introduced.
 
 ## Fix policy
 
