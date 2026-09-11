@@ -100,11 +100,23 @@ object PinyinSentenceDictionary {
         "zdynd" to listOf("重点与难点")
     )
 
+    fun exactCandidatesFor(rawInput: String): List<String> {
+        val query = PinyinDictionary.normalize(rawInput)
+        if (query.isEmpty()) return emptyList()
+        return (
+            sentenceShortcuts[query].orEmpty() +
+                PinyinExpandedData.entries[query].orEmpty() +
+                PinyinBoostData.entries[query].orEmpty()
+            )
+            .distinct()
+            .take(MAX_CANDIDATES)
+    }
+
     fun candidatesFor(rawInput: String): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
 
-        val base = sentenceShortcuts[query].orEmpty()
+        val base = exactCandidatesFor(query)
         val expanded = PinyinExpandedData.candidatesFor(query)
         val fuzzy = PinyinCorrectionEngine.candidatesFor(query)
         val prefix = sentenceShortcuts.asSequence()
