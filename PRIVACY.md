@@ -4,17 +4,17 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.14.0`.
+This policy applies to Orbit IME `0.15.0`.
 
 ## Network
 
-Orbit IME `0.14.0` does not request `INTERNET` permission.
+Orbit IME `0.15.0` does not request `INTERNET` permission.
 
-The app cannot upload input text, clipboard text, Pinyin buffers, English buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
+The app cannot upload input text, clipboard text, Pinyin buffers, English buffers, candidate-ranking state, N-gram data, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.14.0` includes:
+Orbit IME `0.15.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
@@ -33,48 +33,64 @@ Orbit IME cannot replace the host app or Android system long-press text-selectio
 
 Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, passwords, API keys, bearer tokens, authorization headers, cookie/session strings, or very long dense secret-like tokens.
 
-## Pinyin mode and user dictionary
+## Pinyin mode and local IME engine
 
-Orbit IME `0.14.0` includes a local Pinyin 26-key mode.
+Orbit IME `0.15.0` includes a local Pinyin 26-key engine.
 
-Pinyin candidates are generated from:
+Candidate generation can use:
 
-- A core packaged syllable dictionary in `PinyinDictionary.kt`.
-- Packaged phrase dictionaries in `PinyinBoostData.kt` and `PinyinExpandedData.kt`.
-- A packaged sentence/shortcut dictionary in `PinyinSentenceDictionary.kt`.
-- A local fuzzy/typo correction engine in `PinyinCorrectionEngine.kt`.
-- A local user dictionary learned from explicit candidate commits.
+- packaged `.odict` lexicon assets;
+- project-authored fallback dictionaries;
+- dynamic-programming Pinyin segmentation;
+- bounded phrase-level beam search;
+- packaged 1-gram, 2-gram, and 3-gram count data;
+- local user selection frequency;
+- local fuzzy/typo correction.
 
-Pinyin buffers are not uploaded and are not persisted as typed streams.
+All of these operations run on-device.
+
+Pinyin buffers are temporary composing state. They are not uploaded and are not persisted as typed streams.
+
+The N-gram model reads packaged count assets. It does not send text to a model or server.
+
+Candidate ranking may inspect only temporary in-memory context supplied by the current input session. Orbit IME does not persist surrounding sentence context for language-model ranking.
+
+## User dictionary
 
 The user dictionary learns only after explicit candidate commit:
 
 - Candidate tap.
 - Space-to-select while a Pinyin buffer exists.
 
-The stored record is limited to:
+The stored record remains limited to:
 
 ```text
 pinyin -> committed candidate text -> frequency -> updatedAt
 ```
 
-Orbit IME does not store surrounding sentence text, app name, target field, or full input history for user dictionary learning.
+Orbit IME does not store the surrounding sentence, app/package name, target field identity, or full input history for user-dictionary learning.
 
-The dictionary is stored locally using app-private `SharedPreferences` JSON.
+The dictionary is stored using app-private `SharedPreferences` JSON. v0.15 keeps an in-memory cache of these same records to avoid repeatedly parsing JSON during candidate ranking; this cache is process-local and is not a second persistent history.
+
+## Imported dictionary assets
+
+Large dictionary packs are build-time application assets, not user input records.
+
+The v0.15 importer requires source/license metadata and generates compact `.odict` assets. Runtime lookup reads these packaged files locally.
+
+Importing a third-party dictionary does not grant Orbit IME permission to upload user text or use network prediction.
 
 ## English candidate mode
 
-English candidates are generated locally from `EnglishDictionary.kt`.
+English candidates are generated locally from packaged English candidate data.
 
 The English composing buffer is not uploaded and is not persisted as a typed stream.
 
 Typing English letters enters a temporary composing buffer. The user commits by tapping a candidate or pressing space.
 
-`EnglishDictionary.kt` includes local shorthand, phrase, and typo-correction candidates only. It does not call a model or server.
-
 ## Local phrase translation and Translate Preview
 
-Orbit IME `0.14.0` first attempts local phrase translation using packaged phrase tables in `ProfessionalTranslationData.kt`, `TranslationExpansionData.kt`, `OfflineTranslationPack.kt`, and `TranslationBoostData.kt`.
+Orbit IME `0.15.0` first attempts local phrase translation using packaged phrase tables.
 
 If a phrase exists in the local table, the translated text can be inserted directly.
 
@@ -94,7 +110,7 @@ Built-in skin tokens are packaged inside the app. Skin selection is not uploaded
 
 ## Keyboard Pet
 
-Orbit IME `0.14.0` includes a usable local keyboard pet panel.
+Orbit IME `0.15.0` includes a local keyboard pet panel.
 
 The keyboard Hub has a `宠物` / `Pet` entry. The panel supports local check-in, daily free hatch, Stars-based hatch, owned-pet switching, outfit rotation, catalog display, show/hide, and local status chat.
 
@@ -140,6 +156,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.14.0` contains a Pro placeholder only.
+Orbit IME `0.15.0` contains a Pro placeholder only.
 
 It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
