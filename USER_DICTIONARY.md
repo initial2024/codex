@@ -10,9 +10,24 @@ Improve Pinyin candidate ordering while keeping learning local and explicit.
 
 Orbit IME includes a generic built-in static dictionary for common syllables, common chat terms, development terms, input-method terms, and study terms.
 
-Version `0.8.0` also includes generic shorthand candidates such as:
+Version `0.14.0` includes:
+
+- `PinyinDictionary.kt`: core syllables.
+- `PinyinBoostData.kt`: earlier project-authored boost data.
+- `PinyinExpandedData.kt`: expanded words, shorthand, and sentence candidates.
+- `PinyinSentenceDictionary.kt`: merged sentence/shortcut lookup.
+- `PinyinCorrectionEngine.kt`: small local fuzzy/typo correction.
+
+Example candidates:
 
 ```text
+nh -> 你好 / 你好吗
+nisishei -> 你是谁
+hsywt -> 还是有问题
+myfyjg -> 没有翻译结果
+bscgfy -> 不是成功翻译
+sjkb -> 数据库不够
+xhfnivh -> 喜欢你 / 想和你说 / 需要优化
 wgj -> 文件夹
 wj -> 文件 / 问题
 wt -> 问题
@@ -64,10 +79,11 @@ It does not store the surrounding sentence, app name, target field, or full inpu
 When a Pinyin buffer exists, candidate ranking is:
 
 1. Exact user dictionary matches, ordered by frequency and recency.
-2. Built-in static dictionary candidates.
+2. Built-in static dictionary, expanded dictionary, sentence shortcut, and fuzzy correction candidates.
 3. Prefix user dictionary matches, ordered by frequency and recency.
+4. Contains-match user dictionary candidates as a last local-learning boost.
 
-The displayed candidate list is de-duplicated and capped at 8 candidates.
+The displayed candidate list is de-duplicated and capped at 12 candidates.
 
 ## Storage
 
@@ -96,8 +112,8 @@ When the quota is exceeded, the dictionary keeps the highest-frequency and most-
 
 A candidate is learned only when:
 
-- Pinyin length is 1 to 32 characters.
-- Candidate text length is 1 to 20 characters.
+- Pinyin length is 1 to 64 characters.
+- Candidate text length is 1 to 40 characters.
 - Candidate text contains CJK characters.
 - Candidate text is not equal to the raw Pinyin string.
 - Candidate text does not look like an OTP, password, token, API key, authorization header, cookie, session value, or long dense secret.
