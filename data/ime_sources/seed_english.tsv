@@ -1,0 +1,100 @@
+# word<TAB>frequency<TAB>optional candidates...
+the	1000000
+to	980000
+and	970000
+of	960000
+a	950000
+in	940000
+is	930000
+you	920000
+that	910000
+it	900000
+for	890000
+on	880000
+with	870000
+this	860000
+be	850000
+are	840000
+have	830000
+not	820000
+but	810000
+we	800000
+they	790000
+do	780000
+can	770000
+will	760000
+would	750000
+should	740000
+could	730000
+hello	720000	Hello.	Hello,
+hi	710000	Hi.	Hi,
+thanks	700000	Thanks.	Thank you.
+sorry	690000	Sorry.	I'm sorry.
+okay	680000	Okay.	OK.
+yes	670000	Yes.
+no	660000	No.
+problem	650000	problem	There is a problem.
+issue	640000	issue	There is still an issue.
+build	630000	build	build failed	build succeeded	build the APK
+failed	620000	failed	build failed
+success	610000	success	build succeeded
+successful	600000	successful	build succeeded
+translate	590000	translate	translation	Translate this sentence.
+translation	580000	translation	translation result
+dictionary	570000	dictionary	user dictionary	local dictionary
+candidate	560000	candidate	candidate list
+input	550000	input	input method
+keyboard	540000	keyboard	input method
+permission	530000	permission	permissions
+privacy	520000	privacy	privacy mode
+local	510000	local	local only
+offline	500000	offline
+device	490000	device	local device
+setting	480000	setting	settings
+settings	475000	settings
+feature	470000	feature	features
+function	460000	function	functionality
+fix	450000	fix	fixed	please fix it
+check	440000	check	please check it
+confirm	430000	confirm	please confirm it
+result	420000	result	translation result
+error	410000	error	build error
+log	400000	log	logs
+file	390000	file	files
+folder	380000	folder	file folder
+code	370000	code
+test	360000	test	testing
+install	350000	install	installation
+download	340000	download	save	330000	save	saved
+delete	320000	delete	deleted
+copy	310000	copy	copied
+paste	300000	paste	pasted
+learn	290000	learn	learning
+study	280000	study	studying
+word	270000	word	words
+phrase	260000	phrase	phrases
+sentence	250000	sentence	sentences
+professional	240000	professional	professional version
+version	230000	version
+optimize	220000	optimize	optimization
+improve	210000	improve	improvement
+complete	200000	complete	completed
+continue	190000	continue	continue improving
+later	180000	later	I will handle it later.
+handle	170000	handle	I will handle it.
+please	160000	please	Please check it.
+where	150000	where	Where is the result?
+what	145000	what	What happened?
+who	140000	who	Who are you?
+why	135000	why	Why is this happening?
+when	130000	when	When will it be ready?
+how	125000	how	How do I fix this?
+trasnlate	110000	translate	translation
+transalte	105000	translate	translation
+permision	100000	permission	permissions
+dictionry	95000	dictionary
+profesional	90000	professional
+recieve	85000	receive
+teh	80000	the
+adn	75000	and
+wierd	70000	weird
