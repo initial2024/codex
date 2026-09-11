@@ -4,16 +4,6 @@ import android.content.Context
 import kotlin.math.ln
 import kotlin.math.min
 
-/**
- * Offline Pinyin candidate engine used by the keyboard service.
- *
- * Pipeline:
- * 1. exact sentence / user / asset candidates
- * 2. DP Pinyin segmentation
- * 3. phrase-level beam search
- * 4. static frequency + N-gram + local user-frequency ranking
- * 5. fuzzy / typo candidates with an explicit penalty
- */
 class PinyinImeEngine(
     context: Context,
     private val userDictionary: UserDictionaryStore,
@@ -24,25 +14,16 @@ class PinyinImeEngine(
     fun candidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
-
         val contextTokens = extractContextTokens(contextBeforeCursor.orEmpty())
         val pool = mutableListOf<CandidateRanker.Candidate>()
-
-        addUserCandidates(query, contextTokens, pool)
-        addExactCandidates(query, contextTokens, pool)
-        addSegmentedCandidates(query, contextTokens, pool)
-        addCorrectionCandidates(query, contextTokens, pool)
-
-        val ranked = CandidateRanker.rank(pool, limit)
-            .map { it.text }
-            .distinct()
-            .toMutableList()
-
-        if (ranked.isEmpty()) {
-            ranked += PinyinSentenceDictionary.candidatesFor(query)
-            ranked += PinyinDictionary.candidatesFor(query)
-        }
-        return ranked.distinct().take(limit)
+        addUser(query, contextTokens, pool, exactOnly = false)
+        addExact(query, contextTokens, pool)
+        addSegmented(query, contextTokens, pool)
+        addCorrections(query, contextTokens, pool)
+        val ranked = CandidateRanker.rank(pool, limit).map { it.text }.distinct()
+        if (ranked.isNotEmpty()) return ranked.take(limit)
+        return (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query))
+            .distinct().take(limit)
     }
 
     fun exactCandidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
@@ -50,23 +31,24 @@ class PinyinImeEngine(
         if (query.isEmpty()) return emptyList()
         val contextTokens = extractContextTokens(contextBeforeCursor.orEmpty())
         val pool = mutableListOf<CandidateRanker.Candidate>()
-        addUserCandidates(query, contextTokens, pool, exactOnly = true)
-        addExactCandidates(query, contextTokens, pool)
+        addUser(query, contextTokens, pool, exactOnly = true)
+        addExact(query, contextTokens, pool)
         return CandidateRanker.rank(pool, limit).map { it.text }.distinct().take(limit)
     }
 
     fun debugSegmentation(rawInput: String): List<PinyinSegmenter.Segmentation> = PinyinSegmenter.segment(rawInput)
 
-    private fun addUserCandidates(
+    private fun addUser(
         query: String,
         contextTokens: List<String>,
         pool: MutableList<CandidateRanker.Candidate>,
-        exactOnly: Boolean = false,
+        exactOnly: Boolean,
     ) {
         userDictionary.learnedEntriesFor(query, MAX_RESULTS * 2)
+            .asSequence()
             .filter { !exactOnly || it.pinyin == query }
             .forEach { entry ->
-                pool += candidate(
+                pool += makeCandidate(
                     query = query,
                     text = entry.text,
                     tokens = listOf(entry.text),
@@ -80,54 +62,41 @@ class PinyinImeEngine(
             }
     }
 
-    private fun addExactCandidates(
+    private fun addExact(
         query: String,
         contextTokens: List<String>,
         pool: MutableList<CandidateRanker.Candidate>,
     ) {
         lexicon.exact(query).forEachIndexed { index, entry ->
-            pool += candidate(
-                query = query,
-                text = entry.text,
-                tokens = listOf(entry.text),
-                staticFrequency = entry.frequency,
-                segmentationScore = 4.0,
-                contextTokens = contextTokens,
+            pool += makeCandidate(
+                query, entry.text, listOf(entry.text), entry.frequency, 4.0, contextTokens,
                 sourcePriority = 6 - min(index, 3),
             )
         }
-
-        val legacyExact = linkedSetOf<String>().apply {
+        val legacy = linkedSetOf<String>().apply {
             addAll(PinyinSentenceDictionary.exactCandidatesFor(query))
             addAll(PinyinExpandedData.entries[query].orEmpty())
             addAll(PinyinBoostData.entries[query].orEmpty())
             addAll(PinyinDictionary.exactCandidatesFor(query))
         }
-        legacyExact.forEachIndexed { index, text ->
-            pool += candidate(
-                query = query,
-                text = text,
-                tokens = listOf(text),
-                staticFrequency = syntheticFrequency(index, 820_000),
-                segmentationScore = 3.5,
-                contextTokens = contextTokens,
+        legacy.forEachIndexed { index, text ->
+            pool += makeCandidate(
+                query, text, listOf(text), syntheticFrequency(index, 820_000), 3.5, contextTokens,
                 sourcePriority = 5,
             )
         }
     }
 
-    private fun addSegmentedCandidates(
+    private fun addSegmented(
         query: String,
         contextTokens: List<String>,
         pool: MutableList<CandidateRanker.Candidate>,
     ) {
-        val segmentations = PinyinSegmenter.segment(query, MAX_SEGMENTATIONS)
-        segmentations.forEachIndexed { segmentationIndex, segmentation ->
-            val generated = beamGenerate(segmentation, contextTokens)
-            generated.forEachIndexed { beamIndex, hypothesis ->
+        PinyinSegmenter.segment(query, MAX_SEGMENTATIONS).forEachIndexed { segmentationIndex, segmentation ->
+            beamGenerate(segmentation, contextTokens).forEachIndexed { beamIndex, hypothesis ->
                 if (hypothesis.text.isBlank()) return@forEachIndexed
                 val averageFrequency = if (hypothesis.parts == 0) 1 else hypothesis.totalFrequency / hypothesis.parts
-                pool += candidate(
+                pool += makeCandidate(
                     query = query,
                     text = hypothesis.text,
                     tokens = hypothesis.tokens,
@@ -140,13 +109,13 @@ class PinyinImeEngine(
         }
     }
 
-    private fun addCorrectionCandidates(
+    private fun addCorrections(
         query: String,
         contextTokens: List<String>,
         pool: MutableList<CandidateRanker.Candidate>,
     ) {
         PinyinCorrectionEngine.candidatesFor(query).forEachIndexed { index, text ->
-            pool += candidate(
+            pool += makeCandidate(
                 query = query,
                 text = text,
                 tokens = listOf(text),
@@ -168,6 +137,8 @@ class PinyinImeEngine(
         val beamScore: Double,
     )
 
+    private data class LexicalEntry(val text: String, val frequency: Int)
+
     private fun beamGenerate(
         segmentation: PinyinSegmenter.Segmentation,
         contextTokens: List<String>,
@@ -175,8 +146,7 @@ class PinyinImeEngine(
         val syllables = segmentation.syllables
         if (syllables.isEmpty()) return emptyList()
         var beam = listOf(Hypothesis(0, "", emptyList(), 0, 0, 0.0))
-
-        while (beam.isNotEmpty() && beam.any { it.position < syllables.size }) {
+        while (beam.any { it.position < syllables.size }) {
             val next = mutableListOf<Hypothesis>()
             beam.forEach { hypothesis ->
                 if (hypothesis.position >= syllables.size) {
@@ -186,55 +156,55 @@ class PinyinImeEngine(
                 val maxSpan = min(MAX_PHRASE_SYLLABLES, syllables.size - hypothesis.position)
                 for (span in 1..maxSpan) {
                     val key = syllables.subList(hypothesis.position, hypothesis.position + span).joinToString("")
-                    val entries = lexicalEntriesFor(key, span)
-                    entries.take(MAX_ENTRIES_PER_SPAN).forEach { entry ->
+                    lexicalEntriesFor(key, span).take(MAX_ENTRIES_PER_SPAN).forEach { entry ->
                         val history = contextTokens + hypothesis.tokens
                         val previous2 = history.getOrNull(history.size - 2)
                         val previous1 = history.lastOrNull()
                         val lm = languageModel.transitionScore(previous2, previous1, entry.text)
-                        val freq = ln(1.0 + entry.frequency.coerceAtLeast(1)) * 0.75
+                        val freqScore = ln(1.0 + entry.frequency.coerceAtLeast(1)) * 0.75
                         next += Hypothesis(
                             position = hypothesis.position + span,
                             text = hypothesis.text + entry.text,
                             tokens = hypothesis.tokens + entry.text,
                             totalFrequency = hypothesis.totalFrequency + entry.frequency,
                             parts = hypothesis.parts + 1,
-                            beamScore = hypothesis.beamScore + lm + freq + span * 0.20,
+                            beamScore = hypothesis.beamScore + lm + freqScore + span * 0.20,
                         )
                     }
                 }
             }
+            if (next.isEmpty()) break
             beam = next
                 .sortedByDescending { it.beamScore }
                 .distinctBy { it.position to it.text }
                 .take(BEAM_WIDTH)
-            if (beam.isEmpty()) break
         }
-
-        return beam
-            .filter { it.position == syllables.size }
+        return beam.filter { it.position == syllables.size }
             .sortedByDescending { it.beamScore }
             .take(MAX_BEAM_RESULTS)
     }
 
-    private data class LexicalEntry(val text: String, val frequency: Int)
-
     private fun lexicalEntriesFor(key: String, syllableSpan: Int): List<LexicalEntry> {
-        val asset = lexicon.exact(key).map { LexicalEntry(it.text, it.frequency) }
-        if (asset.isNotEmpty()) return asset
-
+        val merged = LinkedHashMap<String, Int>()
+        lexicon.exact(key).forEach { entry ->
+            merged[entry.text] = maxOf(merged[entry.text] ?: 0, entry.frequency)
+        }
         val legacy = linkedSetOf<String>().apply {
             addAll(PinyinExpandedData.entries[key].orEmpty())
             addAll(PinyinBoostData.entries[key].orEmpty())
             addAll(PinyinSentenceDictionary.exactCandidatesFor(key))
             if (syllableSpan == 1) addAll(PinyinDictionary.exactCandidatesFor(key))
         }
-        return legacy.mapIndexed { index, text ->
-            LexicalEntry(text, syntheticFrequency(index, if (syllableSpan > 1) 650_000 else 540_000))
+        legacy.forEachIndexed { index, text ->
+            val frequency = syntheticFrequency(index, if (syllableSpan > 1) 650_000 else 540_000)
+            merged[text] = maxOf(merged[text] ?: 0, frequency)
         }
+        return merged.entries
+            .sortedByDescending { it.value }
+            .map { LexicalEntry(it.key, it.value) }
     }
 
-    private fun candidate(
+    private fun makeCandidate(
         query: String,
         text: String,
         tokens: List<String>,
@@ -245,23 +215,18 @@ class PinyinImeEngine(
         sourcePriority: Int = 0,
         userFrequencyOverride: Int? = null,
     ): CandidateRanker.Candidate {
-        val userFrequency = userFrequencyOverride ?: userDictionary.frequencyFor(query, text)
         val tokenScore = languageModel.scoreSequence(contextTokens, tokens)
-        val characterTokens = text
-            .filter { isCjk(it) }
-            .map { it.toString() }
-        val characterScore = if (characterTokens.size >= 2) {
-            languageModel.scoreSequence(contextTokens, characterTokens) * CHARACTER_NGRAM_WEIGHT
-        } else {
-            0.0
-        }
+        val chars = text.filter(::isCjk).map(Char::toString)
+        val charScore = if (chars.size >= 2) {
+            languageModel.scoreSequence(contextTokens, chars) * CHARACTER_NGRAM_WEIGHT
+        } else 0.0
         return CandidateRanker.Candidate(
             text = text,
             tokens = tokens,
             staticFrequency = staticFrequency,
             segmentationScore = segmentationScore,
-            ngramScore = maxOf(tokenScore, characterScore),
-            userFrequency = userFrequency,
+            ngramScore = maxOf(tokenScore, charScore),
+            userFrequency = userFrequencyOverride ?: userDictionary.frequencyFor(query, text),
             correctionPenalty = correctionPenalty,
             sourcePriority = sourcePriority,
         )
@@ -299,9 +264,8 @@ class PinyinImeEngine(
             block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
     }
 
-    private fun syntheticFrequency(index: Int, base: Int): Int {
-        return (base - index * 28_000).coerceAtLeast(25_000)
-    }
+    private fun syntheticFrequency(index: Int, base: Int): Int =
+        (base - index * 28_000).coerceAtLeast(25_000)
 
     companion object {
         private const val MAX_RESULTS = 12
