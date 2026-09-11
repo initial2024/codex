@@ -5,6 +5,7 @@
   "note": "Project-authored fallback assets. Replace with importer output for larger licensed packs.",
   "files": [
     "lexicon.odict",
+    "english.odict",
     "ngram1.odict",
     "ngram2.odict",
     "ngram3.odict"
