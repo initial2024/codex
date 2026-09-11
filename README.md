@@ -1,177 +1,279 @@
 # Orbit IME Android
 
-Orbit IME is a privacy-first Android input method MVP with local English candidate input, Pinyin 26-key input, local dictionary ranking, expanded bilingual quick phrases, a user-controlled clipboard panel, local phrase translation, Translate Preview fallback, local skins, and a usable keyboard pet panel.
+Orbit IME is a privacy-first Android input method with local English candidates, Pinyin 26-key input, local learning, offline phrase translation, clipboard tools, skins, and a keyboard pet module.
 
-## Product boundary
+## Current version
 
-This project is still not a full Chinese IME and does not yet match mature commercial IMEs in prediction quality.
+```text
+0.15.0
+```
 
-Version `0.14.0` focuses on expanding local candidate data, fuzzy Pinyin correction, English candidates, phrase translation hit rate, and local user dictionary capacity.
+v0.15 introduces the first real local IME engine layer instead of continuing to grow hardcoded Kotlin maps.
+
+## v0.15 local IME engine
+
+The Chinese candidate pipeline is now:
+
+```text
+raw Pinyin
+-> normalization
+-> exact asset / user / sentence candidates
+-> dynamic-programming Pinyin segmentation
+-> phrase beam search
+-> static frequency score
+-> local 1/2/3-gram language-model score
+-> local user-frequency boost
+-> fuzzy/typo penalty
+-> top 12 candidates
+```
+
+Implementation files:
+
+```text
+CompactLexiconAsset.kt
+PinyinSegmenter.kt
+NGramLanguageModel.kt
+CandidateRanker.kt
+PinyinImeEngine.kt
+UserDictionaryStore.kt
+```
+
+Detailed architecture is in `IME_ENGINE.md`.
+
+## 1. Large dictionary importer
+
+Build-time tool:
+
+```text
+tools/ime_importer.py
+```
+
+Example:
+
+```text
+python tools/ime_importer.py --manifest data/ime_sources/manifest.example.json --output app/src/main/assets/ime
+```
+
+Supported source formats:
+
+- Orbit TSV: Pinyin + text + frequency.
+- CC-CEDICT text format.
+- English TSV frequency/candidate data.
+- 1-gram, 2-gram, and 3-gram TSV counts.
+
+The importer rejects missing sources, non-redistributable sources, and unknown licenses in strict mode.
+
+Project-authored seed inputs live under:
+
+```text
+data/ime_sources/
+```
+
+## 2. Frequency ranking
+
+Imported lexicon entries carry integer frequency values. Candidate ranking combines:
+
+```text
+static frequency
++ sentence N-gram score
++ Pinyin segmentation quality
++ local user frequency
++ source priority
+- fuzzy/typo penalty
+```
+
+User selection frequency is deliberately stronger than static frequency so repeated personal choices move upward over time.
+
+## 3. Continuous Pinyin segmentation
+
+`PinyinSegmenter.kt` uses dynamic programming and preserves several high-quality segmentation paths.
+
+Examples:
+
+```text
+nihaoma -> ni / hao / ma
+nishishei -> ni / shi / shei
+shurufa -> shu / ru / fa
+```
+
+It also respects apostrophe/space boundaries and uses `v` for keyboard `ü` input.
+
+## 4. Sentence-level candidate generation
+
+`PinyinImeEngine.kt` performs phrase-level beam search over segmented syllables. It can combine single syllables and multi-syllable phrases instead of requiring the entire typed string to exist as one exact hardcoded key.
+
+Current bounded search parameters:
+
+```text
+max segmentation paths: 5
+max phrase span: 4 syllables
+beam width: 36
+max internal beam results: 16
+visible candidates: 12
+```
+
+These bounds prevent combinatorial explosion and keep keyboard latency predictable.
+
+## 5. Local N-gram language model
+
+`NGramLanguageModel.kt` supports:
+
+```text
+ime/ngram1.odict
+ime/ngram2.odict
+ime/ngram3.odict
+```
+
+It is a deterministic count-based model, not a neural model. Trigram evidence has more weight than bigram evidence, and bigram evidence has more weight than unigram evidence.
+
+The model runs fully offline.
+
+## 6. Compact asset format
+
+Imported runtime assets use `ORBIT_ODICT`.
+
+Preferred large-pack layout:
+
+```text
+app/src/main/assets/ime/
+  manifest.json
+  lexicon/
+    a.odict
+    b.odict
+    ...
+    z.odict
+  english.odict
+  ngram1.odict
+  ngram2.odict
+  ngram3.odict
+```
+
+Lexicon line:
+
+```text
+normalized_pinyin<TAB>text<TAB>base36_frequency
+```
+
+The lexicon is sharded by first Pinyin letter. `CompactLexiconAsset` keeps only six shards in its LRU memory cache.
+
+A small project-authored unsharded fallback `ime/lexicon.odict` is committed so the engine remains usable before a large dictionary pack is generated.
+
+## Local personalization
+
+`UserDictionaryStore` stores only:
+
+```text
+pinyin
+committed candidate text
+frequency
+updatedAt
+```
+
+It does not store full chat text, the target app, field identity, or surrounding sentences.
+
+The store now keeps an in-memory cache so ranking does not repeatedly parse JSON on every candidate lookup.
+
+## Fuzzy and typo correction
+
+`PinyinCorrectionEngine.kt` remains a lower-confidence path. Exact candidates rank above fuzzy candidates.
+
+Examples already covered include:
+
+```text
+xhfnivh -> 喜欢你 / 想和你说 / 需要优化
+xihvanni -> 喜欢你
+nishis -> 你是谁
+```
+
+## Existing features retained
+
+- English composing buffer and candidate selection.
+- Expanded Chinese and English quick phrases.
+- Local clipboard panel.
+- Local phrase translation with prompt fallback.
+- Keyboard pet panel with check-in, hatching, switching, outfits, catalog, and local growth.
+- Orbit Dark, Orbit Light, AMOLED Black, Study Blue, and Pro Aurora placeholder skin.
+- Privacy mode for password-like fields.
 
 ## Privacy boundary
 
-Version `0.14.0` deliberately avoids network and advertising logic.
+v0.15 intentionally keeps:
 
-- No `INTERNET` permission.
-- No ad SDK.
-- No analytics SDK.
-- No Accessibility permission.
-- No overlay / floating-window permission.
-- Clipboard content is saved only after the user taps the Orbit Clips save action.
-- Password-like input fields enter privacy mode and hide Hub functions.
-- Typed key streams are not persisted.
-- User dictionary stores only pinyin, candidate text, frequency, and updatedAt.
-- Translate Preview source text and generated prompts are not persisted.
-- Local phrase translation uses only packaged phrase tables.
-- Pet data stays local and is not uploaded or synced.
+- no `INTERNET` permission;
+- no analytics SDK;
+- no ad SDK;
+- no Accessibility permission;
+- no overlay / floating-window permission;
+- no cloud prediction;
+- no cloud dictionary sync;
+- no cloud translation;
+- no background clipboard harvesting;
+- no full typed-stream persistence.
 
-## Input data improvements in v0.14.0
+## Data-source rule
 
-- `PinyinExpandedData.kt` adds more local common words, sentence shortcuts, input-method feedback phrases, study phrases, and development phrases.
-- `PinyinCorrectionEngine.kt` adds small local fuzzy/typo correction for common cases, including direct handling for `xhfnivh`.
-- `PinyinSentenceDictionary.kt` now merges base sentence shortcuts, expanded Pinyin data, and fuzzy correction candidates.
-- `EnglishDictionary.kt` adds more English words, work phrases, shorthand expansions, and typo correction.
-- `TranslationExpansionData.kt` expands local Chinese-English phrase translation to reduce prompt fallback.
-- `UserDictionaryStore.kt` now supports longer local learned phrases and returns up to 12 candidates.
+Do not copy arbitrary GitHub dictionaries into the APK.
 
-## Pet improvements in v0.13.0+
+Every bulk source must have:
 
-- The keyboard Hub has a `宠物` / `Pet` entry again.
-- The pet panel shows current pet, species, stage, level, EXP, Stars, mood, today typed characters, total typed characters, and current outfit.
-- The panel supports check-in, hatch egg, switch owned pet, rotate outfit, show pet catalog, show outfit catalog, hide/show, and close.
-- The first hatch each day is free. Later hatches cost 30 Stars.
-- Owned pets are stored locally and can be cycled.
-- Outfit rotation is implemented as a data-layer placeholder until original art assets are supplied.
-- Local chat text now appears directly inside the panel at every stage.
-- Pet growth uses local typing, candidate commits, clip saves, translation insertion, and daily check-in.
-
-## Pinyin improvements
-
-- `PinyinDictionary.kt` keeps the core syllable dictionary.
-- `PinyinBoostData.kt` and `PinyinExpandedData.kt` provide packaged project-authored phrase data.
-- `PinyinSentenceDictionary.kt` contains common sentence-level and shorthand candidates.
-- `PinyinCorrectionEngine.kt` adds small fuzzy matching, typo correction, and fuzzy-sound expansion.
-- Exact sentence candidates rank before core single-character candidates.
-- Test cases include `nh -> 你好`, `nisishei -> 你是谁`, `hsywt -> 还是有问题`, `zsm -> 这是什么`, `zmb -> 怎么办`, `smqk -> 什么情况`, `wgj -> 文件夹`, `jqb -> 剪贴板`, and `xhfnivh -> 喜欢你 / 想和你说 / 需要优化`.
-- This still does not implement a full commercial Pinyin decoder, statistical language model, or smart segmentation engine.
-
-## English candidate input
-
-- `EnglishDictionary.kt` provides local English candidates.
-- English letters enter an English composing buffer first.
-- Tapping a candidate commits it.
-- Pressing space commits the first candidate and appends a space.
-- Examples: `hi`, `whq`, `build`, `translate`, `problem`, `professional`, `dictionary`, and common typo cases like `trasnlate` / `permision`.
-
-## Translation improvements
-
-- `ProfessionalTranslationData.kt` adds an expanded local Chinese-English phrase table.
-- `TranslationBoostData.kt` adds supplemental local translation pairs and token maps.
-- `TranslationExpansionData.kt` adds more common feedback, input-method, development, and study phrases.
-- `OfflineTranslationPack.kt` checks local phrase tables before rough token assembly and prompt fallback.
-- Known phrases such as `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `没有翻译结果`, `不是成功翻译`, `请给出可执行步骤`, `不要添加 INTERNET 权限`, and `I will handle it later` produce directly insertable local translations.
-- Unsupported text falls back to Translate Preview prompt generation instead of pretending to translate.
-- No server, model endpoint, external API, or network permission is used.
-
-## Data source strategy
+```text
+source name
+source URL
+explicit license
+redistribution permission
+required attribution
+```
 
 See `DATA_SOURCES.md`.
 
-The current bundled boost data is project-authored. Public sources reviewed for future import pipelines include CC-CEDICT, AOSP Pinyin IME, RIME/Trime, and open phrase-pinyin datasets with explicit licenses.
+## Important limitation
 
-Do not copy arbitrary GitHub dictionary data into this repository without a compatible license and attribution plan.
+v0.15 completes the engine architecture, but the committed fallback asset is intentionally small. Mature commercial-IME coverage still requires importing a large licensed phrase dictionary and large licensed frequency/N-gram data through the importer.
 
-## Quick phrase improvements
+The architecture is now ready for that without rewriting the keyboard service.
 
-- Chinese and English quick phrases are maintained in `TemplateLibrary.kt`.
-- Pinyin mode reads `TemplateLibrary.quickPhrasesForPinyin()`.
-- English mode reads `TemplateLibrary.quickPhrasesForEnglish()`.
-- Chinese phrases cover confirmation, communication, Codex/development handoff, study/writing, and daily replies.
-- English phrases cover confirmation, requests, development collaboration, writing/study, and daily replies.
+## Build policy
 
-## Current features
+Do not build automatically on push. GitHub Actions stays manual-only through `workflow_dispatch`.
 
-- Android IME service declared in `AndroidManifest.xml`.
-- Settings activity with input method setup buttons.
-- English candidate keyboard.
-- Pinyin 26-key mode.
-- Candidate bar with static boost data, fuzzy correction, and local user dictionary ranking.
-- Candidate tap-to-commit and space-to-select.
-- Expanded bilingual quick phrase bar.
-- Local clipboard vault backed by `SharedPreferences` JSON.
-- Local phrase translation with Translate Preview fallback.
-- Built-in skins: Orbit Dark, Orbit Light, AMOLED Black, Study Blue, and Pro Aurora.
-- Usable keyboard pet panel with local check-in, hatching, switching, outfits, catalog, and local chat text.
-
-## Known limitation
-
-Orbit IME cannot replace the host app or Android system long-press text-selection menu. The Orbit clipboard exists inside the keyboard's own Clips panel only.
-
-Orbit IME cannot translate arbitrary long text without a network/API/model or a much larger offline dictionary. It only translates phrases included in the packaged local phrase table or very conservative token combinations.
-
-A truly professional IME requires a large phrase dictionary, frequency data, segmentation, compact indexed assets, and build-time dictionary import tooling.
-
-Pet art is still placeholder-only. Real icons, SVG/vector bodies, and outfit visuals should be added only after original Gemini art specifications are supplied.
-
-## Not included yet
-
-- Pinyin 9-key.
-- Wubi.
-- Handwriting recognition.
-- Cloud sync.
-- Cloud translation.
-- External translation APIs.
-- Ad monetization.
-- Paid billing implementation.
-- Full statistical segmentation.
-- Large imported dictionary assets.
-- Canvas keyboard rewrite.
-- Compose migration.
-- Skin marketplace.
-- System-wide floating pet.
-- Complex pet animation.
-- AI pet chat.
-
-## Build with Codex
+When requested, build with:
 
 ```text
-Clone https://github.com/initial2024/codex and build the Android debug APK only after the user asks to start the build.
-Use JDK 17 and Android SDK 35.
-Run: gradle assembleDebug --no-daemon
-After building, return app/build/outputs/apk/debug/app-debug.apk.
-Do not add INTERNET permission, ad SDK, analytics SDK, Accessibility permission, overlay permission, cloud translation, external translation APIs, or background services.
-Follow CODEX_TASK.md exactly.
+JDK 17
+Android SDK 35
+Gradle 8.10.2
+
+gradle assembleDebug --no-daemon
 ```
 
-## Build with GitHub Actions
-
-A manual workflow is included at `.github/workflows/build-apk.yml`.
-
-It uses `workflow_dispatch` only. It does not build automatically on push.
-
-The debug APK artifact name is:
+Expected APK:
 
 ```text
-orbit-ime-v0.14-debug-apk
+app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Manual test checklist
+Manual GitHub Actions artifact:
 
-1. Install the APK on Android.
-2. Open Orbit IME app.
-3. Enable Orbit IME in system input method settings.
-4. Switch to Orbit IME.
-5. Confirm version is `0.14.0`.
-6. Type `nh`, `nisishei`, `hsywt`, `zsm`, `zmb`, `smqk`, `wgj`, `jqb`, `shurufa`, `jianqieban`, and `xhfnivh`; confirm useful candidates appear.
-7. Type English `hi`, `whq`, `build`, `translate`, `problem`, `professional`, `dictionary`, `trasnlate`, and `permision`; confirm English candidates appear before commit.
-8. Confirm candidate tap and space-to-select work.
-9. Use Translate on `你好`, `你是谁`, `这是什么`, `怎么办`, `还是有问题`, `没有翻译结果`, `不是成功翻译`, `请给出可执行步骤`, and `I will handle it later`; confirm a real local translation can be inserted.
-10. Open `宠物` / `Pet` from the keyboard Hub.
-11. Confirm the pet panel shows pet status, level, EXP, Stars, mood, today typed count, total typed count, and outfit.
-12. Tap `签到`, `开蛋`, `切换`, `装扮`, `图鉴`, `装扮库`, `隐藏/显示`, and `关闭`; confirm each action gives visible feedback.
-13. Confirm Clips, quick phrases, and privacy mode still work.
-14. Confirm Manifest still has no network, ad, analytics, Accessibility, or overlay permission.
+```text
+orbit-ime-v0.15-debug-apk
+```
+
+## v0.15 manual acceptance list
+
+Test at minimum:
+
+```text
+nihaoma -> 你好吗 near top
+nishishei -> 你是谁 near top
+shurufa -> 输入法 near top
+haishiyouwenti -> 还是有问题 near top
+xhfnivh -> Chinese corrected candidates
+```
+
+Then select a non-first candidate repeatedly and confirm local learning can move it upward.
+
+Also retest English candidates, translation, Clips, pet panel, skins, privacy mode, and input-method switching.
 
 ## Commercial direction
 
-The intended business model is free base version plus paid Pro unlock. Do not put ads inside the keyboard input surface. Version `0.14.0` contains no advertising, billing, network, cloud translation, or external translation API code.
+The intended direction remains free base + paid Pro unlock. Do not put ads inside the keyboard input surface. v0.15 contains no billing, advertising, analytics, network, or external translation API implementation.
