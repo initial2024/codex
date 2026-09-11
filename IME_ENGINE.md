@@ -4,8 +4,6 @@ This document defines the offline input-engine architecture introduced in v0.15.
 
 ## Goals
 
-The engine must improve Chinese candidate quality without adding network access, cloud prediction, analytics, background input harvesting, or full typed-stream persistence.
-
 The six v0.15 engineering goals are:
 
 1. Large dictionary importer.
@@ -15,22 +13,37 @@ The six v0.15 engineering goals are:
 5. Local N-gram language model.
 6. Compact asset format.
 
+The engine must remain offline and must not persist a full typed stream.
+
 ## Runtime pipeline
+
+Chinese:
 
 ```text
 raw Pinyin
   -> normalize
   -> exact user/asset/sentence candidates
-  -> PinyinSegmenter (top segmentation paths)
-  -> phrase lookup from CompactLexiconAsset
-  -> beam candidate generation
+  -> PinyinSegmenter
+  -> CompactLexiconAsset
+  -> bounded phrase beam search
   -> NGramLanguageModel
   -> CandidateRanker
-  -> local UserDictionaryStore boost
+  -> UserDictionaryStore personalization
   -> top 12 candidates
 ```
 
-If the new engine fails or an asset is malformed, `UserDictionaryStore` falls back to the previous static candidate path so the keyboard still returns candidates.
+English:
+
+```text
+raw English composing buffer
+  -> CompactEnglishAsset
+  -> packaged frequency candidates
+  -> EnglishDictionary phrase/typo fallback
+  -> EnglishImeEngine ranking
+  -> top candidates
+```
+
+If the new Chinese engine fails or an asset is malformed, `UserDictionaryStore` retains the previous static candidate fallback path.
 
 ## 1. Large dictionary importer
 
@@ -40,7 +53,7 @@ Tool:
 tools/ime_importer.py
 ```
 
-Example invocation:
+Example:
 
 ```text
 python tools/ime_importer.py \
@@ -53,14 +66,14 @@ Supported source formats:
 - `orbit-tsv`: `pinyin<TAB>text<TAB>frequency`
 - `cedict`: standard CC-CEDICT text records
 - `english-tsv`: `word<TAB>frequency[<TAB>candidate...]`
-- `ngram-tsv`: 2-gram or 3-gram token counts
+- `ngram-tsv`: 1-gram, 2-gram, or 3-gram token counts
 
 The importer fails closed when:
 
-- source file is missing;
+- a source file is missing;
 - `redistribution_allowed` is false;
 - a strict-mode license is not on the allow-list;
-- attribution-required data does not include attribution metadata.
+- attribution-required data has no attribution metadata.
 
 Current strict allow-list:
 
@@ -74,11 +87,11 @@ CC-BY-4.0
 CC-BY-SA-4.0
 ```
 
-Adding a license to this list is a legal/product decision, not an engineering shortcut.
+This is an engineering guardrail, not a legal conclusion.
 
 ## 2. Frequency ranking
 
-Every imported lexicon row has a positive integer frequency. Runtime `.odict` stores it in base36 to reduce text size.
+Every imported lexicon/English row has a positive integer frequency. Runtime `.odict` stores counts in base36.
 
 `CandidateRanker` combines:
 
@@ -92,12 +105,7 @@ static frequency
 - correction penalty
 ```
 
-Current scoring intent:
-
-- Static frequency prevents rare words from dominating.
-- Local user frequency is stronger than static frequency but cannot create arbitrary text by itself.
-- Exact asset/user matches outrank fuzzy matches.
-- Fuzzy/typo candidates remain available but pay an explicit penalty.
+Local user frequency has stronger weight than static frequency so repeated choices can move upward without rewriting packaged assets.
 
 ## 3. Pinyin segmentation
 
@@ -117,9 +125,9 @@ nishishei -> ni / shi / shei
 shurufa -> shu / ru / fa
 ```
 
-Apostrophes and spaces are hard boundaries.
+The scoring includes a per-syllable cost to avoid over-segmentation such as `hao -> ha + o`.
 
-The syllable inventory is tone-less Hanyu Pinyin. Keyboard `v` represents `ü`.
+Apostrophes/spaces are hard boundaries when supplied to the engine. Keyboard `v` represents `ü`.
 
 ## 4. Sentence-level candidate ranking
 
@@ -129,9 +137,9 @@ Class:
 PinyinImeEngine.kt
 ```
 
-For every segmentation, the engine performs phrase-level beam search.
+For every segmentation, the engine performs bounded phrase-level beam search. At each syllable position it checks spans up to four syllables.
 
-At each syllable position it considers spans up to four syllables. Example:
+Example:
 
 ```text
 ni / hao / ma
@@ -141,30 +149,26 @@ span 2: nihao -> 你好
 span 3: nihaoma -> 你好吗
 ```
 
-Beam hypotheses keep:
+Beam hypotheses retain:
 
 ```text
 current syllable position
-composed Chinese text
-word/token list
+composed text
+candidate tokens
 aggregate static frequency
 partial language-model score
 ```
 
-Only the strongest hypotheses survive each beam step. This avoids the combinatorial explosion of enumerating every phrase combination.
-
-Current constants:
+Current bounds:
 
 ```text
 max segmentation paths: 5
 max phrase span: 4 syllables
 max entries per span: 5
 beam width: 36
-max beam results: 16
-final visible candidates: 12
+max internal beam results: 16
+visible candidates: 12
 ```
-
-These values are tuning parameters, not user-facing settings.
 
 ## 5. Local N-gram language model
 
@@ -174,7 +178,7 @@ Class:
 NGramLanguageModel.kt
 ```
 
-Supported packaged assets:
+Supported assets:
 
 ```text
 ime/ngram1.odict
@@ -182,30 +186,26 @@ ime/ngram2.odict
 ime/ngram3.odict
 ```
 
-The model uses weighted log-count features rather than a neural network.
+The model uses weighted log-count features, not a neural runtime.
 
-Why:
+Current relative weighting favors:
 
-- deterministic;
-- very small;
-- no model runtime dependency;
-- no network;
-- fast enough for keyboard latency;
-- easy to regenerate from licensed corpora.
+```text
+trigram > bigram > unigram
+```
 
-Current relative weighting favors trigram > bigram > unigram evidence.
-
-If N-gram assets are absent, small project-authored fallback tables are used.
+If an N-gram asset is missing, small project-authored fallback tables keep the engine functional.
 
 ## 6. Compact asset format
 
-Runtime reader:
+Readers:
 
 ```text
 CompactLexiconAsset.kt
+CompactEnglishAsset.kt
 ```
 
-Preferred imported lexicon layout:
+Preferred large-pack layout:
 
 ```text
 app/src/main/assets/ime/
@@ -227,19 +227,21 @@ Lexicon record:
 normalized_pinyin<TAB>text<TAB>base36_frequency
 ```
 
-Example:
+English record:
 
 ```text
-nihao<TAB>你好<TAB>l068
+normalized_key<TAB>base36_frequency<TAB>optional candidates...
 ```
 
-N-gram record:
+N-gram records:
+
+```text
+token<TAB>base36_count
+```
 
 ```text
 token1<TAB>token2<TAB>base36_count
 ```
-
-or
 
 ```text
 token1<TAB>token2<TAB>token3<TAB>base36_count
@@ -249,20 +251,17 @@ Why `.odict` instead of JSON:
 
 - no repeated field names;
 - line-streamable;
-- easy to validate;
-- easy to generate;
+- easy to validate and regenerate;
 - Android `AssetManager` can read it directly;
-- source dictionaries remain outside Kotlin bytecode.
+- dictionaries remain outside Kotlin bytecode.
 
-The lexicon is sharded by the first normalized Pinyin letter. `CompactLexiconAsset` keeps at most six shards in an access-order LRU cache.
+The Pinyin lexicon is sharded by first normalized Pinyin letter. `CompactLexiconAsset` keeps at most six shards in an access-order LRU cache.
 
-A small unsharded `ime/lexicon.odict` is committed as a development fallback. A real large-pack import should generate `ime/lexicon/a.odict` through `z.odict`.
+A small unsharded `ime/lexicon.odict` plus `english.odict` and N-gram assets are committed as project-authored development fallbacks. A real large pack should be produced by the importer.
 
 ## Local personalization
 
-`UserDictionaryStore` remains the personalization layer.
-
-It stores only:
+`UserDictionaryStore` stores only:
 
 ```text
 pinyin
@@ -271,23 +270,15 @@ frequency
 updatedAt
 ```
 
-It does not store:
+It does not persist surrounding sentence, app/package name, field identity, or full typed stream.
 
-- surrounding sentence;
-- app/package name;
-- target field identity;
-- full typed stream;
-- clipboard history unless explicitly saved in Clips.
-
-The engine reads the learned frequency only for ranking.
+Parsed entries are cached in memory so candidate ranking does not repeatedly parse JSON.
 
 ## Fuzzy and typo path
 
-`PinyinCorrectionEngine` remains separate from exact segmentation.
+`PinyinCorrectionEngine` remains separate from exact segmentation. Fuzzy candidates receive an explicit penalty so valid exact Pinyin is preferred.
 
-This is intentional: fuzzy candidates must not silently become equivalent to exact spelling. They are added with a correction penalty so an exact valid Pinyin candidate wins when available.
-
-Examples include:
+Examples:
 
 ```text
 xhfnivh -> 喜欢你 / 想和你说 / 需要优化
@@ -295,20 +286,22 @@ xihvanni -> 喜欢你
 nishis -> 你是谁
 ```
 
-## Data source and licensing rule
+English typo data remains available through `EnglishDictionary`, while imported English frequencies are read through `CompactEnglishAsset` and ranked by `EnglishImeEngine`.
+
+## Data licensing rule
 
 Do not paste arbitrary GitHub dictionaries into the APK.
 
-Use `DATA_SOURCES.md` and a manifest entry for every imported dataset. Keep attribution and source URL. Share-alike data must be handled according to its license.
+Use `DATA_SOURCES.md` and a source manifest for every imported dataset. Keep source URL, license, redistribution flag, and required attribution.
 
 ## Performance rules
 
 - Never parse dictionary assets in `onDraw`.
-- Keep asset parsing off repeated per-key allocations where possible.
-- Use lexicon sharding and a small LRU cache.
-- Keep candidate limit bounded.
+- Use lexicon sharding and bounded caches.
+- Keep candidate count bounded.
 - Keep beam width bounded.
-- Do not persist context strings for ranking.
+- Cache parsed local-user records.
+- Do not persist ranking context strings.
 - Do not do network I/O.
 
 ## v0.15 acceptance targets
@@ -320,21 +313,30 @@ nihaoma -> 你好吗 near top
 nishishei -> 你是谁 near top
 shurufa -> 输入法 near top
 haishiyouwenti -> 还是有问题 near top
-xhfnivh -> Chinese corrected candidates are available
+xhfnivh -> corrected Chinese candidates available
 ```
 
-Local learning should move repeatedly selected candidates upward without changing the packaged dictionary.
+English imported/fallback tests:
 
-## Next tuning work after build
+```text
+build -> build / build failed / build succeeded
+translate -> translate / translation
+trasnlate -> translate
+permision -> permission
+```
+
+Repeatedly selecting a valid Chinese candidate should raise it through local user-frequency weighting.
+
+## Next tuning after build
 
 After v0.15 compiles and runs on-device, tune in this order:
 
 1. candidate latency;
-2. top-1 accuracy for a fixed test list;
+2. fixed top-1 accuracy test set;
 3. segmentation ambiguity;
-4. static frequency calibration;
+4. static-frequency calibration;
 5. N-gram weight calibration;
-6. larger licensed dictionary import;
+6. larger licensed lexicon import;
 7. larger licensed N-gram pack.
 
 Do not add a neural model until these deterministic layers are measured first.
