@@ -1,0 +1,32 @@
+{
+  "sources": [
+    {
+      "name": "orbit-project-lexicon",
+      "path": "seed_lexicon.tsv",
+      "format": "orbit-tsv",
+      "license": "PROJECT",
+      "url": "",
+      "redistribution_allowed": true,
+      "attribution": "Orbit IME project-authored seed data",
+      "default_frequency": 1000
+    },
+    {
+      "name": "orbit-project-english",
+      "path": "seed_english.tsv",
+      "format": "english-tsv",
+      "license": "PROJECT",
+      "url": "",
+      "redistribution_allowed": true,
+      "attribution": "Orbit IME project-authored English seed data"
+    },
+    {
+      "name": "orbit-project-ngram",
+      "path": "seed_ngram.tsv",
+      "format": "ngram-tsv",
+      "license": "PROJECT",
+      "url": "",
+      "redistribution_allowed": true,
+      "attribution": "Orbit IME project-authored N-gram seed data"
+    }
+  ]
+}
