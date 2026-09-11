@@ -4,17 +4,17 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.13.0`.
+This policy applies to Orbit IME `0.14.0`.
 
 ## Network
 
-Orbit IME `0.13.0` does not request `INTERNET` permission.
+Orbit IME `0.14.0` does not request `INTERNET` permission.
 
 The app cannot upload input text, clipboard text, Pinyin buffers, English buffers, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
 
 ## Advertising and analytics
 
-Orbit IME `0.13.0` includes:
+Orbit IME `0.14.0` includes:
 
 - No ad SDK.
 - No analytics SDK.
@@ -35,12 +35,14 @@ Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, pa
 
 ## Pinyin mode and user dictionary
 
-Orbit IME `0.13.0` includes a local Pinyin 26-key mode.
+Orbit IME `0.14.0` includes a local Pinyin 26-key mode.
 
 Pinyin candidates are generated from:
 
 - A core packaged syllable dictionary in `PinyinDictionary.kt`.
+- Packaged phrase dictionaries in `PinyinBoostData.kt` and `PinyinExpandedData.kt`.
 - A packaged sentence/shortcut dictionary in `PinyinSentenceDictionary.kt`.
+- A local fuzzy/typo correction engine in `PinyinCorrectionEngine.kt`.
 - A local user dictionary learned from explicit candidate commits.
 
 Pinyin buffers are not uploaded and are not persisted as typed streams.
@@ -68,9 +70,11 @@ The English composing buffer is not uploaded and is not persisted as a typed str
 
 Typing English letters enters a temporary composing buffer. The user commits by tapping a candidate or pressing space.
 
+`EnglishDictionary.kt` includes local shorthand, phrase, and typo-correction candidates only. It does not call a model or server.
+
 ## Local phrase translation and Translate Preview
 
-Orbit IME `0.13.0` first attempts local phrase translation using packaged phrase tables in `ProfessionalTranslationData.kt`, `OfflineTranslationPack.kt`, and `TranslationBoostData.kt`.
+Orbit IME `0.14.0` first attempts local phrase translation using packaged phrase tables in `ProfessionalTranslationData.kt`, `TranslationExpansionData.kt`, `OfflineTranslationPack.kt`, and `TranslationBoostData.kt`.
 
 If a phrase exists in the local table, the translated text can be inserted directly.
 
@@ -90,7 +94,7 @@ Built-in skin tokens are packaged inside the app. Skin selection is not uploaded
 
 ## Keyboard Pet
 
-Orbit IME `0.13.0` includes a usable local keyboard pet panel.
+Orbit IME `0.14.0` includes a usable local keyboard pet panel.
 
 The keyboard Hub has a `宠物` / `Pet` entry. The panel supports local check-in, daily free hatch, Stars-based hatch, owned-pet switching, outfit rotation, catalog display, show/hide, and local status chat.
 
@@ -136,6 +140,6 @@ Orbit IME does not request:
 
 ## Commercial boundary
 
-Orbit IME `0.13.0` contains a Pro placeholder only.
+Orbit IME `0.14.0` contains a Pro placeholder only.
 
 It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
