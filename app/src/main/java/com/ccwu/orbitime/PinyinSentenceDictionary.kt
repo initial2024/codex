@@ -1,11 +1,11 @@
 package com.ccwu.orbitime
 
 object PinyinSentenceDictionary {
-    private const val MAX_CANDIDATES = 8
+    private const val MAX_CANDIDATES = 12
 
     private val sentenceShortcuts: Map<String, List<String>> = linkedMapOf(
         // 高频聊天整句 / 简拼
-        "nh" to listOf("你好", "那好"),
+        "nh" to listOf("你好", "你好吗", "那好"),
         "nhao" to listOf("你好"),
         "nss" to listOf("你是谁"),
         "nisishei" to listOf("你是谁"),
@@ -87,6 +87,7 @@ object PinyinSentenceDictionary {
         "bty" to listOf("不好用"),
         "bzy" to listOf("不专业"),
         "xyz" to listOf("需要专业一点"),
+        "xhfnivh" to listOf("喜欢你", "想和你说", "需要优化"),
 
         // 学习/写作整句
         "qygypwz" to listOf("请用更严谨的方式重写"),
@@ -96,18 +97,23 @@ object PinyinSentenceDictionary {
         "ywbwb" to listOf("用普通文本展示"),
         "qgbsb" to listOf("请给我背诵版"),
         "qysqdd" to listOf("请用少量重点"),
-        "zdynd" to listOf("重点与难点"),
+        "zdynd" to listOf("重点与难点")
     )
 
     fun candidatesFor(rawInput: String): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
-        val result = mutableListOf<String>()
-        sentenceShortcuts[query]?.let { result.addAll(it) }
-        sentenceShortcuts.asSequence()
+
+        val base = sentenceShortcuts[query].orEmpty()
+        val expanded = PinyinExpandedData.candidatesFor(query)
+        val fuzzy = PinyinCorrectionEngine.candidatesFor(query)
+        val prefix = sentenceShortcuts.asSequence()
             .filter { (key, _) -> key != query && key.startsWith(query) }
             .flatMap { (_, values) -> values.asSequence().take(2) }
-            .forEach { result.add(it) }
-        return result.distinct().take(MAX_CANDIDATES)
+            .toList()
+
+        return (base + expanded + fuzzy + prefix)
+            .distinct()
+            .take(MAX_CANDIDATES)
     }
 }
