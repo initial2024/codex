@@ -63,6 +63,34 @@ class UserDictionaryStore(private val context: Context) {
             .take(MAX_CANDIDATES)
     }
 
+    /** Exact learned frequency used as a personalization feature by CandidateRanker. */
+    fun frequencyFor(rawPinyin: String, rawText: String): Int {
+        val pinyin = PinyinDictionary.normalize(rawPinyin)
+        val text = rawText.trim()
+        if (pinyin.isEmpty() || text.isEmpty()) return 0
+        return loadEntries()
+            .asSequence()
+            .filter { it.pinyin == pinyin && it.text == text }
+            .maxOfOrNull { it.frequency }
+            ?: 0
+    }
+
+    /**
+     * Returns learned entries relevant to the current composition without
+     * exposing or persisting surrounding text.
+     */
+    fun learnedEntriesFor(rawInput: String, limit: Int = MAX_CANDIDATES): List<Entry> {
+        val query = PinyinDictionary.normalize(rawInput)
+        if (query.isEmpty()) return emptyList()
+        val entries = loadEntries()
+        val exact = entries.filter { it.pinyin == query }
+        val prefix = entries.filter { it.pinyin != query && it.pinyin.startsWith(query) }
+        return (exact + prefix)
+            .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
+            .distinctBy { it.pinyin to it.text }
+            .take(limit)
+    }
+
     fun learn(rawPinyin: String, rawText: String): Boolean {
         val pinyin = PinyinDictionary.normalize(rawPinyin)
         val text = rawText.trim()
