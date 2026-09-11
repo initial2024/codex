@@ -35,7 +35,7 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("隐私优先的本地输入法。当前重点是拼音/英文候选、模糊纠错、本地学习、短句翻译、剪贴板、皮肤和键盘内宠物。当前皮肤：${skin.name}。", skin))
+        container.addView(paragraph("隐私优先的本地输入法。v0.15 已加入本地拼音切分、词频排序、句子级候选排序、轻量 N-gram、紧凑词库 asset 和本地个人学习。当前皮肤：${skin.name}。", skin))
         statusMessage?.let {
             container.addView(statusBox(it, skin))
         }
@@ -50,8 +50,11 @@ class MainActivity : Activity() {
             imm.showInputMethodPicker()
         })
 
+        container.addView(section("本地输入引擎", skin))
+        container.addView(paragraph("v0.15 的候选不再只依赖硬编码顺序。连续拼音会先做动态规划切分，再由词典和 beam search 组合候选，并综合基础词频、N-gram、本地个人选择频次和纠错惩罚排序。大型词库可通过构建期导入器转换为 .odict asset，不需要把几十万词写进 Kotlin 源码。", skin))
+
         container.addView(section("拼音输入", skin))
-        container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序、常用词、简拼、整句候选和轻量模糊纠错。示例：nh -> 你好，nisishei -> 你是谁，hsywt -> 还是有问题，xhfnivh -> 喜欢你/想和你说。注意：这仍是轻量词库，不是搜狗/百度级完整中文输入法。", skin))
+        container.addView(paragraph("支持拼音26键、候选上屏、空格选首候选、本地词库排序、简拼、整句候选、拼音切分和模糊纠错。示例：nihaoma 可切分为 ni/hao/ma，nh -> 你好/你好吗，nisishei -> 你是谁，hsywt -> 还是有问题，xhfnivh -> 喜欢你/想和你说。", skin))
 
         container.addView(section("快捷短语", skin))
         container.addView(paragraph("空闲状态会显示快捷短语栏。拼音模式显示中文短语，英文模式显示英文短语；短语库覆盖常用沟通、开发、学习和日常回复。", skin))
@@ -60,11 +63,11 @@ class MainActivity : Activity() {
         container.addView(paragraph("Orbit 只能管理自己键盘里的剪贴板面板，不能替换微信、QQ 或系统长按输入框弹出的原生菜单。复制文字后，打开 Orbit 的剪贴板面板并点击“保存当前剪贴板”。", skin))
 
         container.addView(section("翻译", skin))
-        container.addView(paragraph("翻译优先使用本地短句翻译表，命中后可直接插入译文；没命中时才回退为翻译提示词。v0.14 扩充了常用反馈、输入法、开发和学习场景短句，但当前不联网、不接外部翻译 API，所以无法保证任意长句都能翻译。", skin))
+        container.addView(paragraph("翻译优先使用本地短句翻译表，命中后可直接插入译文；没命中时才回退为翻译提示词。当前不联网、不接外部翻译 API，所以无法保证任意长句都能翻译。", skin))
 
         container.addView(section("宠物", skin))
         container.addView(paragraph("当前宠物：${petProfile.petName}（${petProfile.species}），${petProfile.stageName}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars。今日 ${petProfile.todayTypedChars} 字，累计 ${petProfile.totalTypedChars} 字，心情：${petProfile.moodLabel}，装扮：${petProfile.equippedOutfitName ?: "无"}。", skin))
-        container.addView(paragraph("键盘顶部现在有“宠物/Pet”入口。打开后可签到、开蛋、切换已有宠物、轮换装扮、查看图鉴和隐藏。每天第一次开蛋免费，之后每次 30 Stars。宠物数据只保存在本机。", skin))
+        container.addView(paragraph("键盘顶部有“宠物/Pet”入口。打开后可签到、开蛋、切换已有宠物、轮换装扮、查看图鉴和隐藏。每天第一次开蛋免费，之后每次 30 Stars。宠物数据只保存在本机。", skin))
         container.addView(button("今日签到", skin) {
             val result = petRepository.checkIn()
             render(result.message)
@@ -97,7 +100,7 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("用户词库", skin))
-        container.addView(paragraph("当前本地词库：${dictionaryStats.entryCount}/${dictionaryStats.maxEntries} 条映射，累计选择 ${dictionaryStats.totalFrequency} 次。候选上屏后会本地学习排序；密码框、验证码、疑似密钥内容不会学习。v0.14 支持更长的短句学习和最多 12 个候选。", skin))
+        container.addView(paragraph("当前本地词库：${dictionaryStats.entryCount}/${dictionaryStats.maxEntries} 条映射，累计选择 ${dictionaryStats.totalFrequency} 次。候选上屏后会在本机记录拼音、候选文本、频次和更新时间，并作为候选排序加权；不会保存完整聊天内容。", skin))
         container.addView(button("清空用户词库", skin) {
             userDictionary.clear()
             render("用户本地词库已清空")
@@ -110,12 +113,12 @@ class MainActivity : Activity() {
         }
 
         container.addView(section("隐私", skin))
-        container.addView(paragraph("不申请 INTERNET 权限；不上传输入内容；不接广告和 analytics；密码输入框会隐藏 Hub、宠物、翻译和剪贴板工具。", skin))
+        container.addView(paragraph("不申请 INTERNET 权限；不上传输入内容；不接广告和 analytics；密码输入框会隐藏 Hub、宠物、翻译和剪贴板工具。N-gram 与词频排序均在本机运行。", skin))
 
         container.addView(section("高级功能", skin))
         container.addView(paragraph("Pro 入口只做占位：更多宠物、更多装扮、更高词库/剪贴板额度和更大的离线短句包。当前版本没有支付、广告或联网逻辑。", skin))
 
-        container.addView(paragraph("About · v0.14.0", skin))
+        container.addView(paragraph("About · v0.15.0", skin))
 
         setContentView(scroll)
     }
