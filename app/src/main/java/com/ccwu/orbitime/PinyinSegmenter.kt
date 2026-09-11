@@ -95,10 +95,11 @@ object PinyinSegmenter {
     }
 
     private fun syllableScore(syllable: String): Double {
-        // Longer valid syllables are mildly preferred, but not enough to erase
-        // alternative segmentations. Common standalone syllables get a tiny boost.
-        val commonBoost = if (COMMON_SYLLABLES.contains(syllable)) 0.35 else 0.0
-        return 1.0 + syllable.length * 0.12 + commonBoost
+        // Total character count is fixed for one query, so the negative per-syllable
+        // cost prevents over-segmentation such as hao -> ha + o. Longer complete
+        // syllables win unless a strong common-syllable prior supports another path.
+        val commonBoost = if (COMMON_SYLLABLES.contains(syllable)) 0.22 else 0.0
+        return syllable.length * 0.30 - 0.45 + commonBoost
     }
 
     private fun trimPaths(paths: MutableList<Path>, limit: Int) {
