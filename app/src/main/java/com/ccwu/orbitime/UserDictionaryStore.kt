@@ -19,6 +19,7 @@ class UserDictionaryStore(private val context: Context) {
     )
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    @Volatile private var cachedEntries: List<Entry>? = null
     private val imeEngine: PinyinImeEngine by lazy(LazyThreadSafetyMode.NONE) {
         PinyinImeEngine(context.applicationContext, this)
     }
@@ -33,8 +34,6 @@ class UserDictionaryStore(private val context: Context) {
             return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
         }
 
-        // Fail-safe legacy path: the keyboard must keep producing candidates even
-        // if a packaged asset is malformed or the new engine rejects a query.
         val entries = loadEntries()
         val exactUser = entries
             .filter { it.pinyin == query }
@@ -74,7 +73,6 @@ class UserDictionaryStore(private val context: Context) {
             .take(MAX_CANDIDATES)
     }
 
-    /** Exact learned frequency used as a personalization feature by CandidateRanker. */
     fun frequencyFor(rawPinyin: String, rawText: String): Int {
         val pinyin = PinyinDictionary.normalize(rawPinyin)
         val text = rawText.trim()
@@ -86,10 +84,6 @@ class UserDictionaryStore(private val context: Context) {
             ?: 0
     }
 
-    /**
-     * Returns learned entries relevant to the current composition without
-     * exposing or persisting surrounding text.
-     */
     fun learnedEntriesFor(rawInput: String, limit: Int = MAX_CANDIDATES): List<Entry> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
@@ -117,30 +111,19 @@ class UserDictionaryStore(private val context: Context) {
                 updatedAt = now,
             )
         } else {
-            entries.add(
-                Entry(
-                    pinyin = pinyin,
-                    text = text,
-                    frequency = 1,
-                    updatedAt = now,
-                ),
-            )
+            entries.add(Entry(pinyin, text, 1, now))
         }
-
         saveEntries(trimEntries(entries))
         return true
     }
 
     fun stats(): Stats {
         val entries = loadEntries()
-        return Stats(
-            entryCount = entries.size,
-            totalFrequency = entries.sumOf { it.frequency },
-            maxEntries = maxEntries(),
-        )
+        return Stats(entries.size, entries.sumOf { it.frequency }, maxEntries())
     }
 
     fun clear() {
+        cachedEntries = emptyList()
         prefs.edit().remove(KEY_ENTRIES_JSON).apply()
     }
 
@@ -171,9 +154,15 @@ class UserDictionaryStore(private val context: Context) {
 
     private fun maxEntries(): Int = ProGate.maxUserDictionaryItems(context)
 
+    @Synchronized
     private fun loadEntries(): List<Entry> {
-        val raw = prefs.getString(KEY_ENTRIES_JSON, null) ?: return emptyList()
-        return runCatching {
+        cachedEntries?.let { return it }
+        val raw = prefs.getString(KEY_ENTRIES_JSON, null)
+        if (raw.isNullOrBlank()) {
+            cachedEntries = emptyList()
+            return emptyList()
+        }
+        val parsed = runCatching {
             val array = JSONArray(raw)
             buildList {
                 for (i in 0 until array.length()) {
@@ -182,15 +171,17 @@ class UserDictionaryStore(private val context: Context) {
                     val text = item.optString("text").trim()
                     val frequency = item.optInt("frequency", 1).coerceIn(1, MAX_FREQUENCY)
                     val updatedAt = item.optLong("updatedAt", 0L)
-                    if (canLearn(pinyin, text)) {
-                        add(Entry(pinyin, text, frequency, updatedAt))
-                    }
+                    if (canLearn(pinyin, text)) add(Entry(pinyin, text, frequency, updatedAt))
                 }
             }
         }.getOrElse { emptyList() }
+        cachedEntries = parsed
+        return parsed
     }
 
+    @Synchronized
     private fun saveEntries(entries: List<Entry>) {
+        cachedEntries = entries
         val array = JSONArray()
         entries.forEach { entry ->
             array.put(
