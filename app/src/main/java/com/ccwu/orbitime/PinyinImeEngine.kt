@@ -188,8 +188,9 @@ class PinyinImeEngine(
                     val key = syllables.subList(hypothesis.position, hypothesis.position + span).joinToString("")
                     val entries = lexicalEntriesFor(key, span)
                     entries.take(MAX_ENTRIES_PER_SPAN).forEach { entry ->
-                        val previous2 = (contextTokens + hypothesis.tokens).getOrNull((contextTokens + hypothesis.tokens).size - 2)
-                        val previous1 = (contextTokens + hypothesis.tokens).lastOrNull()
+                        val history = contextTokens + hypothesis.tokens
+                        val previous2 = history.getOrNull(history.size - 2)
+                        val previous1 = history.lastOrNull()
                         val lm = languageModel.transitionScore(previous2, previous1, entry.text)
                         val freq = ln(1.0 + entry.frequency.coerceAtLeast(1)) * 0.75
                         next += Hypothesis(
@@ -245,12 +246,21 @@ class PinyinImeEngine(
         userFrequencyOverride: Int? = null,
     ): CandidateRanker.Candidate {
         val userFrequency = userFrequencyOverride ?: userDictionary.frequencyFor(query, text)
+        val tokenScore = languageModel.scoreSequence(contextTokens, tokens)
+        val characterTokens = text
+            .filter { isCjk(it) }
+            .map { it.toString() }
+        val characterScore = if (characterTokens.size >= 2) {
+            languageModel.scoreSequence(contextTokens, characterTokens) * CHARACTER_NGRAM_WEIGHT
+        } else {
+            0.0
+        }
         return CandidateRanker.Candidate(
             text = text,
             tokens = tokens,
             staticFrequency = staticFrequency,
             segmentationScore = segmentationScore,
-            ngramScore = languageModel.scoreSequence(contextTokens, tokens),
+            ngramScore = maxOf(tokenScore, characterScore),
             userFrequency = userFrequency,
             correctionPenalty = correctionPenalty,
             sourcePriority = sourcePriority,
@@ -301,5 +311,6 @@ class PinyinImeEngine(
         private const val BEAM_WIDTH = 36
         private const val MAX_BEAM_RESULTS = 16
         private const val USER_BASE_STATIC_FREQUENCY = 700_000
+        private const val CHARACTER_NGRAM_WEIGHT = 0.85
     }
 }
