@@ -1,0 +1,12 @@
+{
+  "format": "ORBIT_ODICT",
+  "version": 1,
+  "build": "v0.15-seed",
+  "note": "Project-authored fallback assets. Replace with importer output for larger licensed packs.",
+  "files": [
+    "lexicon.odict",
+    "ngram1.odict",
+    "ngram2.odict",
+    "ngram3.odict"
+  ]
+}
