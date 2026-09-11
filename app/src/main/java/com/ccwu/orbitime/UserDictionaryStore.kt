@@ -35,7 +35,16 @@ class UserDictionaryStore(private val context: Context) {
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
             .map { it.text }
 
-        return (exactUser + staticCandidates + prefixUser)
+        val containsUser = if (exactUser.isEmpty() && prefixUser.size < 4) {
+            entries
+                .filter { it.pinyin != query && it.pinyin.contains(query) }
+                .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
+                .map { it.text }
+        } else {
+            emptyList()
+        }
+
+        return (exactUser + staticCandidates + prefixUser + containsUser)
             .distinct()
             .take(MAX_CANDIDATES)
     }
@@ -97,8 +106,8 @@ class UserDictionaryStore(private val context: Context) {
     }
 
     private fun canLearn(pinyin: String, text: String): Boolean {
-        if (pinyin.length !in 1..32) return false
-        if (text.length !in 1..20) return false
+        if (pinyin.length !in 1..64) return false
+        if (text.length !in 1..40) return false
         if (text == pinyin) return false
         if (!containsCjk(text)) return false
         if (!PrivacyGuard.isSafeToUseForPrompt(text)) return false
@@ -159,7 +168,7 @@ class UserDictionaryStore(private val context: Context) {
     companion object {
         private const val PREFS = "orbit_user_dictionary"
         private const val KEY_ENTRIES_JSON = "entries_json"
-        private const val MAX_CANDIDATES = 8
+        private const val MAX_CANDIDATES = 12
         private const val MAX_FREQUENCY = 9999
     }
 }
