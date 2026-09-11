@@ -14,12 +14,14 @@ object OfflineTranslationPack {
         val exact = when (direction) {
             TranslatePromptBuilder.Direction.ZH_TO_EN ->
                 ProfessionalTranslationData.zhToEn[text]
+                    ?: TranslationExpansionData.zhToEn[text]
                     ?: zhToEn[text]
                     ?: TranslationBoostData.zhToEn[text]
 
             TranslatePromptBuilder.Direction.EN_TO_ZH -> {
                 val key = normalizeEnglishKey(text)
                 ProfessionalTranslationData.enToZh[key]
+                    ?: TranslationExpansionData.enToZh[key]
                     ?: enToZh[key]
                     ?: TranslationBoostData.enToZh[key]
             }
@@ -49,8 +51,8 @@ object OfflineTranslationPack {
     }
 
     private fun roughZhToEn(text: String): String? {
-        if (text.length > 30) return null
-        val tokenMap = TranslationBoostData.zhTokens + zhTokens
+        if (text.length > 42) return null
+        val tokenMap = TranslationExpansionData.zhTokens + TranslationBoostData.zhTokens + zhTokens
         var remaining = text
         val output = mutableListOf<String>()
         while (remaining.isNotEmpty()) {
@@ -63,8 +65,8 @@ object OfflineTranslationPack {
     }
 
     private fun roughEnToZh(text: String): String? {
-        if (text.length > 80) return null
-        val tokenMap = TranslationBoostData.enTokens + enTokens
+        if (text.length > 100) return null
+        val tokenMap = TranslationExpansionData.enTokens + TranslationBoostData.enTokens + enTokens
         val tokens = normalizeEnglishKey(text)
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
