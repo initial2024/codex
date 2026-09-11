@@ -19,22 +19,31 @@ class UserDictionaryStore(private val context: Context) {
     )
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val imeEngine: PinyinImeEngine by lazy(LazyThreadSafetyMode.NONE) {
+        PinyinImeEngine(context.applicationContext, this)
+    }
 
     fun candidatesFor(rawInput: String, staticCandidates: List<String>): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
 
+        val engineCandidates = runCatching { imeEngine.candidates(query, limit = MAX_CANDIDATES) }
+            .getOrElse { emptyList() }
+        if (engineCandidates.isNotEmpty()) {
+            return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
+        }
+
+        // Fail-safe legacy path: the keyboard must keep producing candidates even
+        // if a packaged asset is malformed or the new engine rejects a query.
         val entries = loadEntries()
         val exactUser = entries
             .filter { it.pinyin == query }
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
             .map { it.text }
-
         val prefixUser = entries
             .filter { it.pinyin != query && it.pinyin.startsWith(query) }
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
             .map { it.text }
-
         val containsUser = if (exactUser.isEmpty() && prefixUser.size < 4) {
             entries
                 .filter { it.pinyin != query && it.pinyin.contains(query) }
@@ -43,7 +52,6 @@ class UserDictionaryStore(private val context: Context) {
         } else {
             emptyList()
         }
-
         return (exactUser + staticCandidates + prefixUser + containsUser)
             .distinct()
             .take(MAX_CANDIDATES)
@@ -52,12 +60,15 @@ class UserDictionaryStore(private val context: Context) {
     fun exactCandidatesFor(rawInput: String, staticCandidates: List<String>): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
-
+        val engineCandidates = runCatching { imeEngine.exactCandidates(query, limit = MAX_CANDIDATES) }
+            .getOrElse { emptyList() }
+        if (engineCandidates.isNotEmpty()) {
+            return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
+        }
         val exactUser = loadEntries()
             .filter { it.pinyin == query }
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
             .map { it.text }
-
         return (exactUser + staticCandidates)
             .distinct()
             .take(MAX_CANDIDATES)
