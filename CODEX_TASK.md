@@ -1,6 +1,6 @@
 # Codex handoff: build Orbit IME v0.23.0 APK only
 
-All non-build implementation is prepared. Build **current main** only and make only the smallest compile/portability repair exposed by the build.
+All non-build v0.23 implementation is prepared. Build **current main** only and make only the smallest compile/portability repair exposed by the build.
 
 ## Confirm version
 
@@ -44,18 +44,22 @@ Do not lower data gates or bypass source/hash/license checks.
 Preserve:
 
 - THUOCL pinned domain sources and MIT notices;
-- FrequencyWords zh/en 50k ranking data with CC-BY-SA-4.0 attribution;
+- FrequencyWords zh/en ranking data with CC-BY-SA-4.0 attribution;
 - runtime Chinese gate >= 250,000;
 - English gate >= 100,000;
 - precomputed `ime/association/00.odict..1f.odict` with >= 10,000 association rows;
 - `AssociationAsset` LRU shard reader + `NextAssociationEngine` association-first/N-gram-fallback path;
-- 32 displayed Chinese/English candidates;
+- up to **48 displayed Chinese candidates** and **48 displayed English candidates**;
+- `PinyinImeEngine.MAX_RESULTS = 48`, prefix pool 120, bounded cache and adaptive Beam;
+- `EnglishImeEngine.DEFAULT_LIMIT = 48`, max 64, larger prefix pool and local candidate cache;
+- post-commit association default 48 / max 64, N-gram branches 16 and bounded Beam 40;
 - continuous Pinyin, DP segmentation, adaptive Beam and 1/2/3-gram;
 - persistent fuzzy modes `off / standard / enhanced`;
-- enhanced Pinyin missing-key/repeated-key/neighbor/transposition/fuzzy recovery;
-- `EnglishFuzzyEngine` bounded typo recovery;
+- Pinyin fuzzy pool includes fuzzy initials/finals, transposition, neighbor substitution, extra-key deletion, repeated-key collapse, missing-key insertion and bounded second-layer recovery;
+- `EnglishFuzzyEngine` bounded transpose/extra-key/neighbor/missing-key/two-stage recovery;
 - exact candidates always rank ahead of fuzzy candidates;
-- long-query Beam remains bounded; do not increase it indiscriminately just to show more candidates.
+- long-query Beam remains bounded; do not increase it indiscriminately just to show more candidates;
+- `UserDictionaryStore` must not re-truncate candidates/associations to the old 32/24 limits.
 
 ## v0.23 translation gates
 
@@ -63,6 +67,7 @@ Keep:
 
 ```text
 FluentLocalTranslationEngine.kt
+TranslationOutputNormalizer.kt
 OfflineTranslationPack.exactOnly(...)
 LongFormTranslationEngine.kt
 ContextTranslationEngine.kt
@@ -72,9 +77,13 @@ Required behavior:
 
 - exact local translation first;
 - coverage-scored dynamic-programming phrase translation before older greedy fallback;
+- `FluentLocalTranslationEngine` searches longer local phrases (ZH span 18 / EN span 12);
+- output punctuation/spacing passes through `TranslationOutputNormalizer`;
 - uncovered source text is preserved rather than fabricated;
 - Pro long-form translation preserves paragraph/line breaks and supports up to 8,000 source chars;
-- context preview uses the paragraph-aware local translation path;
+- overly long sentences are split into bounded clauses instead of failing as one giant lookup;
+- the long-form work budget never drops remaining source; unprocessed/unknown fragments remain verbatim;
+- Pro context translation keeps source sentence boundaries and may reference at most four previous sentences in memory;
 - no cloud API/INTERNET permission.
 
 The v0.22 `.orbitpack` manager remains. Imported neural packs are still **non-executable** unless a separately validated Android runtime is actually bundled. Do not fake neural translation output and do not add an unverified native dependency just to satisfy the build.
@@ -119,7 +128,7 @@ Selection-aware replace/delete, composing replacement, custom/disableable quick 
 
 ## If build fails
 
-Only repair the minimum Kotlin/import/API/resource/Gradle/Python/SAF/file-I/O/IME metadata blocker. Do not redesign features, lower data gates or add network/native runtimes.
+Only repair the minimum Kotlin/import/API/resource/Gradle/Python/SAF/file-I/O/IME metadata blocker. Do not redesign features, lower data gates, reduce candidate/fuzzy/association limits back to old values, or add network/native runtimes.
 
 ## Expected output
 
@@ -140,7 +149,7 @@ Return:
 5. mature-report counts for AOSP/Jieba/CC-CEDICT/THUOCL/FrequencyWords/runtime Chinese/runtime English/association/N-grams/translations;
 6. validator PASS/FAIL;
 7. any minimum repair file + reason;
-8. compile result for `MainActivity`, `OrbitInputMethodService`, `PinyinImeEngine`, `PinyinCorrectionEngine`, `EnglishImeEngine`, `AssociationAsset`, `NextAssociationEngine`, `FluentLocalTranslationEngine`, `LongFormTranslationEngine`, `ContextTranslationEngine`, `SkinManager`, `ModelPackManager`;
+8. compile result for `MainActivity`, `OrbitInputMethodService`, `PinyinImeEngine`, `PinyinCorrectionEngine`, `EnglishImeEngine`, `EnglishFuzzyEngine`, `UserDictionaryStore`, `AssociationAsset`, `NextAssociationEngine`, `OfflineTranslationPack`, `FluentLocalTranslationEngine`, `TranslationOutputNormalizer`, `LongFormTranslationEngine`, `ContextTranslationEngine`, `SkinManager`, `ModelPackManager`;
 9. BUILD SUCCESSFUL/FAILED;
 10. APK absolute path and size;
 11. version confirmation and prohibited-permission confirmation.
