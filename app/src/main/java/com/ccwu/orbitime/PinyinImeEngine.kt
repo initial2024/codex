@@ -13,18 +13,11 @@ class PinyinImeEngine(
     private val languageModel = NGramLanguageModel(context.applicationContext)
 
     private val candidateCache = object : LinkedHashMap<String, List<String>>(48, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean =
-            size > MAX_QUERY_CACHE
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean = size > MAX_QUERY_CACHE
     }
 
-    /**
-     * Phrase lookups repeat heavily while a user extends one continuous Pinyin
-     * sentence one letter at a time. Cache immutable packaged/legacy lexical
-     * results so growing sentences do not repeatedly parse the same asset rows.
-     */
     private val lexicalCache = object : LinkedHashMap<String, List<LexicalEntry>>(384, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<LexicalEntry>>?): Boolean =
-            size > MAX_LEXICAL_CACHE
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<LexicalEntry>>?): Boolean = size > MAX_LEXICAL_CACHE
     }
 
     @Synchronized
@@ -39,16 +32,12 @@ class PinyinImeEngine(
         addUser(query, contextTokens, pool, exactOnly = false)
         addExact(query, contextTokens, pool)
         addSegmented(query, contextTokens, pool)
-        // Whole-sentence typo expansion grows quickly and becomes low-value for
-        // long continuous input. Keep it for short/medium queries only.
+        addPrefixPredictions(query, contextTokens, pool)
         if (query.length <= MAX_CORRECTION_QUERY_CHARS) addCorrections(query, contextTokens, pool)
 
         val ranked = CandidateRanker.rank(pool, limit).map { it.text }.distinct()
-        val result = if (ranked.isNotEmpty()) {
-            ranked.take(limit)
-        } else {
-            (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query))
-                .distinct().take(limit)
+        val result = if (ranked.isNotEmpty()) ranked.take(limit) else {
+            (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query)).distinct().take(limit)
         }
         candidateCache[cacheKey] = result
         return result
@@ -65,18 +54,11 @@ class PinyinImeEngine(
     }
 
     @Synchronized
-    fun clearCandidateCache() {
-        candidateCache.clear()
-    }
+    fun clearCandidateCache() { candidateCache.clear() }
 
     fun debugSegmentation(rawInput: String): List<PinyinSegmenter.Segmentation> = PinyinSegmenter.segment(rawInput)
 
-    private fun addUser(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-        exactOnly: Boolean,
-    ) {
+    private fun addUser(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>, exactOnly: Boolean) {
         userDictionary.learnedEntriesFor(query, MAX_RESULTS * 2)
             .asSequence()
             .filter { !exactOnly || it.pinyin == query }
@@ -95,11 +77,7 @@ class PinyinImeEngine(
             }
     }
 
-    private fun addExact(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-    ) {
+    private fun addExact(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
         lexicon.exact(query).forEachIndexed { index, entry ->
             pool += makeCandidate(
                 query, entry.text, listOf(entry.text), entry.frequency, 4.0, contextTokens,
@@ -120,11 +98,7 @@ class PinyinImeEngine(
         }
     }
 
-    private fun addSegmented(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-    ) {
+    private fun addSegmented(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
         val segmentLimit = segmentationLimitFor(query.length)
         PinyinSegmenter.segment(query, segmentLimit).forEachIndexed { segmentationIndex, segmentation ->
             beamGenerate(segmentation, contextTokens).forEachIndexed { beamIndex, hypothesis ->
@@ -143,11 +117,42 @@ class PinyinImeEngine(
         }
     }
 
-    private fun addCorrections(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-    ) {
+    /** Prefix association lets partial Pinyin surface real big-dictionary words. */
+    private fun addPrefixPredictions(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
+        if (query.length !in 2..MAX_PREFIX_QUERY_CHARS) return
+        lexicon.prefix(query, PREFIX_POOL_LIMIT).forEachIndexed { index, entry ->
+            if (entry.pinyin == query) return@forEachIndexed
+            val remaining = (entry.pinyin.length - query.length).coerceAtLeast(0)
+            pool += makeCandidate(
+                query = query,
+                text = entry.text,
+                tokens = listOf(entry.text),
+                staticFrequency = entry.frequency,
+                segmentationScore = 0.25,
+                contextTokens = contextTokens,
+                correctionPenalty = 1.15 + remaining.coerceAtMost(10) * 0.08 + index * 0.015,
+                sourcePriority = 2,
+            )
+        }
+    }
+
+    /** Fuzzy/typo variants now query the packaged lexicon, not only small hard-coded maps. */
+    private fun addCorrections(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
+        PinyinCorrectionEngine.queryVariants(query).forEach { variant ->
+            lexicon.exact(variant.pinyin).take(MAX_CORRECTION_ENTRIES_PER_VARIANT).forEachIndexed { index, entry ->
+                pool += makeCandidate(
+                    query = query,
+                    text = entry.text,
+                    tokens = listOf(entry.text),
+                    staticFrequency = entry.frequency,
+                    segmentationScore = 0.0,
+                    contextTokens = contextTokens,
+                    correctionPenalty = 2.1 + variant.penalty + index * 0.18,
+                    sourcePriority = 2,
+                )
+            }
+        }
+
         PinyinCorrectionEngine.candidatesFor(query).forEachIndexed { index, text ->
             pool += makeCandidate(
                 query = query,
@@ -156,7 +161,7 @@ class PinyinImeEngine(
                 staticFrequency = syntheticFrequency(index, 520_000),
                 segmentationScore = 0.0,
                 contextTokens = contextTokens,
-                correctionPenalty = 3.2 + index * 0.18,
+                correctionPenalty = 3.0 + index * 0.18,
                 sourcePriority = 2,
             )
         }
@@ -173,13 +178,9 @@ class PinyinImeEngine(
 
     private data class LexicalEntry(val text: String, val frequency: Int)
 
-    private fun beamGenerate(
-        segmentation: PinyinSegmenter.Segmentation,
-        contextTokens: List<String>,
-    ): List<Hypothesis> {
+    private fun beamGenerate(segmentation: PinyinSegmenter.Segmentation, contextTokens: List<String>): List<Hypothesis> {
         val syllables = segmentation.syllables
         if (syllables.isEmpty()) return emptyList()
-
         val beamWidth = beamWidthFor(syllables.size)
         val maxPhraseSpan = phraseSpanFor(syllables.size)
         val entriesPerSpan = entriesPerSpanFor(syllables.size)
@@ -214,24 +215,16 @@ class PinyinImeEngine(
                 }
             }
             if (next.isEmpty()) break
-            beam = next
-                .sortedByDescending { it.beamScore }
-                .distinctBy { it.position to it.text }
-                .take(beamWidth)
+            beam = next.sortedByDescending { it.beamScore }.distinctBy { it.position to it.text }.take(beamWidth)
         }
-        return beam.filter { it.position == syllables.size }
-            .sortedByDescending { it.beamScore }
-            .take(resultLimit)
+        return beam.filter { it.position == syllables.size }.sortedByDescending { it.beamScore }.take(resultLimit)
     }
 
     private fun lexicalEntriesFor(key: String, syllableSpan: Int): List<LexicalEntry> {
         val cacheKey = "$syllableSpan:$key"
         lexicalCache[cacheKey]?.let { return it }
-
         val merged = LinkedHashMap<String, Int>()
-        lexicon.exact(key).forEach { entry ->
-            merged[entry.text] = maxOf(merged[entry.text] ?: 0, entry.frequency)
-        }
+        lexicon.exact(key).forEach { entry -> merged[entry.text] = maxOf(merged[entry.text] ?: 0, entry.frequency) }
         val legacy = linkedSetOf<String>().apply {
             addAll(PinyinExpandedData.entries[key].orEmpty())
             addAll(PinyinBoostData.entries[key].orEmpty())
@@ -242,9 +235,7 @@ class PinyinImeEngine(
             val frequency = syntheticFrequency(index, if (syllableSpan > 1) 650_000 else 540_000)
             merged[text] = maxOf(merged[text] ?: 0, frequency)
         }
-        val result = merged.entries
-            .sortedByDescending { it.value }
-            .map { LexicalEntry(it.key, it.value) }
+        val result = merged.entries.sortedByDescending { it.value }.map { LexicalEntry(it.key, it.value) }
         lexicalCache[cacheKey] = result
         return result
     }
@@ -262,9 +253,7 @@ class PinyinImeEngine(
     ): CandidateRanker.Candidate {
         val tokenScore = languageModel.scoreSequence(contextTokens, tokens)
         val chars = text.filter(::isCjk).map(Char::toString)
-        val charScore = if (chars.size >= 2) {
-            languageModel.scoreSequence(contextTokens, chars) * CHARACTER_NGRAM_WEIGHT
-        } else 0.0
+        val charScore = if (chars.size >= 2) languageModel.scoreSequence(contextTokens, chars) * CHARACTER_NGRAM_WEIGHT else 0.0
         return CandidateRanker.Candidate(
             text = text,
             tokens = tokens,
@@ -291,8 +280,7 @@ class PinyinImeEngine(
         else -> BEAM_WIDTH
     }
 
-    private fun phraseSpanFor(syllableCount: Int): Int =
-        if (syllableCount >= 28) 6 else MAX_PHRASE_SYLLABLES
+    private fun phraseSpanFor(syllableCount: Int): Int = if (syllableCount >= 28) 6 else MAX_PHRASE_SYLLABLES
 
     private fun entriesPerSpanFor(syllableCount: Int): Int = when {
         syllableCount >= 28 -> 4
@@ -300,8 +288,7 @@ class PinyinImeEngine(
         else -> MAX_ENTRIES_PER_SPAN
     }
 
-    private fun beamResultLimitFor(syllableCount: Int): Int =
-        if (syllableCount >= 28) 14 else MAX_BEAM_RESULTS
+    private fun beamResultLimitFor(syllableCount: Int): Int = if (syllableCount >= 28) 14 else MAX_BEAM_RESULTS
 
     private fun cacheKey(query: String, contextBeforeCursor: String?, limit: Int): String =
         query + '\u0000' + contextBeforeCursor.orEmpty().takeLast(48) + '\u0000' + limit
@@ -320,10 +307,7 @@ class PinyinImeEngine(
         tail.forEach { char ->
             when {
                 char.isLetterOrDigit() && char.code < 128 -> latin.append(char)
-                isCjk(char) -> {
-                    flushLatin()
-                    tokens += char.toString()
-                }
+                isCjk(char) -> { flushLatin(); tokens += char.toString() }
                 else -> flushLatin()
             }
         }
@@ -338,8 +322,7 @@ class PinyinImeEngine(
             block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
     }
 
-    private fun syntheticFrequency(index: Int, base: Int): Int =
-        (base - index * 28_000).coerceAtLeast(25_000)
+    private fun syntheticFrequency(index: Int, base: Int): Int = (base - index * 28_000).coerceAtLeast(25_000)
 
     companion object {
         private const val MAX_RESULTS = 12
@@ -351,6 +334,9 @@ class PinyinImeEngine(
         private const val MAX_QUERY_CACHE = 48
         private const val MAX_LEXICAL_CACHE = 384
         private const val MAX_CORRECTION_QUERY_CHARS = 48
+        private const val MAX_CORRECTION_ENTRIES_PER_VARIANT = 3
+        private const val MAX_PREFIX_QUERY_CHARS = 20
+        private const val PREFIX_POOL_LIMIT = 28
         private const val USER_BASE_STATIC_FREQUENCY = 700_000
         private const val CHARACTER_NGRAM_WEIGHT = 0.85
     }
