@@ -26,9 +26,9 @@ android {
 kotlin { jvmToolchain(17) }
 
 dependencies {
-    // Pinned official sherpa-onnx Android AAR through the project's JitPack setup.
-    // Used by v0.24 ASR, v0.25 TTS and v0.26 ZipVoice voice-clone providers.
-    implementation("com.github.k2-fsa:sherpa-onnx:1.13.4")
+    // Official current sherpa-onnx Gradle/JitPack coordinate. Build-time dependency only;
+    // installed Orbit keeps runtime networking disabled.
+    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8")
 }
 
 val orbitSkipMatureImeData = providers.gradleProperty("orbitSkipMatureImeData")
