@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Fail the build when generated mature IME assets are incomplete or suspiciously small."""
+"""Fail the build when Orbit v0.19 mature assets or local features regress."""
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,7 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     stats = report.get("stats", {})
     counts = report.get("runtime_counts", {})
+    require(int(report.get("version", 0)) >= 3, f"mature report is stale: {report.get('version')}")
 
     min_aosp = int(policy["minimum_aosp_entries"])
     min_jieba = int(policy["minimum_jieba_generated_entries"])
@@ -108,11 +110,32 @@ def main() -> int:
     require('android:grantUriPermissions="true"' in android_manifest, "sticker provider URI grants missing")
 
     gradle = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-    require('versionCode = 18' in gradle, "versionCode is not 18")
-    require('versionName = "0.18.0"' in gradle, "versionName is not 0.18.0")
+    require('versionCode = 19' in gradle, "versionCode is not 19")
+    require('versionName = "0.19.0"' in gradle, "versionName is not 0.19.0")
+
+    # v0.19 local personalization must remain file-backed and large enough for daily use.
+    pro_gate = (ROOT / "app/src/main/java/com/ccwu/orbitime/ProGate.kt").read_text(encoding="utf-8")
+    require("100000 else 20000" in pro_gate, "v0.19 user-dictionary capacities regressed")
+    user_store = (ROOT / "app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt").read_text(encoding="utf-8")
+    require('STORE_DIR = "orbit-user-dictionary"' in user_store, "file-backed user dictionary missing")
+    require("JOURNAL_COMPACT_WRITES" in user_store and "journal.tsv" in user_store, "user dictionary journal/compaction missing")
+
+    # v0.19 pet/outfit/sticker scale gates.
+    pet_source = (ROOT / "app/src/main/java/com/ccwu/orbitime/PetRepository.kt").read_text(encoding="utf-8")
+    pet_count = len(re.findall(r'PetDefinition\("', pet_source))
+    outfit_count = len(re.findall(r'OutfitDefinition\("', pet_source))
+    require(pet_count >= 16, f"pet catalog regressed: {pet_count}")
+    require(outfit_count >= 24, f"outfit catalog regressed: {outfit_count}")
+    require("KEY_LAST_EVENT" in pet_source and "FEEDBACK_TTL_MS" in pet_source, "pet micro-feedback state missing")
+
+    sticker_source = (ROOT / "app/src/main/java/com/ccwu/orbitime/StickerPack.kt").read_text(encoding="utf-8")
+    mood_count = len(re.findall(r'MoodMeta\(StickerVariant\.', sticker_source))
+    require(mood_count >= 8, f"sticker mood variants regressed: {mood_count}")
+    require(pet_count * mood_count >= 128, f"local sticker definitions below 128: pets={pet_count}, moods={mood_count}")
 
     summary = {
         "status": "PASS",
+        "version": "0.19.0",
         "aosp_lexicon_entries": stats["aosp_lexicon_entries"],
         "jieba_generated_entries": stats["jieba_generated_entries"],
         "cedict_entries": stats["cedict_entries"],
@@ -127,6 +150,11 @@ def main() -> int:
         "english_shards": len(en_shards),
         "translation_zh_shards": len(zh_translation_shards),
         "translation_en_shards": len(en_translation_shards),
+        "user_dictionary_free_capacity": 20000,
+        "user_dictionary_pro_capacity": 100000,
+        "pet_catalog": pet_count,
+        "outfit_catalog": outfit_count,
+        "local_stickers": pet_count * mood_count,
     }
     print(json.dumps(summary, ensure_ascii=False))
     return 0
