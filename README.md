@@ -1,71 +1,102 @@
 # Orbit IME Android
 
-Current version: `0.23.0`.
+Current version: `0.26.0`.
 
 Orbit IME is a privacy-first local Android input method. Current specifications:
 
 - `CODEX_TASK.md` — build-only handoff and acceptance gates;
 - `DATA_SOURCES.md` — licensed/offline dictionary pipeline;
-- `MODEL_PACKS.md` — Pro local model-pack format/integrity/license policy;
+- `MODEL_PACKS.md` — Pro local model-pack format/runtime/license policy;
 - `PRIVACY.md` — runtime privacy and permission boundary.
 
-## v0.23 focus — input quality and flow
+## v0.22–v0.26 milestones
 
-v0.23 keeps the v0.22 secure `.orbitpack` manager and concentrates on everyday typing quality:
+### v0.22 — secure Pro model packs
 
-- pinned THUOCL domain vocabulary covers IT, idioms, finance, places, food, law, people, medical, poetry, animals and cars;
-- FrequencyWords/OpenSubtitles Chinese and English usage-frequency overlays improve ranking of common conversational vocabulary;
-- runtime Chinese mature-data gate is at least 250,000 entries; English remains at least 100,000 entries;
-- a 32-shard precomputed `association/` pack provides fast post-commit next-word/phrase prediction before bounded N-gram continuation;
-- Chinese and English visible candidate pools are expanded to 48, while internal prefix/fuzzy pools are larger and long-query Beam remains adaptive/bounded;
-- persistent fuzzy correction modes are Off / Standard / Enhanced. Pinyin includes fuzzy initials/finals, adjacent transposition, neighbor substitution, extra-key deletion, repeated-key collapse, missing-key recovery and a bounded second fuzzy layer; English has equivalent bounded typo recovery;
-- exact candidates remain ahead of fuzzy results; user-learning and frequency/N-gram ranking are still applied;
-- local translation uses exact data first, then coverage-scored dynamic-programming phrase selection, CC-CEDICT composition and conservative fallback;
-- long-form translation preserves line/paragraph structure, splits oversized sentences into bounded clauses, processes up to 8,000 source characters, and never drops uncovered source text;
-- context translation now preserves sentence boundaries and can reference up to four previous sentences in memory for Pro;
-- translated output receives local punctuation/spacing cleanup instead of returning raw dictionary fragments;
-- appearance is independent from skins: Follow system / Light / Dark / AMOLED black / Custom skin. Default is Follow system and Android night mode selects Orbit Dark.
+- `.orbitpack` import through Android Storage Access Framework;
+- app-private installation;
+- Zip Slip/path/duplicate protection;
+- mandatory `manifest.json`, `LICENSE.txt`, `NOTICE.txt`, `checksums.sha256`;
+- SHA-256 verification for every regular file;
+- explicit source/license/commercial/redistribution/disclaimer UI;
+- enable/disable/uninstall without granting the model pack network access.
 
-The runtime strategy intentionally follows mature IME principles: indexed exact/prefix lookup first, cached bounded fuzzy recovery, full-sentence decoding with adaptive Beam, and cheap indexed next-word prediction before more expensive fallback generation.
+### v0.23 — mature input quality
 
-## Licensed v0.23 data layers
+- THUOCL domain vocabulary and FrequencyWords ranking layers;
+- at least 250k mature Chinese entries and 100k English entries under the build gates;
+- 48 visible Chinese/English candidates;
+- 32-shard post-commit association assets;
+- continuous Pinyin, DP segmentation, adaptive Beam, 1/2/3-gram and bounded fuzzy recovery;
+- Off / Standard / Enhanced fuzzy modes;
+- improved local context/long-form translation while never fabricating uncovered source segments;
+- Follow system / Light / Dark / AMOLED / Custom appearance modes.
 
-Existing audited layers:
+### v0.24 — local offline ASR
 
-- AOSP PinyinIME — Apache-2.0;
-- Jieba — MIT;
-- CC-CEDICT — CC-BY-SA-4.0;
-- ESDB/SCOWL `en_US-large` — ESDB redistribution terms;
-- Unicode Emoji 17.0 — Unicode Data Files and Software License;
-- Orbit project-authored software/platform vocabulary and seed data.
+- pinned `sherpa-onnx 1.13.8` Android runtime;
+- executable `sherpa_offline_transducer` model packs;
+- explicit tap-to-start / tap-to-stop microphone flow;
+- 16 kHz mono PCM16 capture in RAM only, maximum 60 seconds;
+- recognized text is committed to the active editor;
+- capture is cancelled when the IME hides or enters a sensitive field;
+- `RECORD_AUDIO` is requested only for this explicit local voice feature.
 
-v0.23 additionally uses:
+### v0.25 — local TTS
 
-- THUOCL — MIT;
-- HermitDave/FrequencyWords content — CC-BY-SA-4.0, used as a usage-frequency/ranking layer.
+- executable sherpa VITS, Kokoro and Supertonic pack families;
+- local text-to-speech generation and `AudioTrack` playback;
+- keyboard `Read` action reads selected text first, otherwise only the previous sentence;
+- no text/audio upload.
 
-All upstream files are pinned/hash-verified on the build machine and packaged as offline assets with notices. The installed IME still has no `INTERNET` permission.
+### v0.26 — authorized zero-shot voice clone
 
-## Translation and local neural model status
+- executable sherpa ZipVoice model-pack adapter;
+- explicit reference-voice consent gate;
+- only mono PCM16 WAV, 2–30 seconds, with matching reference transcript;
+- reference audio stays in app-private storage and can be deleted;
+- keyboard/settings preview uses only user-triggered local generation;
+- clear anti-impersonation/fraud/unauthorized-commercial-use disclaimer.
 
-Free translation remains local single-sentence translation. Pro retains optional context and selected long-form local translation. v0.23 substantially improves the dictionary/rule path but does **not** claim neural output when a native neural runtime is not bundled.
+Audio8 0.6B/0.1B and OPUS-MT/NLLB remain curated sources/candidates. They are not falsely marked executable when Orbit lacks a matching audited Android adapter. In particular, generic Marian/OPUS-MT neural translation remains installable/auditable through model packs but is not claimed as working neural inference yet.
 
-The v0.22 `.orbitpack` manager remains available for verified local model installation. `ModelRuntimeContracts.kt` continues to report unbundled neural providers as non-executable. A later runtime adapter can activate an audited local neural translation pack without weakening the current offline fallback.
+## Model/source policy
 
-## Preserved features
+Speech runtime code and individual model/checkpoint/voice licenses are separate. A sherpa runtime being Apache-2.0 does **not** make every ASR/TTS/voice model automatically commercial-safe. Every `.orbitpack` must ship the exact applicable LICENSE/NOTICE and provenance.
+
+Curated references include:
+
+- k2-fsa sherpa-onnx and sherpa model collections;
+- k2-fsa ZipVoice;
+- Helsinki-NLP OPUS-MT zh→en / en→zh;
+- Meta NLLB-200 distilled 600M as a non-commercial research candidate;
+- Audio8 TTS Preview 0.6B and 0.1B with their distinct current licenses.
+
+See `MODEL_PACKS.md` for exact boundaries and example manifests.
+
+## Preserved mature input features
 
 - selection-aware replace/delete and composing replacement;
 - remembered settings and user-defined quick phrases;
 - 48-candidate Chinese/English pools;
 - continuous Pinyin, DP segmentation, adaptive Beam and 1/2/3-gram;
-- expanded post-commit association pool up to 48 suggestions;
+- expanded post-commit associations and three-level fuzzy correction;
+- AOSP/Jieba/CC-CEDICT/THUOCL/FrequencyWords/ESDB/Unicode Emoji offline data layers;
 - file+journal personal learning (20k Free / 100k Pro);
 - Recent/Pinned clipboard;
-- Unicode Emoji, kaomoji, 7-page symbols and letter long-press;
+- Unicode Emoji, kaomoji, 7-page symbols and key long-press;
 - 16 pets, 24 outfit entries and 128 local sticker definitions;
-- secure Pro `.orbitpack` import/validation/uninstall;
-- Follow system / Light / Dark / AMOLED / Custom appearance modes;
-- no cloud translation/prediction, advertising, analytics, Accessibility or overlay.
+- local Free/Pro dictionary/context/long-form translation;
+- secure Pro model-pack management;
+- no cloud prediction/translation, ads, analytics, Accessibility or overlay.
+
+## Runtime permission boundary
+
+The installed APK still has **no `INTERNET` permission**.
+
+v0.24+ declares `RECORD_AUDIO` only for explicit local ASR. There is no background microphone service. Speech capture is cancelled when the IME hides or a sensitive field is detected.
+
+No external-storage permission is used. Optional models and authorized voice references are copied into app-private storage.
 
 ## Build
 
@@ -82,10 +113,11 @@ tools/test_ime_data_pipeline_v020.py
 tools/test_ime_data_pipeline_v023.py
 tools/test_model_pack_pipeline.py
 -> mature dictionary preparation
--> v0.18 licensed CC-CEDICT / Unicode augmentation
--> v0.20 software / broad-English augmentation
--> tools/augment_v023_data.py
+-> CC-CEDICT / Unicode augmentation
+-> software / broad-English augmentation
+-> THUOCL / FrequencyWords / association augmentation
 -> tools/validate_mature_ime_assets.py
+-> Android compile with sherpa-onnx 1.13.8
 ```
 
 Expected APK:
@@ -99,5 +131,5 @@ GitHub Actions remains manual `workflow_dispatch`.
 Artifact:
 
 ```text
-orbit-ime-v0.23-debug-apk
+orbit-ime-v0.26-debug-apk
 ```
