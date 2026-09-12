@@ -3,7 +3,14 @@ package com.ccwu.orbitime
 import android.content.Context
 
 object ProGate {
-    fun isProUnlocked(context: Context): Boolean = ProLicenseManager.isUnlocked(context)
+    /**
+     * The bundledModelsDebug package is an explicitly separate test application.
+     * Its private app data does not share activation/model state with the formal
+     * com.ccwu.orbitime package, so local-model features stay open there for device
+     * verification. The formal package continues to use the normal license gate.
+     */
+    fun isProUnlocked(context: Context): Boolean =
+        context.packageName.endsWith(".bundledmodels") || ProLicenseManager.isUnlocked(context)
 
     fun maxClipboardItems(context: Context): Int = if (isProUnlocked(context)) 10000 else 500
 
