@@ -1,55 +1,64 @@
 # Orbit IME Android
 
-Current version: `0.22.0`.
+Current version: `0.23.0`.
 
-Orbit IME is a privacy-first local Android input method. The authoritative current specifications are:
+Orbit IME is a privacy-first local Android input method. Current specifications:
 
 - `CODEX_TASK.md` — build-only handoff and acceptance gates;
 - `DATA_SOURCES.md` — licensed/offline dictionary pipeline;
-- `MODEL_PACKS.md` — Pro local neural-model pack format, integrity and license policy;
+- `MODEL_PACKS.md` — Pro local model-pack format/integrity/license policy;
 - `PRIVACY.md` — runtime privacy and permission boundary.
 
-## v0.22 focus
+## v0.23 focus — input quality and flow
 
-v0.22 keeps every v0.21 input/usability feature and adds the first stage of the optional local neural-model architecture:
+v0.23 keeps the v0.22 secure `.orbitpack` manager and concentrates on everyday typing quality:
 
-- Pro-only `.orbitpack` import through Android's system file picker; no external-storage permission;
-- app-private model storage under `files/orbit-model-packs/`;
-- mandatory `manifest.json`, `LICENSE.txt`, `NOTICE.txt` and `checksums.sha256`;
-- SHA-256 verification for every regular pack file, before install and again while extracting;
-- Zip Slip/path traversal protection, duplicate-path rejection, file-count/packed/unpacked size limits and private staging;
-- explicit pre-install disclaimer showing upstream source, license, commercial-use claim, redistribution status, languages, model size, RAM requirements and declared future permissions;
-- installed-pack list with enable/disable preferred-pack selection and uninstall;
-- `TranslationProvider`, `ASRProvider`, `TTSProvider` and `VoiceCloneProvider` contracts prepared for later runtime versions;
-- deterministic `tools/build_orbitpack.py` plus offline `tools/test_model_pack_pipeline.py`;
-- curated source references in settings. The app itself still has no `INTERNET` permission.
+- adds pinned THUOCL domain vocabulary (IT, idioms, finance, places, food, law, people, medical, poetry, animals, cars) with conservative Pinyin derivation;
+- adds FrequencyWords/OpenSubtitles Chinese and English usage-frequency overlays under CC-BY-SA-4.0 so common conversational words rank above obscure dictionary words;
+- generates a 32-shard `association/` asset at build time. Post-commit prediction first queries this compact 1–4-character context index and only then uses bounded N-gram Beam continuation;
+- keeps 32 visible Chinese/English candidates while expanding prefix/fuzzy candidate sources without making long-sentence Beam unbounded;
+- adds persistent fuzzy correction levels: Off / Standard / Enhanced. Enhanced adds missing-key insertion, repeated-key collapse and bounded second-layer fuzzy variants; English uses bounded transpose/extra-key/neighbor/missing-key recovery too;
+- upgrades local translation with coverage-scored dynamic-programming phrase selection before the older greedy fallback;
+- Pro long-form translation preserves paragraph/line breaks, processes up to 8,000 characters locally and retains uncovered source text rather than fabricating a result;
+- adds appearance policy independent from skins: Follow system / Light / Dark / AMOLED black / Custom skin. The default is Follow system.
 
-v0.22 deliberately **does not execute neural inference yet**. A user can safely install/inspect/select packs, but translation/ASR/TTS/voice-clone runtimes are added in later milestones rather than pretending an imported checkpoint is already usable.
+## Licensed v0.23 data layers
 
-### Translation-source optimization
+Existing audited layers remain:
 
-The previous NLLB-first idea was revised after checking model licenses:
+- AOSP PinyinIME — Apache-2.0;
+- Jieba — MIT;
+- CC-CEDICT — CC-BY-SA-4.0;
+- ESDB/SCOWL `en_US-large` — ESDB redistribution terms;
+- Unicode Emoji 17.0 — Unicode Data Files and Software License;
+- Orbit project-authored software/platform vocabulary and seed data.
 
-- `Helsinki-NLP/opus-mt-zh-en`: CC-BY-4.0 — candidate for the commercial-compatible Chinese→English local path, with attribution obligations;
-- `Helsinki-NLP/opus-mt-en-zh`: Apache-2.0 — candidate for the English→Chinese path;
-- `facebook/nllb-200-distilled-600M`: CC-BY-NC-4.0 — research/personal candidate only, not Orbit's default commercial model.
+v0.23 additionally uses:
 
-For speech, `k2-fsa/sherpa-onnx` remains the planned Android ASR runtime candidate. Individual speech/TTS checkpoints and Piper-style voices still need their own model-license audit.
+- THUOCL — MIT; source README explicitly permits research and commercial use and provides DF frequency data;
+- HermitDave/FrequencyWords content — CC-BY-SA-4.0; used as a usage-frequency/ranking layer, not as an unfiltered source of arbitrary new spellings.
 
-## Preserved mature input features
+All upstream files are pinned/hash-verified on the build machine and are packaged as offline assets with notices. The installed IME still has no `INTERNET` permission.
 
-The v0.21/v0.20 pipeline remains mandatory:
+## Translation and local neural model status
+
+Free translation remains local single-sentence translation. Pro retains optional previous-context and selected long-form local translation. v0.23 improves the dictionary/rule fallback substantially, but it does **not** claim that a neural model is executable when the Android native runtime is not bundled.
+
+The v0.22 `.orbitpack` manager remains available for verified local model installation. `ModelRuntimeContracts.kt` continues to report unbundled neural providers as non-executable. A future runtime adapter can activate compatible Bergamot/Marian or other audited local packs without weakening v0.23's offline fallback.
+
+## Preserved features
 
 - selection-aware replace/delete;
-- remembered settings and custom quick phrases;
-- Free single-sentence translation, Pro context/selected long-form local translation;
+- composing replacement (no raw-Pinyin append bug);
+- remembered settings and user-defined quick phrases;
 - 32-candidate Chinese/English pools;
-- continuous Pinyin, adaptive Beam, DP segmentation and 1/2/3-gram;
-- local next-word/phrase association and fuzzy correction;
-- AOSP/Jieba/CC-CEDICT Chinese, ESDB/SCOWL large English, Unicode Emoji 17 and CC-CEDICT translation shards;
-- file+journal personal learning;
+- continuous Pinyin, DP segmentation, adaptive Beam and 1/2/3-gram;
+- file+journal personal learning (20k Free / 100k Pro);
 - Recent/Pinned clipboard;
-- symbols/long press, kaomoji, pet visuals and local stickers.
+- Unicode Emoji, kaomoji, 7-page symbols and letter long-press;
+- 16 pets, 24 outfit entries and 128 local sticker definitions;
+- secure Pro `.orbitpack` import/validation/uninstall;
+- no cloud translation/prediction, advertising, analytics, Accessibility or overlay.
 
 ## Build
 
@@ -59,10 +68,12 @@ gradle assembleDebug --no-daemon
 
 Do not use `-PorbitSkipMatureImeData=true` for a user-test APK.
 
-Normal preBuild also runs:
+Normal preBuild runs the established mature pipeline plus:
 
 ```text
-tools/test_model_pack_pipeline.py
+tools/test_ime_data_pipeline_v023.py
+-> tools/augment_v023_data.py
+-> tools/validate_mature_ime_assets.py
 ```
 
 Expected APK:
@@ -76,5 +87,5 @@ GitHub Actions stays manual `workflow_dispatch`.
 Artifact:
 
 ```text
-orbit-ime-v0.22-debug-apk
+orbit-ime-v0.23-debug-apk
 ```
