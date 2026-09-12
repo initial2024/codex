@@ -794,7 +794,7 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun handlePrintableKey(rawKey: String) {
-        if (rawKey.length == 1 && rawKey[0].isLetter() && !symbols && shiftState != ShiftState.OFF) {
+        if (rawKey.length == 1 && rawKey[0].isLetter() && !symbols && inputMode == InputMode.PINYIN && shiftState != ShiftState.OFF) {
             commitPendingForControl()
             val upper = rawKey.uppercase()
             if (showTranslate && translateLiveMode) {
@@ -911,16 +911,20 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun appendEnglish(letter: String) {
-        val text = letter.lowercase()
+        val shifted = shiftState != ShiftState.OFF
+        val consumeOneShot = shiftState == ShiftState.ONCE
+        val text = if (shifted) letter.uppercase() else letter.lowercase()
         if (englishBuffer.length + text.length > MAX_ENGLISH_BUFFER) { toast("word too long"); return }
         englishBuffer += text
         currentInputConnection?.setComposingText(englishBuffer, 1)
+        if (consumeOneShot) shiftState = ShiftState.OFF
         showClips = false
         showPet = false
+        showPetCatalog = false
         showExpressions = false
         longFormTranslationPreview = null
         if (!sensitiveMode) petRepository.recordTypedChars(1)
-        refreshDynamicHost()
+        if (consumeOneShot) root?.let { rebuild(it) } else refreshDynamicHost()
     }
 
     private fun commitPendingPinyin(rawFallback: Boolean) {
