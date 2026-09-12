@@ -62,7 +62,9 @@ jobs:
           assert 'create("bundledModelsDebug")' in gradle
           assert 'applicationIdSuffix = ".bundledmodels"' in gradle
           assert 'versionNameSuffix = "-bundled-models-test"' in gradle
-          assert '1.13.8@aar' in gradle
+          assert gradle.count('implementation("com.github.k2-fsa:sherpa-onnx:1.13.8")') == 1
+          assert 'isTransitive = false' in gradle
+          assert '1.13.8@aar' not in gradle
           assert 'setLineSpacing(dp(2).toFloat(), 1f)' in main
           assert 'lineSpacing = dp(2).toFloat()' not in main
           assert 'private const val CANDIDATE_UI_LIMIT = 12' in service
