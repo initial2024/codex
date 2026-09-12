@@ -13,11 +13,11 @@ class PinyinImeEngine(
     private val lexicon = CompactLexiconAsset(appContext)
     private val languageModel = NGramLanguageModel(appContext)
 
-    private val candidateCache = object : LinkedHashMap<String, List<String>>(96, 0.75f, true) {
+    private val candidateCache = object : LinkedHashMap<String, List<String>>(128, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean = size > MAX_QUERY_CACHE
     }
 
-    private val lexicalCache = object : LinkedHashMap<String, List<LexicalEntry>>(768, 0.75f, true) {
+    private val lexicalCache = object : LinkedHashMap<String, List<LexicalEntry>>(1024, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<LexicalEntry>>?): Boolean = size > MAX_LEXICAL_CACHE
     }
 
@@ -25,8 +25,9 @@ class PinyinImeEngine(
     fun candidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
+        val safeLimit = limit.coerceIn(1, MAX_RESULTS)
         val fuzzyLevel = ImePreferences.fuzzyLevel(appContext)
-        val cacheKey = cacheKey(query, contextBeforeCursor, limit, fuzzyLevel)
+        val cacheKey = cacheKey(query, contextBeforeCursor, safeLimit, fuzzyLevel)
         candidateCache[cacheKey]?.let { return it }
 
         val contextTokens = extractContextTokens(contextBeforeCursor.orEmpty())
@@ -39,9 +40,9 @@ class PinyinImeEngine(
             addCorrections(query, contextTokens, pool, fuzzyLevel == ImePreferences.FUZZY_ENHANCED)
         }
 
-        val ranked = CandidateRanker.rank(pool, limit).map { it.text }.distinct()
-        val result = if (ranked.isNotEmpty()) ranked.take(limit) else {
-            (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query)).distinct().take(limit)
+        val ranked = CandidateRanker.rank(pool, safeLimit).map { it.text }.distinct()
+        val result = if (ranked.isNotEmpty()) ranked.take(safeLimit) else {
+            (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query)).distinct().take(safeLimit)
         }
         candidateCache[cacheKey] = result
         return result
@@ -50,11 +51,12 @@ class PinyinImeEngine(
     fun exactCandidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
+        val safeLimit = limit.coerceIn(1, MAX_RESULTS)
         val contextTokens = extractContextTokens(contextBeforeCursor.orEmpty())
         val pool = mutableListOf<CandidateRanker.Candidate>()
         addUser(query, contextTokens, pool, exactOnly = true)
         addExact(query, contextTokens, pool)
-        return CandidateRanker.rank(pool, limit).map { it.text }.distinct().take(limit)
+        return CandidateRanker.rank(pool, safeLimit).map { it.text }.distinct().take(safeLimit)
     }
 
     @Synchronized
@@ -133,7 +135,7 @@ class PinyinImeEngine(
                 staticFrequency = entry.frequency,
                 segmentationScore = 0.25,
                 contextTokens = contextTokens,
-                correctionPenalty = 1.15 + remaining.coerceAtMost(10) * 0.08 + index * 0.012,
+                correctionPenalty = 1.10 + remaining.coerceAtMost(12) * 0.075 + index * 0.009,
                 sourcePriority = 2,
             )
         }
@@ -145,8 +147,8 @@ class PinyinImeEngine(
         pool: MutableList<CandidateRanker.Candidate>,
         enhanced: Boolean,
     ) {
-        val variantLimit = if (enhanced) 72 else 36
-        val entriesPerVariant = if (enhanced) 7 else MAX_CORRECTION_ENTRIES_PER_VARIANT
+        val variantLimit = if (enhanced) 96 else 48
+        val entriesPerVariant = if (enhanced) 9 else MAX_CORRECTION_ENTRIES_PER_VARIANT
         PinyinCorrectionEngine.queryVariants(query, variantLimit, enhanced).forEach { variant ->
             lexicon.exact(variant.pinyin).take(entriesPerVariant).forEachIndexed { index, entry ->
                 pool += makeCandidate(
@@ -156,7 +158,7 @@ class PinyinImeEngine(
                     staticFrequency = entry.frequency,
                     segmentationScore = 0.0,
                     contextTokens = contextTokens,
-                    correctionPenalty = 2.1 + variant.penalty + index * 0.18,
+                    correctionPenalty = 2.05 + variant.penalty + index * 0.16,
                     sourcePriority = 2,
                 )
             }
@@ -170,7 +172,7 @@ class PinyinImeEngine(
                 staticFrequency = syntheticFrequency(index, 520_000),
                 segmentationScore = 0.0,
                 contextTokens = contextTokens,
-                correctionPenalty = 3.0 + index * 0.18,
+                correctionPenalty = 2.9 + index * 0.16,
                 sourcePriority = 2,
             )
         }
@@ -276,40 +278,47 @@ class PinyinImeEngine(
     }
 
     private fun segmentationLimitFor(queryLength: Int): Int = when {
-        queryLength >= 96 -> 2
-        queryLength >= 64 -> 3
-        queryLength >= 36 -> 4
+        queryLength >= 112 -> 2
+        queryLength >= 80 -> 3
+        queryLength >= 48 -> 4
+        queryLength >= 30 -> 6
         else -> MAX_SEGMENTATIONS
     }
 
     private fun beamWidthFor(syllableCount: Int): Int = when {
-        syllableCount >= 32 -> 22
-        syllableCount >= 22 -> 30
-        syllableCount >= 14 -> 42
-        syllableCount >= 9 -> 58
+        syllableCount >= 36 -> 24
+        syllableCount >= 28 -> 32
+        syllableCount >= 20 -> 42
+        syllableCount >= 14 -> 54
+        syllableCount >= 9 -> 68
         else -> BEAM_WIDTH
     }
 
-    private fun phraseSpanFor(syllableCount: Int): Int = if (syllableCount >= 28) 6 else MAX_PHRASE_SYLLABLES
+    private fun phraseSpanFor(syllableCount: Int): Int = when {
+        syllableCount >= 30 -> 6
+        syllableCount >= 18 -> 8
+        else -> MAX_PHRASE_SYLLABLES
+    }
 
     private fun entriesPerSpanFor(syllableCount: Int): Int = when {
-        syllableCount >= 28 -> 4
-        syllableCount >= 18 -> 5
-        syllableCount >= 10 -> 6
+        syllableCount >= 30 -> 4
+        syllableCount >= 20 -> 5
+        syllableCount >= 12 -> 7
         else -> MAX_ENTRIES_PER_SPAN
     }
 
     private fun beamResultLimitFor(syllableCount: Int): Int = when {
-        syllableCount >= 28 -> 14
-        syllableCount >= 18 -> 20
+        syllableCount >= 30 -> 16
+        syllableCount >= 20 -> 24
+        syllableCount >= 12 -> 36
         else -> MAX_BEAM_RESULTS
     }
 
     private fun cacheKey(query: String, contextBeforeCursor: String?, limit: Int, fuzzyLevel: String): String =
-        query + '\u0000' + contextBeforeCursor.orEmpty().takeLast(64) + '\u0000' + limit + '\u0000' + fuzzyLevel
+        query + '\u0000' + contextBeforeCursor.orEmpty().takeLast(96) + '\u0000' + limit + '\u0000' + fuzzyLevel
 
     private fun extractContextTokens(raw: String): List<String> {
-        val tail = raw.takeLast(96)
+        val tail = raw.takeLast(160)
         if (tail.isBlank()) return emptyList()
         val tokens = mutableListOf<String>()
         val latin = StringBuilder()
@@ -327,7 +336,7 @@ class PinyinImeEngine(
             }
         }
         flushLatin()
-        return tokens.takeLast(12)
+        return tokens.takeLast(18)
     }
 
     private fun isCjk(char: Char): Boolean {
@@ -337,21 +346,21 @@ class PinyinImeEngine(
             block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
     }
 
-    private fun syntheticFrequency(index: Int, base: Int): Int = (base - index * 24_000).coerceAtLeast(25_000)
+    private fun syntheticFrequency(index: Int, base: Int): Int = (base - index * 20_000).coerceAtLeast(25_000)
 
     companion object {
-        private const val MAX_RESULTS = 32
-        private const val MAX_SEGMENTATIONS = 8
-        private const val MAX_PHRASE_SYLLABLES = 8
-        private const val MAX_ENTRIES_PER_SPAN = 8
-        private const val BEAM_WIDTH = 72
-        private const val MAX_BEAM_RESULTS = 32
-        private const val MAX_QUERY_CACHE = 96
-        private const val MAX_LEXICAL_CACHE = 768
-        private const val MAX_CORRECTION_QUERY_CHARS = 48
-        private const val MAX_CORRECTION_ENTRIES_PER_VARIANT = 5
-        private const val MAX_PREFIX_QUERY_CHARS = 24
-        private const val PREFIX_POOL_LIMIT = 80
+        const val MAX_RESULTS = 48
+        private const val MAX_SEGMENTATIONS = 10
+        private const val MAX_PHRASE_SYLLABLES = 10
+        private const val MAX_ENTRIES_PER_SPAN = 10
+        private const val BEAM_WIDTH = 88
+        private const val MAX_BEAM_RESULTS = 48
+        private const val MAX_QUERY_CACHE = 128
+        private const val MAX_LEXICAL_CACHE = 1024
+        private const val MAX_CORRECTION_QUERY_CHARS = 64
+        private const val MAX_CORRECTION_ENTRIES_PER_VARIANT = 6
+        private const val MAX_PREFIX_QUERY_CHARS = 32
+        private const val PREFIX_POOL_LIMIT = 120
         private const val USER_BASE_STATIC_FREQUENCY = 700_000
         private const val CHARACTER_NGRAM_WEIGHT = 0.85
     }
