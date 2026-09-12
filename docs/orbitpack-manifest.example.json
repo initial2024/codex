@@ -1,0 +1,22 @@
+{
+  "pack_format": 1,
+  "pack_id": "example.zh-en.translation.int8",
+  "display_name": "Example ZH-EN Translation INT8",
+  "version": "1.0.0",
+  "type": "translation",
+  "runtime": "onnx",
+  "model_name": "Example upstream checkpoint",
+  "source_url": "https://example.com/model-source",
+  "license": "REPLACE-WITH-REAL-LICENSE",
+  "commercial_use": false,
+  "redistribution": "unknown",
+  "languages": ["zh", "en"],
+  "size_mb": 512,
+  "min_ram_mb": 2048,
+  "recommended_ram_mb": 4096,
+  "requires_permissions": [],
+  "privacy": "offline_only",
+  "disclaimer_required": true,
+  "experimental": true,
+  "description": "Replace every placeholder with audited model metadata before building an .orbitpack."
+}
