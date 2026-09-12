@@ -6,6 +6,7 @@ on:
       - fix/v027-ime-usability
     paths:
       - tools/apply_v027_usability_patch.py
+      - tools/fix_v027_patcher.py
       - .github/workflows/apply-v027-usability.yml
 
 permissions:
@@ -19,6 +20,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/v027-ime-usability
+      - name: Repair one-shot patcher
+        run: python3 tools/fix_v027_patcher.py
       - name: Apply precise source patch
         run: python3 tools/apply_v027_usability_patch.py
       - name: Commit patched sources
