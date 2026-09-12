@@ -35,9 +35,11 @@
   "policy": {
     "aosp_frequency_scale": 100,
     "aosp_max_phrase_chars": 12,
+    "minimum_aosp_entries": 40000,
     "english_min_key_length": 2,
     "english_max_key_length": 28,
     "english_base_frequency": 40000,
+    "minimum_english_entries": 50000,
     "ngram_limits": {
       "1": 8000,
       "2": 25000,
