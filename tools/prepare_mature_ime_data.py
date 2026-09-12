@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Prepare mature, reproducible offline Orbit IME assets.
+"""Prepare reproducible base Orbit IME assets.
 
-The build machine downloads only pinned/audited public datasets, verifies their
-Git blob SHA-1 values, derives compact Orbit TSV files, then delegates packing
-to tools/ime_importer.py. The installed keyboard still has no INTERNET
-permission.
+This stage downloads and verifies only the base AOSP/Jieba/ESDB sources.
+v0.18 CC-CEDICT and Unicode Emoji are added by augment_v018_data.py.
+The installed keyboard itself still has no INTERNET permission.
 """
 from __future__ import annotations
 
@@ -27,6 +26,14 @@ DEFAULT_STAGING = ROOT / "build/ime-mature/staging"
 ASCII_ENGLISH_RE = re.compile(r"^[a-z]+(?:'[a-z]+)?(?:-[a-z]+)*$")
 LETTERS_RE = re.compile(r"[^a-z]+")
 MAX_COUNT = 2_000_000_000
+BASE_PIN_KEYS = (
+    "aosp_pinyin",
+    "aosp_notice",
+    "jieba_dict",
+    "jieba_license",
+    "esdb_en_us",
+    "esdb_copyright",
+)
 
 
 def git_blob_sha1(data: bytes) -> str:
@@ -43,17 +50,12 @@ def download_verified(spec: dict, target: Path, allow_download: bool = True) -> 
         target.unlink()
     if not allow_download:
         raise RuntimeError(f"verified cache missing for {spec['name']}")
-    request = urllib.request.Request(
-        str(spec["url"]),
-        headers={"User-Agent": "Orbit-IME-build-data/0.16"},
-    )
-    with urllib.request.urlopen(request, timeout=90) as response:
+    request = urllib.request.Request(str(spec["url"]), headers={"User-Agent": "Orbit-IME-build-data/0.18"})
+    with urllib.request.urlopen(request, timeout=120) as response:
         data = response.read()
     actual = git_blob_sha1(data)
     if actual != expected:
-        raise RuntimeError(
-            f"Git blob hash mismatch for {spec['name']}: expected {expected}, got {actual}"
-        )
+        raise RuntimeError(f"Git blob hash mismatch for {spec['name']}: expected {expected}, got {actual}")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
     return data
@@ -90,14 +92,7 @@ def iter_aosp_rows(raw: bytes):
         yield text, syllables, frequency
 
 
-def parse_aosp_pinyin(
-    raw: bytes,
-    output_tsv: Path,
-    ngram_tsv: Path,
-    frequency_scale: int,
-    max_phrase_chars: int,
-    ngram_limits: dict[str, int],
-) -> dict[str, int]:
+def parse_aosp_pinyin(raw: bytes, output_tsv: Path, ngram_tsv: Path, frequency_scale: int, max_phrase_chars: int, ngram_limits: dict[str, int]) -> dict[str, int]:
     lexicon: dict[tuple[str, str], int] = {}
     grams: dict[int, dict[tuple[str, ...], int]] = {1: defaultdict(int), 2: defaultdict(int), 3: defaultdict(int)}
     accepted = 0
@@ -112,7 +107,7 @@ def parse_aosp_pinyin(
         chars = list(text)
         for n in (1, 2, 3):
             for index in range(max(0, len(chars) - n + 1)):
-                gram = tuple(chars[index : index + n])
+                gram = tuple(chars[index:index + n])
                 grams[n][gram] = clamp(grams[n][gram] + frequency)
 
     output_tsv.parent.mkdir(parents=True, exist_ok=True)
@@ -144,12 +139,6 @@ def parse_aosp_pinyin(
 
 
 def build_aosp_pronunciation_index(raw: bytes, polyphone_ratio: float) -> tuple[dict[str, tuple[str, float]], dict[str, str], set[str]]:
-    """Return safe single-character readings, exact phrase readings, and phrase texts.
-
-    A single character is considered safe for derivation only when it has one
-    reading or its top AOSP frequency is at least polyphone_ratio times the
-    second reading. Exact multi-character AOSP readings are always preferred.
-    """
     char_readings: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     phrase_readings: dict[str, tuple[str, float]] = {}
     aosp_texts: set[str] = set()
@@ -166,9 +155,7 @@ def build_aosp_pronunciation_index(raw: bytes, polyphone_ratio: float) -> tuple[
     safe_chars: dict[str, tuple[str, float]] = {}
     for char, readings in char_readings.items():
         ranked = sorted(readings.items(), key=lambda item: (-item[1], item[0]))
-        if not ranked:
-            continue
-        if len(ranked) == 1 or ranked[0][1] >= ranked[1][1] * polyphone_ratio:
+        if ranked and (len(ranked) == 1 or ranked[0][1] >= ranked[1][1] * polyphone_ratio):
             safe_chars[char] = ranked[0]
     return safe_chars, {text: value[0] for text, value in phrase_readings.items()}, aosp_texts
 
@@ -187,9 +174,7 @@ def parse_jieba_chinese(
     safe_chars, exact_aosp_pinyin, aosp_texts = build_aosp_pronunciation_index(aosp_raw, polyphone_ratio)
     records: dict[tuple[str, str], int] = {}
     grams: dict[int, dict[tuple[str, ...], int]] = {1: defaultdict(int), 2: defaultdict(int), 3: defaultdict(int)}
-    source_rows = 0
-    skipped_no_reading = 0
-    skipped_existing = 0
+    source_rows = skipped_no_reading = skipped_existing = 0
 
     for raw_line in raw.decode("utf-8-sig").splitlines():
         parts = raw_line.strip().split()
@@ -221,14 +206,12 @@ def parse_jieba_chinese(
                 continue
             pinyin = "".join(readings)
 
-        # Generated readings are lower confidence than native AOSP phrase rows;
-        # keep Jieba useful for coverage without letting it dominate exact AOSP.
         frequency = clamp(max(3000, raw_frequency * frequency_scale))
         records[(pinyin, word)] = max(frequency, records.get((pinyin, word), 0))
         chars = list(word)
         for n in (1, 2, 3):
             for index in range(max(0, len(chars) - n + 1)):
-                gram = tuple(chars[index : index + n])
+                gram = tuple(chars[index:index + n])
                 grams[n][gram] = clamp(grams[n][gram] + frequency)
 
     output_tsv.parent.mkdir(parents=True, exist_ok=True)
@@ -279,7 +262,7 @@ def parse_esdb_english(raw: bytes, output_tsv: Path, min_key_length: int, max_ke
 
     output_tsv.parent.mkdir(parents=True, exist_ok=True)
     with output_tsv.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write("# Derived from pinned ESDB/SCOWL en_US generated word list.\n")
+        handle.write("# Derived from pinned ESDB/SCOWL generated word list.\n")
         handle.write("# key<TAB>frequency<TAB>optional display candidate\n")
         for key, (frequency, candidate) in sorted(records.items()):
             handle.write(f"{key}\t{frequency}" + (f"\t{candidate}" if candidate else "") + "\n")
@@ -298,10 +281,10 @@ def write_import_manifest(staging: Path, sources: dict) -> Path:
         {"name": "aosp-pinyinime-rawdict", "path": "aosp_pinyin.tsv", "format": "orbit-tsv", "license": "Apache-2.0", "url": sources["aosp_pinyin"]["url"], "redistribution_allowed": True, "attribution": sources["aosp_pinyin"]["attribution"]},
         {"name": "jieba-frequency-derived-pinyin", "path": "jieba_pinyin.tsv", "format": "orbit-tsv", "license": "MIT", "url": sources["jieba_dict"]["url"], "redistribution_allowed": True, "attribution": sources["jieba_dict"]["attribution"]},
         {"name": "orbit-project-english", "path": "seed_english.tsv", "format": "english-tsv", "license": "PROJECT", "url": "", "redistribution_allowed": True, "attribution": "Orbit IME project-authored English seed data"},
-        {"name": "esdb-scowl-en-us", "path": "esdb_en_us.tsv", "format": "english-tsv", "license": "ESDB-2026", "url": sources["esdb_en_us"]["url"], "redistribution_allowed": True, "attribution": sources["esdb_en_us"]["attribution"]},
+        {"name": "esdb-scowl-en-us-large", "path": "esdb_en_us.tsv", "format": "english-tsv", "license": "ESDB-2026", "url": sources["esdb_en_us"]["url"], "redistribution_allowed": True, "attribution": sources["esdb_en_us"]["attribution"]},
         {"name": "orbit-project-ngram", "path": "seed_ngram.tsv", "format": "ngram-tsv", "license": "PROJECT", "url": "", "redistribution_allowed": True, "attribution": "Orbit IME project-authored N-gram seed data"},
         {"name": "aosp-derived-character-ngram", "path": "aosp_ngram.tsv", "format": "ngram-tsv", "license": "Apache-2.0", "url": sources["aosp_pinyin"]["url"], "redistribution_allowed": True, "attribution": sources["aosp_pinyin"]["attribution"]},
-        {"name": "jieba-derived-character-ngram", "path": "jieba_ngram.tsv", "format": "ngram-tsv", "license": "MIT", "url": sources["jieba_dict"]["url"], "redistribution_allowed": True, "attribution": sources["jieba_dict"]["attribution"]}
+        {"name": "jieba-derived-character-ngram", "path": "jieba_ngram.tsv", "format": "ngram-tsv", "license": "MIT", "url": sources["jieba_dict"]["url"], "redistribution_allowed": True, "attribution": sources["jieba_dict"]["attribution"]},
     ]}
     path = staging / "mature_import_manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -316,8 +299,16 @@ def copy_notices(output: Path, aosp_notice: bytes, esdb_notice: bytes, jieba_lic
     (notice_dir / "Jieba-LICENSE.txt").write_bytes(jieba_license)
 
 
+def base_pin_payload(spec: dict) -> dict[str, str]:
+    return {
+        "url": str(spec["url"]),
+        "git_blob_sha1": str(spec["git_blob_sha1"]),
+        "license": str(spec["license"]),
+    }
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Prepare pinned mature Orbit IME data")
+    parser = argparse.ArgumentParser(description="Prepare pinned mature Orbit IME base data")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--cache-dir", default=str(DEFAULT_CACHE))
@@ -327,7 +318,9 @@ def main() -> int:
 
     config = json.loads(Path(args.config).resolve().read_text(encoding="utf-8"))
     sources, policy = config["sources"], config["policy"]
-    cache, staging, output = Path(args.cache_dir).resolve(), Path(args.staging_dir).resolve(), Path(args.output).resolve()
+    cache = Path(args.cache_dir).resolve()
+    staging = Path(args.staging_dir).resolve()
+    output = Path(args.output).resolve()
     staging.mkdir(parents=True, exist_ok=True)
     copy_project_seed(staging)
 
@@ -335,7 +328,7 @@ def main() -> int:
     aosp_notice = download_verified(sources["aosp_notice"], cache / "AOSP_NOTICE.txt", not args.offline)
     jieba_raw = download_verified(sources["jieba_dict"], cache / "jieba_dict.txt", not args.offline)
     jieba_license = download_verified(sources["jieba_license"], cache / "Jieba_LICENSE.txt", not args.offline)
-    esdb_raw = download_verified(sources["esdb_en_us"], cache / "esdb_en_US.txt", not args.offline)
+    esdb_raw = download_verified(sources["esdb_en_us"], cache / "esdb_en_US_large.txt", not args.offline)
     esdb_notice = download_verified(sources["esdb_copyright"], cache / "ESDB_Copyright.txt", not args.offline)
 
     ngram_limits = {str(k): int(v) for k, v in policy["ngram_limits"].items()}
@@ -354,10 +347,10 @@ def main() -> int:
     runtime_manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     report = {
         "format": "ORBIT_MATURE_IME_DATA",
-        "version": 2,
+        "version": 3,
         "stats": stats,
         "runtime_counts": runtime_manifest.get("counts", {}),
-        "pins": {key: {"url": value["url"], "git_blob_sha1": value["git_blob_sha1"], "license": value["license"]} for key, value in sources.items()},
+        "pins": {key: base_pin_payload(sources[key]) for key in BASE_PIN_KEYS},
     }
     (output / "mature-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))
