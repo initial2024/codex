@@ -26,9 +26,12 @@ android {
 kotlin { jvmToolchain(17) }
 
 dependencies {
-    // Official current sherpa-onnx Gradle/JitPack coordinate. Build-time dependency only;
-    // installed Orbit keeps runtime networking disabled.
-    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8")
+    // The sherpa Android AAR already contains the Android Java/JNI runtime.
+    // JitPack's aggregate module also exposes JVM/desktop artifacts; keeping those
+    // transitives on Android duplicates the same API classes and native variants.
+    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8") {
+        isTransitive = false
+    }
 }
 
 val orbitSkipMatureImeData = providers.gradleProperty("orbitSkipMatureImeData")
