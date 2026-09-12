@@ -1,8 +1,8 @@
-# Orbit IME v0.16 Local IME Engine
+# Orbit IME v0.17 Local IME Engine
 
-This document defines the offline input engine used by Orbit IME `0.16.0`.
+This document defines the local runtime architecture used by Orbit IME `0.17.0`.
 
-## Core runtime pipeline
+## Core input pipeline
 
 ```text
 continuous Pinyin
@@ -10,7 +10,7 @@ continuous Pinyin
 -> exact asset/user candidates
 -> PinyinSegmenter (dynamic programming)
 -> CompactLexiconAsset
--> bounded phrase beam search
+-> bounded/adaptive phrase beam search
 -> NGramLanguageModel
 -> CandidateRanker
 -> UserDictionaryStore local boost
@@ -33,7 +33,7 @@ Jieba readings are not guessed indiscriminately. Exact AOSP phrase readings are 
 
 A full sentence does not need to exist as one dictionary key. `PinyinSegmenter` creates syllable paths, and `PinyinImeEngine` composes multiple lexical edges into sentence candidates.
 
-v0.16 maximums / short-input settings:
+Current maximums / short-input settings:
 
 ```text
 Pinyin buffer: 192 letters
@@ -47,7 +47,7 @@ candidate-query LRU: 48
 phrase-lookup LRU: 384
 ```
 
-These are not fixed costs for every sentence. As input grows, v0.16 progressively reduces segmentation paths, beam width, phrase span, entries per span, and complete-result count. Whole-sentence fuzzy expansion is disabled beyond 48 normalized letters. This keeps long continuous input usable without forcing the user to commit every word.
+These are not fixed costs for every sentence. As input grows, Orbit progressively reduces segmentation paths, beam width, phrase span, entries per span, and complete-result count. Whole-sentence fuzzy expansion is disabled beyond 48 normalized letters. This keeps long continuous input usable without forcing the user to commit every word.
 
 A sentence may exceed eight syllables because a beam hypothesis chains multiple lexical edges.
 
@@ -79,7 +79,7 @@ static key rows / top-level layout
 dynamic candidate/tool host
 ```
 
-During normal letter input and backspace, v0.16 refreshes only the dynamic host rather than removing/recreating every keyboard key. Full rebuilds remain for layout/mode changes such as symbols, language mode, or opening/closing top-level tools.
+During normal letter input and backspace, Orbit refreshes only the dynamic host rather than removing/recreating every keyboard key. Full rebuilds remain for layout/mode changes such as symbols, language mode, or opening/closing top-level tools.
 
 `PinyinImeEngine` caches recent query/context candidate lists and immutable phrase lookups with bounded LRUs. `OrbitInputMethodService` separately caches the current visible Pinyin result. Extending a sentence therefore reuses many of the same lexical lookups instead of reparsing the same asset rows on each keystroke.
 
@@ -110,7 +110,7 @@ frequency
 updatedAt
 ```
 
-v0.16 accepts up to 192 normalized Pinyin letters and 96 text characters per learned mapping. Learned records are cached in process memory for ranking; a learn/clear operation invalidates the candidate cache.
+Orbit accepts up to 192 normalized Pinyin letters and 96 text characters per learned mapping. Learned records are cached in process memory for ranking; a learn/clear operation invalidates the candidate cache.
 
 ## Fuzzy correction
 
@@ -140,6 +140,79 @@ English -> Chinese follows the analogous path. English translation-lexicon keys 
 
 If local coverage is too low, the composer returns `null`; the UI reports that the offline pack does not cover the sentence rather than presenting a prompt as a translation result.
 
+## Visual pet runtime design
+
+v0.17 separates persistent pet state from visual rendering.
+
+```text
+PetRepository
+-> PetProfile (id/stage/level/outfit/mood)
+-> PetAvatarView
+-> PetAvatarRenderer
+-> Canvas primitives inside Orbit-owned UI only
+```
+
+`PetAvatarRenderer` has distinct visual paths for all 8 existing pet ids. The four growth stages change scale/detail; later stages add aura/orbit elements. Existing outfit ids are drawn as overlays on the pet.
+
+The renderer is used in three places:
+
+- large keyboard Pet panel preview;
+- compact idle quick-phrase-row pet preview;
+- settings-screen pet preview.
+
+This Canvas usage is intentionally isolated to pet/sticker artwork. The keyboard itself is not rewritten as a Canvas keyboard, and no overlay/floating-window permission is used.
+
+## Emoji and kaomoji runtime design
+
+`ExpressionLibrary` is packaged Kotlin data containing multiple local categories of Unicode Emoji and kaomoji strings. `ExpressionStore` keeps only a bounded local Recent list.
+
+```text
+ExpressionLibrary
+-> category/page UI
+-> one-tap commitText
+-> ExpressionStore Recent
+```
+
+Long-press explicitly copies the selected expression to the Android clipboard. Expression history contains only the expression itself; it does not contain the surrounding message or target app identity.
+
+## Local sticker runtime design
+
+v0.17 defines 24 generated stickers:
+
+```text
+8 pets × 3 moods (happy/love/angry)
+```
+
+Pipeline:
+
+```text
+StickerDefinition
+-> StickerPreviewView (keyboard thumbnail)
+-> user taps sticker
+-> check EditorInfo.contentMimeTypes
+-> if image/png supported:
+     StickerRenderer -> private cache PNG
+     OrbitStickerProvider -> content:// URI
+     InputConnection.commitContent(InputContentInfo)
+   else:
+     commitText(fallback Emoji)
+```
+
+Security and storage boundaries:
+
+- PNGs are generated locally from `PetAvatarRenderer`;
+- cached files live under the app-private cache directory;
+- cache keys include sticker id and current skin id;
+- no remote sticker download exists;
+- no external-storage permission exists;
+- `OrbitStickerProvider` is `exported=false`;
+- `grantUriPermissions=true` is used only so the explicitly targeted editor can receive a temporary read grant when the user sends a sticker;
+- unsupported editors always receive a text fallback instead of a failed no-op.
+
+## Tool-panel exclusivity
+
+Pet, Expression, Clipboard, and Translate are top-level dynamic panels. Opening one closes the conflicting panels. Normal typing closes the expression panel and resumes candidate/phrase UI. Sensitive mode closes/hides all these tools.
+
 ## Build-time pipeline
 
 ```text
@@ -160,19 +233,28 @@ See `DATA_SOURCES.md` for pinned source/license rules.
 - bounded shard caches, beam width, query caches, and lexical caches;
 - no dictionary parsing inside drawing callbacks;
 - exact paths rank ahead of fuzzy paths;
-- sensitive fields disable learning/tools/clipboard capture.
+- pet/sticker drawing uses only project-defined geometry and local state;
+- expression recent history stores only selected expression strings;
+- sensitive fields disable learning and hide pet/expression/clipboard/translation tools.
 
-## v0.16 device acceptance priorities
+## v0.17 device acceptance priorities
 
 After build, measure rather than assume:
 
 1. latency while a Pinyin buffer grows from a short phrase to a long sentence;
 2. top-1/top-3 candidate quality on a fixed sentence set;
-3. space/tap commit behavior for an uninterrupted long sentence;
+3. space/tap commit behavior for uninterrupted long Pinyin;
 4. English composing/candidate quality;
 5. local personalization reorder/reset;
 6. Clipboard Recent/pin/expiry/paste;
 7. translation source/preview/commit behavior;
-8. memory use and IME stability.
+8. each of the 8 pets renders visibly in keyboard/settings;
+9. stage/outfit changes visibly alter pet artwork;
+10. Emoji/kaomoji category paging, insert, copy and Recent behavior;
+11. all 24 sticker thumbnails render;
+12. compatible editors receive PNG sticker content;
+13. unsupported editors receive the Emoji fallback;
+14. privacy mode hides all extra tools;
+15. memory use and IME stability.
 
 A later neural model should only be considered after these deterministic layers are measured.
