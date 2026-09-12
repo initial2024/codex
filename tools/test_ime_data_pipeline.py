@@ -10,6 +10,7 @@ import json
 import tempfile
 from pathlib import Path
 
+import augment_v018_data as v018
 import ime_importer
 import prepare_mature_ime_data as mature
 
@@ -25,6 +26,7 @@ def alpha_word(value: int) -> str:
 
 def test_git_blob_hash() -> None:
     assert mature.git_blob_sha1(b"hello\n") == "ce013625030ba8dba906f756967f9e9ca394464a"
+    assert v018.git_blob_sha1(b"hello\n") == "ce013625030ba8dba906f756967f9e9ca394464a"
 
 
 def test_aosp_parser(root: Path) -> None:
@@ -78,8 +80,8 @@ def test_jieba_conservative_derivation(root: Path) -> None:
     )
     text = target.read_text(encoding="utf-8")
     assert "niwo\t你我\t9000" in text
-    assert "你我好" not in text  # already covered by exact AOSP phrase data
-    assert "重要" not in text  # 重 is intentionally ambiguous in the synthetic AOSP source
+    assert "你我好" not in text
+    assert "重要" not in text
     assert stats["jieba_generated_entries"] == 1
     assert stats["jieba_skipped_existing_aosp"] == 1
     assert stats["jieba_skipped_ambiguous_or_missing_reading"] == 1
@@ -88,7 +90,7 @@ def test_jieba_conservative_derivation(root: Path) -> None:
 def test_esdb_parser(root: Path) -> None:
     raw = "hello\ndon't\nco-op\nProper\na\nverylongword\n".encode("utf-8")
     target = root / "english.tsv"
-    stats = mature.parse_esdb_english(raw, target, 2, 28, 40_000)
+    stats = mature.parse_esdb_english(raw, target, 2, 32, 35_000)
     text = target.read_text(encoding="utf-8")
     assert "hello\t" in text
     assert "dont\t" in text and "don't" in text
@@ -96,6 +98,39 @@ def test_esdb_parser(root: Path) -> None:
     assert "Proper" not in text
     assert "\na\t" not in text
     assert stats["esdb_english_entries"] == 4
+
+
+def test_cedict_translation_assets(root: Path) -> None:
+    raw = (
+        "# CC-CEDICT\n"
+        "你好 你好 [ni3 hao3] /hello/hi/\n"
+        "数据库 数据库 [shu4 ju4 ku4] /database/\n"
+        "翻译 翻译 [fan1 yi4] /to translate/translation/\n"
+        "甲 甲 [jia3] /first of the ten Heavenly Stems/see 乙[yi3]/\n"
+    ).encode("utf-8")
+    parsed = list(v018.parse_cedict(raw))
+    assert len(parsed) == 4
+    out = root / "cedict-out"
+    out.mkdir()
+    stats = v018.write_translation_assets(raw, out)
+    assert stats["cedict_entries"] == 4
+    assert stats["translation_zh_entries"] >= 4
+    assert stats["translation_en_entries"] >= 4
+    zh_files = list((out / "translation/zh").glob("*.odict"))
+    en_files = list((out / "translation/en").glob("*.odict"))
+    assert zh_files and en_files
+    assert any("你好\thello" in path.read_text(encoding="utf-8") for path in zh_files)
+    assert any("database\t数据库" in path.read_text(encoding="utf-8") for path in en_files)
+
+
+def test_unicode_emoji_parser() -> None:
+    raw = (
+        "# group: Smileys & Emotion\n"
+        "1F600 ; fully-qualified # 😀 E1.0 grinning face\n"
+        "263A FE0F ; fully-qualified # ☺️ E0.6 smiling face\n"
+        "263A ; unqualified # ☺ E0.6 smiling face\n"
+    ).encode("utf-8")
+    assert v018.parse_unicode_emoji(raw) == ["😀", "☺️"]
 
 
 def test_license_gate(root: Path) -> None:
@@ -124,17 +159,16 @@ def test_importer_and_english_sharding(root: Path) -> None:
     with english.open("w", encoding="utf-8", newline="\n") as handle:
         for index in range(ime_importer.ENGLISH_SHARD_THRESHOLD + 5):
             handle.write(f"{alpha_word(index)}\t100\n")
+    cedict = root / "cedict.txt"
+    cedict.write_text("你好 你好 [ni3 hao3] /hello/\n", encoding="utf-8")
     manifest = root / "manifest.json"
     manifest.write_text(
-        json.dumps(
-            {
-                "sources": [
-                    {"name": "lexicon", "path": "lexicon.tsv", "format": "orbit-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
-                    {"name": "english", "path": "english.tsv", "format": "english-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
-                    {"name": "ngram", "path": "ngram.tsv", "format": "ngram-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
-                ]
-            }
-        ),
+        json.dumps({"sources": [
+            {"name": "lexicon", "path": "lexicon.tsv", "format": "orbit-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
+            {"name": "cedict", "path": "cedict.txt", "format": "cedict", "license": "CC-BY-SA-4.0", "url": "https://example.invalid/cedict", "redistribution_allowed": True, "attribution": "test"},
+            {"name": "english", "path": "english.tsv", "format": "english-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
+            {"name": "ngram", "path": "ngram.tsv", "format": "ngram-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
+        ]}),
         encoding="utf-8",
     )
     output = root / "out"
@@ -158,6 +192,8 @@ def main() -> int:
         test_aosp_parser(root)
         test_jieba_conservative_derivation(root)
         test_esdb_parser(root)
+        test_cedict_translation_assets(root)
+        test_unicode_emoji_parser()
         test_license_gate(root)
         test_importer_and_english_sharding(root)
     print("Orbit IME data pipeline tests: PASS")
