@@ -11,11 +11,11 @@ import kotlin.math.ln
 class EnglishImeEngine(context: Context) {
     private val asset = CompactEnglishAsset(context.applicationContext)
 
-    fun candidatesFor(rawInput: String, limit: Int = 12): List<String> {
+    fun candidatesFor(rawInput: String, limit: Int = 32): List<String> {
         val query = EnglishDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
 
-        val assetCandidates = asset.candidatesFor(query, limit * 2)
+        val assetCandidates = asset.candidatesFor(query, limit * 3)
         val legacyCandidates = EnglishDictionary.candidatesFor(rawInput)
 
         return (assetCandidates + legacyCandidates)
