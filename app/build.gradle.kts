@@ -25,9 +25,10 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Builds materialize a pinned mature offline dictionary before Android packages
-// assets. Network access is build-time only; the installed IME has no INTERNET
-// permission. -PorbitSkipMatureImeData=true is reserved for offline development.
+// Builds materialize and validate a pinned mature offline dictionary before
+// Android packages assets. Network access is build-time only; the installed IME
+// has no INTERNET permission. -PorbitSkipMatureImeData=true is reserved for
+// deliberately offline development and must not be used for the user-test APK.
 val orbitSkipMatureImeData = providers.gradleProperty("orbitSkipMatureImeData")
     .map { it.toBoolean() }
     .orElse(false)
@@ -55,6 +56,20 @@ val prepareMatureImeAssets by tasks.registering(Exec::class) {
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
-tasks.named("preBuild") {
+val validateMatureImeAssets by tasks.registering(Exec::class) {
+    group = "orbit ime"
+    description = "Reject incomplete mature dictionary packs, missing notices, wrong versions or forbidden manifest capabilities"
+    workingDir(rootProject.projectDir)
+    commandLine(
+        orbitPython,
+        "tools/validate_mature_ime_assets.py",
+        "--assets",
+        "app/src/main/assets/ime",
+    )
     dependsOn(prepareMatureImeAssets)
+    onlyIf { !orbitSkipMatureImeData.get() }
+}
+
+tasks.named("preBuild") {
+    dependsOn(validateMatureImeAssets)
 }
