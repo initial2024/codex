@@ -1,0 +1,36 @@
+name: Patch v0.27 CEDICT reporting
+
+on:
+  push:
+    branches:
+      - fix/v027-ime-usability
+    paths:
+      - tools/patch_v027_cedict_reporting.py
+      - .github/workflows/patch-v027-cedict-reporting.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v027-ime-usability
+      - name: Patch CEDICT reporting semantics
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/patch_v027_cedict_reporting.py
+      - name: Run v0.20 regression tests
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/test_ime_data_pipeline_v020.py
+      - name: Syntax checks
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile tools/augment_v018_data.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile tools/test_ime_data_pipeline_v020.py
+      - name: Commit correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/augment_v018_data.py tools/test_ime_data_pipeline_v020.py
+          git diff --cached --check
+          git commit -m "fix: report CEDICT runtime coverage separately from translation coverage [v027-data]"
+          git push origin HEAD:fix/v027-ime-usability
