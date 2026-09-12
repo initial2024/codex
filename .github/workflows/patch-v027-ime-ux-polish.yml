@@ -1,0 +1,63 @@
+name: Patch v0.27 IME usability polish
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/v027-ime-ux-polish
+    paths:
+      - tools/patch_v027_ime_ux_polish.py
+      - .github/workflows/patch-v027-ime-ux-polish.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/v027-ime-ux-polish
+          fetch-depth: 0
+
+      - name: Apply IME usability patch
+        run: python3 tools/patch_v027_ime_ux_polish.py
+
+      - name: Static regression checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          service = Path('app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt').read_text()
+          user = Path('app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt').read_text()
+          packs = Path('app/src/main/java/com/ccwu/orbitime/ModelPackManager.kt').read_text()
+          speech = Path('app/src/main/java/com/ccwu/orbitime/ImeSpeechController.kt').read_text()
+          assert 'private const val CANDIDATE_UI_LIMIT = 12' in service
+          assert 'private const val NEXT_SUGGESTION_LIMIT = 6' in service
+          assert 'private const val IDLE_QUICK_PHRASE_LIMIT = 8' in service
+          assert 'speechStatusMessage' in service
+          assert 'chip(label("切换", "Switch"))' not in service
+          assert 'limit: Int = MAX_CANDIDATES' in user
+          assert 'val autoEnabled = status.executable' in packs
+          assert 'context.packageName.endsWith(".bundledmodels")' in packs
+          assert 'private fun asrUnavailableMessage()' in speech
+          assert '未安装 ASR 模型包' in speech
+          print('static checks PASS')
+          PY
+          git diff --check
+
+      - name: Show focused diff
+        run: git diff -- app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt app/src/main/java/com/ccwu/orbitime/ModelPackManager.kt app/src/main/java/com/ccwu/orbitime/ImeSpeechController.kt
+
+      - name: Commit source repair
+        run: |
+          git config user.name "initial2024"
+          git config user.email "zo46@qq.com"
+          git add app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt \
+                  app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt \
+                  app/src/main/java/com/ccwu/orbitime/ModelPackManager.kt \
+                  app/src/main/java/com/ccwu/orbitime/ImeSpeechController.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: polish v027 IME voice and prediction UX"
+          git push origin HEAD:fix/v027-ime-ux-polish
