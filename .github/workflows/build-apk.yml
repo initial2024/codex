@@ -33,11 +33,17 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+      - name: Build formal and bundled-model test APKs
+        run: gradle assembleDebug assembleBundledModelsDebug --no-daemon
 
-      - name: Upload debug APK
+      - name: Upload formal debug APK
         uses: actions/upload-artifact@v4
         with:
           name: orbit-ime-v0.27-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload bundled-models test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit-ime-v0.27-bundled-models-test-apk
+          path: app/build/outputs/apk/bundledModelsDebug/app-bundledModelsDebug.apk
