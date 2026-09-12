@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Augment Orbit IME mature assets for v0.18.
+"""Augment Orbit mature assets (introduced in v0.18, retained by v0.19).
 
-This stage runs after prepare_mature_ime_data.py. It adds:
-- pinned CC-CEDICT to the runtime Pinyin lexicon;
+This stage runs after prepare_mature_ime_data.py and adds/refreshes:
+- pinned CC-CEDICT in the runtime Pinyin lexicon;
 - sharded Chinese<->English lexical translation assets;
-- pinned Unicode Emoji 17.0 fully-qualified emoji data;
+- pinned Unicode Emoji 17.0 fully-qualified data;
+- broader ESDB/SCOWL en_US-large English packing, including useful title-case/
+  acronym vocabulary normalized to lowercase lookup keys;
 - required attribution/permission notices.
 
 The installed IME remains offline; all downloads happen on the build machine.
@@ -29,6 +31,7 @@ DEFAULT_STAGING = ROOT / "build/ime-mature/staging"
 CEDICT_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+/(.*)/$")
 ASCII_GLOSS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 '\-.,!?():/]+$")
 EN_NORMALIZE_RE = re.compile(r"[^a-z0-9 '\-]+")
+SCOWL_WORD_RE = re.compile(r"^[A-Za-z]+(?:'[A-Za-z]+)?(?:-[A-Za-z]+)*$")
 
 
 def git_blob_sha1(data: bytes) -> str:
@@ -42,7 +45,7 @@ def download_git_blob_verified(spec: dict, target: Path) -> bytes:
         if git_blob_sha1(data) == expected:
             return data
         target.unlink()
-    request = urllib.request.Request(str(spec["url"]), headers={"User-Agent": "Orbit-IME-build-data/0.18"})
+    request = urllib.request.Request(str(spec["url"]), headers={"User-Agent": "Orbit-IME-build-data/0.19"})
     with urllib.request.urlopen(request, timeout=120) as response:
         data = response.read()
     actual = git_blob_sha1(data)
@@ -60,7 +63,7 @@ def download_sha256_verified(spec: dict, target: Path) -> bytes:
         if hashlib.sha256(data).hexdigest() == expected:
             return data
         target.unlink()
-    request = urllib.request.Request(str(spec["url"]), headers={"User-Agent": "Orbit-IME-build-data/0.18"})
+    request = urllib.request.Request(str(spec["url"]), headers={"User-Agent": "Orbit-IME-build-data/0.19"})
     with urllib.request.urlopen(request, timeout=120) as response:
         data = response.read()
     actual = hashlib.sha256(data).hexdigest()
@@ -94,8 +97,7 @@ def normalize_english_key(raw: str) -> str:
 
 
 def parse_cedict(raw: bytes):
-    text = raw.decode("utf-8-sig")
-    for line in text.splitlines():
+    for line in raw.decode("utf-8-sig").splitlines():
         if not line or line.startswith("#"):
             continue
         match = CEDICT_RE.match(line.strip())
@@ -108,24 +110,73 @@ def parse_cedict(raw: bytes):
             yield traditional, simplified, pinyin, glosses
 
 
-def add_cedict_to_import_manifest(staging: Path, spec: dict, default_frequency: int) -> Path:
+def write_broader_english_asset(raw: bytes, output_tsv: Path, policy: dict) -> int:
+    """Repack the pinned SCOWL large list without discarding all proper nouns/acronyms.
+
+    Lookup keys remain lowercase ASCII. Original spelling is retained as an optional
+    display candidate when it differs from the lookup key. This is vocabulary data,
+    not a frequency corpus; project-authored common words still receive stronger
+    product-specific ranking through the seed layer.
+    """
+    min_len = int(policy["english_min_key_length"])
+    max_len = int(policy["english_max_key_length"])
+    base_frequency = int(policy["english_base_frequency"])
+    records: dict[str, tuple[int, set[str]]] = {}
+    for raw_line in raw.decode("utf-8-sig").splitlines():
+        word = raw_line.strip()
+        if not word or not SCOWL_WORD_RE.fullmatch(word):
+            continue
+        key = re.sub(r"[^a-z]", "", word.lower())
+        if not (min_len <= len(key) <= max_len):
+            continue
+        # SCOWL level/order is not treated as true usage frequency. Keep a modest
+        # length penalty and a small lowercase-common-word boost only.
+        frequency = max(4_000, base_frequency - max(0, len(key) - 4) * 700)
+        if word == word.lower():
+            frequency += 2_000
+        old_frequency, displays = records.get(key, (0, set()))
+        updated = set(displays)
+        if word != key:
+            updated.add(word)
+        records[key] = (max(old_frequency, frequency), updated)
+
+    output_tsv.parent.mkdir(parents=True, exist_ok=True)
+    with output_tsv.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("# Derived from pinned ESDB/SCOWL en_US-large.\n")
+        handle.write("# lowercase-key<TAB>frequency<TAB>optional display candidates\n")
+        for key, (frequency, displays) in sorted(records.items()):
+            extras = "\t".join(sorted(displays)[:4])
+            handle.write(f"{key}\t{frequency}" + (f"\t{extras}" if extras else "") + "\n")
+    return len(records)
+
+
+def add_sources_to_import_manifest(staging: Path, sources: dict, default_frequency: int) -> Path:
     raw_manifest = staging / "mature_import_manifest.json"
     if not raw_manifest.is_file():
         raise RuntimeError("mature_import_manifest.json missing; run prepare_mature_ime_data.py first")
     payload = json.loads(raw_manifest.read_text(encoding="utf-8"))
-    sources = [item for item in payload.get("sources", []) if item.get("name") != "cc-cedict-2026-09-10"]
-    sources.append({
+    items = [item for item in payload.get("sources", []) if item.get("name") not in {"cc-cedict-2026-09-10", "esdb-scowl-en-us"}]
+    items.append({
         "name": "cc-cedict-2026-09-10",
         "path": "cc_cedict.txt",
         "format": "cedict",
         "license": "CC-BY-SA-4.0",
-        "url": spec["url"],
+        "url": sources["cedict"]["url"],
         "redistribution_allowed": True,
-        "attribution": spec["attribution"],
+        "attribution": sources["cedict"]["attribution"],
         "default_frequency": int(default_frequency),
     })
-    payload["sources"] = sources
-    augmented = staging / "mature_import_manifest_v018.json"
+    items.append({
+        "name": "esdb-scowl-en-us",
+        "path": "esdb_en_us.tsv",
+        "format": "english-tsv",
+        "license": "ESDB-2026",
+        "url": sources["esdb_en_us"]["url"],
+        "redistribution_allowed": True,
+        "attribution": sources["esdb_en_us"]["attribution"],
+    })
+    payload["sources"] = items
+    augmented = staging / "mature_import_manifest_v019.json"
     augmented.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return augmented
 
@@ -138,10 +189,16 @@ def write_translation_assets(raw: bytes, output: Path) -> dict[str, int]:
         cedict_entries += 1
         if simplified not in zh_records:
             zh_records[simplified] = glosses[0]
-        for gloss in glosses[:4]:
-            key = normalize_english_key(gloss)
-            if 1 <= len(key) <= 80 and key not in en_records:
-                en_records[key] = simplified
+        for gloss in glosses[:5]:
+            candidates = [gloss]
+            lowered = gloss.lower()
+            if lowered.startswith("to ") and len(gloss) > 3:
+                candidates.append(gloss[3:])
+            candidates.extend(part.strip() for part in re.split(r",|\bor\b", gloss, flags=re.I) if part.strip())
+            for candidate in candidates:
+                key = normalize_english_key(candidate)
+                if 1 <= len(key) <= 80 and key not in en_records:
+                    en_records[key] = simplified
 
     translation_dir = output / "translation"
     for dirname in (translation_dir / "zh", translation_dir / "en"):
@@ -187,8 +244,7 @@ def parse_unicode_emoji(raw: bytes) -> list[str]:
         line = raw_line.strip()
         if not line or line.startswith("#") or "; fully-qualified" not in line or "#" not in line:
             continue
-        after_hash = line.split("#", 1)[1].strip()
-        emoji = after_hash.split(" ", 1)[0]
+        emoji = line.split("#", 1)[1].strip().split(" ", 1)[0]
         if emoji and emoji not in seen:
             seen.add(emoji)
             result.append(emoji)
@@ -214,8 +270,6 @@ def write_notices(cdict_raw: bytes, output: Path) -> None:
             break
         header_lines.append(line)
     (notice_dir / "CC-CEDICT-NOTICE.txt").write_text("\n".join(header_lines) + "\n", encoding="utf-8")
-
-    # Unicode License v3 requires the copyright and permission notice with data copies.
     unicode_notice = """UNICODE LICENSE V3 - COPYRIGHT AND PERMISSION NOTICE
 Copyright © 1991-2026 Unicode, Inc.
 Permission is granted, free of charge, to deal in Unicode Data Files and associated documentation without restriction, including use, copy, modification, merge, publication, distribution and sale, provided that the Unicode copyright and permission notice appears with copies or associated documentation.
@@ -248,7 +302,7 @@ def update_report(output: Path, config: dict, extra_stats: dict[str, int]) -> No
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Augment Orbit IME v0.18 mature offline data")
+    parser = argparse.ArgumentParser(description="Augment Orbit IME v0.19 mature offline data")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--cache-dir", default=str(DEFAULT_CACHE))
@@ -265,23 +319,21 @@ def main() -> int:
 
     cedict_raw = download_git_blob_verified(sources["cedict"], cache / "cc_cedict.txt")
     emoji_raw = download_sha256_verified(sources["unicode_emoji"], cache / "unicode_emoji_17.txt")
+    esdb_raw = download_git_blob_verified(sources["esdb_en_us"], cache / "esdb_en_US.txt")
     (staging / "cc_cedict.txt").write_bytes(cedict_raw)
 
-    augmented_manifest = add_cedict_to_import_manifest(
-        staging,
-        sources["cedict"],
-        int(policy["cedict_default_frequency"]),
-    )
+    english_count = write_broader_english_asset(esdb_raw, staging / "esdb_en_us.tsv", policy)
+    augmented_manifest = add_sources_to_import_manifest(staging, sources, int(policy["cedict_default_frequency"]))
     importer = ROOT / "tools/ime_importer.py"
     result = subprocess.run(
         [sys.executable, str(importer), "--manifest", str(augmented_manifest), "--output", str(output)],
-        cwd=str(ROOT),
-        check=False,
+        cwd=str(ROOT), check=False,
     )
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
     stats = write_translation_assets(cedict_raw, output)
+    stats["esdb_english_entries"] = english_count
     stats["unicode_emoji_entries"] = write_unicode_emoji(emoji_raw, output)
     write_notices(cedict_raw, output)
     update_report(output, config, stats)
