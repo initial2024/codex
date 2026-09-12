@@ -32,9 +32,10 @@ new = '''    private fun executablePack(type: OrbitModelPackType): ModelPackMana
         if (!enabled.success) return null
         return modelPacks.enabledPack(type)?.takeIf { it.enabled && it.runtimeStatus.executable }
     }'''
-if old not in s:
+if old not in s and 'executable.size != 1' not in s:
     raise SystemExit('executablePack block not found')
-s = s.replace(old, new, 1)
+if old in s:
+    s = s.replace(old, new, 1)
 p.write_text(s, encoding='utf-8')
 
 # Gradle: preserve normal assembleDebug and add a parallel independent test build type.
@@ -61,22 +62,10 @@ if 'create("bundledModelsDebug")' not in s:
     if needle not in s:
         raise SystemExit('buildFeatures marker not found')
     s = s.replace(needle, repl, 1)
-# Force/retain the Android AAR while preventing JVM/desktop transitives.
-if '1.13.8@aar' not in s:
-    needle = '''    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8") {
-        isTransitive = false
-    }
-'''
-    repl = '''    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8") {
-        isTransitive = false
-    }
-    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8@aar") {
-        isTransitive = false
-    }
-'''
-    if needle not in s:
-        raise SystemExit('sherpa dependency marker not found')
-    s = s.replace(needle, repl, 1)
+# Keep exactly one sherpa Android module declaration. Its transitive graph stays off,
+# which retains the Android AAR while excluding JVM/desktop native artifacts.
+if 'implementation("com.github.k2-fsa:sherpa-onnx:1.13.8")' not in s or 'isTransitive = false' not in s:
+    raise SystemExit('pinned non-transitive sherpa dependency missing')
 p.write_text(s, encoding='utf-8')
 
 # Validator: assert test variant and both CI artifacts without weakening any existing gates.
