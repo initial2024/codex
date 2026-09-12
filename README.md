@@ -1,42 +1,40 @@
 # Orbit IME Android
 
-Orbit IME is a privacy-first Android input method with local Pinyin/English candidates, local personalization, offline phrase translation, clipboard tools, skins, and a keyboard pet module.
+Orbit IME is a privacy-first Android input method with local Pinyin/English candidates, local personalization, mature clipboard history, offline translation keyboard, skins, and a local keyboard pet.
 
 ## Current version
 
 ```text
-0.15.0
+0.16.0
 ```
 
-v0.15 replaces the earlier small hardcoded-map approach with a reproducible local IME engine and mature offline dictionary build pipeline.
+v0.16 focuses on actual typing usability: larger licensed Chinese data, uninterrupted long-sentence Pinyin, lower UI churn while typing, a recent/pinned clipboard, and a translation mode that visibly produces and inserts local translation results.
 
-## Chinese candidate engine
+## Chinese input pipeline
 
 ```text
-raw Pinyin
--> exact local/user candidates
--> dynamic-programming Pinyin segmentation
+continuous Pinyin
+-> exact packaged/user candidates
+-> dynamic-programming segmentation
 -> compact lexicon lookup
 -> bounded phrase beam search
--> static frequency
--> local 1/2/3-gram score
+-> static frequency + 1/2/3-gram
 -> local user-frequency boost
 -> fuzzy/typo penalty
--> top 12 candidates
+-> top candidates
 ```
 
-Core files:
+v0.16 changes:
 
-```text
-PinyinSegmenter.kt
-CompactLexiconAsset.kt
-PinyinImeEngine.kt
-NGramLanguageModel.kt
-CandidateRanker.kt
-UserDictionaryStore.kt
-```
+- Pinyin composing buffer: up to 192 normalized letters.
+- Segmentation paths: up to 6.
+- Phrase span: up to 8 syllables per beam edge; longer sentences are built from multiple edges.
+- Beam width: 56; internal complete results: 20; visible candidates: 12.
+- Candidate query LRU added.
+- While letters/backspace are typed, Orbit refreshes the dynamic candidate/tool region instead of recreating every key row.
+- Temporary text-before-cursor context can improve local N-gram ranking but is not persisted.
 
-Examples targeted by the engine include:
+Examples include:
 
 ```text
 nihaoma -> 你好吗
@@ -45,86 +43,40 @@ shurufa -> 输入法
 haishiyouwenti -> 还是有问题
 ```
 
-Fuzzy compatibility remains lower-confidence than exact Pinyin.
+## Mature Chinese data
 
-## English candidate engine
-
-```text
-English composing buffer
--> CompactEnglishAsset
--> EnglishImeEngine
--> EnglishDictionary fallback/typo layer
-```
-
-Large English data is automatically sharded by first letter and loaded through a bounded LRU rather than one giant runtime map.
-
-## Mature offline dictionary build
-
-A normal Gradle build automatically runs:
+Normal builds merge:
 
 ```text
-tools/test_ime_data_pipeline.py
-        ↓
-tools/prepare_mature_ime_data.py
-        ↓
-tools/ime_importer.py
-        ↓
-generated local dictionary assets
-        ↓
-tools/validate_mature_ime_assets.py
-        ↓
-Android build
+AOSP PinyinIME raw Pinyin/frequency data (Apache-2.0)
++
+Jieba default Chinese frequency dictionary (MIT)
 ```
 
-The final validator rejects suspiciously small/incomplete packs, missing notices, missing source pins/licenses, missing 1/2/3-grams, wrong version metadata, and forbidden manifest capabilities.
+Jieba does not provide Pinyin. Orbit derives extra word readings conservatively:
 
-Current pinned mature sources:
+1. prefer exact AOSP phrase readings;
+2. otherwise use only AOSP single-character readings whose dominant pronunciation is sufficiently clear;
+3. skip ambiguous/missing readings instead of guessing.
+
+The mature validator requires at least:
 
 ```text
-Chinese: AOSP PinyinIME raw dictionary (~65k source entries), Apache-2.0
-English: ESDB/SCOWL en_US generated spelling list, ESDB redistribution notice
+AOSP accepted lexicon: 40,000
+Jieba-derived additions: 40,000
+combined runtime Chinese lexicon: 90,000
+English vocabulary: 50,000
 ```
 
-Source URLs, Git blob hashes, licenses, attribution, and minimum-data thresholds are recorded in:
+The exact counts are produced in `app/src/main/assets/ime/mature-report.json` during a normal build. See `DATA_SOURCES.md`.
 
-```text
-data/ime_sources/mature_sources.json
-DATA_SOURCES.md
-```
+## English input
 
-The build process packages the required AOSP and ESDB notices with the generated offline assets.
-
-The installed Android input method does **not** download these datasets and still declares no `INTERNET` permission.
-
-## Large-data format
-
-Runtime data uses compact `ORBIT_ODICT` files with base36 frequencies/counts.
-
-Chinese:
-
-```text
-ime/lexicon/a.odict ... z.odict
-```
-
-English mature pack:
-
-```text
-ime/english/a.odict ... z.odict
-```
-
-N-grams:
-
-```text
-ime/ngram1.odict
-ime/ngram2.odict
-ime/ngram3.odict
-```
-
-`CompactLexiconAsset` caches at most six Chinese shards. `CompactEnglishAsset` caches at most four English shards.
+English letters stay in a composing buffer and show local candidates before commit. The mature pack uses pinned ESDB/SCOWL US English vocabulary plus project-authored high-frequency/phrase/typo data. Large English assets are sharded by first letter and read through a bounded LRU.
 
 ## Local personalization
 
-The learned user dictionary persists only:
+Orbit stores only:
 
 ```text
 pinyin
@@ -133,49 +85,108 @@ frequency
 updatedAt
 ```
 
-It does not persist full chat/input streams, app/package identity, target fields, or surrounding sentences. Temporary ranking context is not stored.
+v0.16 allows longer learned phrases/sentences (up to 192 Pinyin letters / 96 text characters). It does not persist full chat streams, app/package identity, target fields, or surrounding sentences.
 
-Repeated explicit candidate selections can move a personal candidate upward. Clearing the local dictionary restores packaged ranking.
+## Clipboard
 
-Raw-fallback commits such as Enter/punctuation do not use a fuzzy/prefix guess when no exact candidate exists.
+The keyboard clipboard is now split into:
 
-## Other retained functions
+```text
+Pinned
+Recent
+```
 
-- English composing buffer and candidate selection.
+Behavior:
+
+- while the IME window is visible, newly copied non-sensitive text can enter Orbit's local Recent history;
+- unpinned entries expire after about one hour;
+- long-press an entry to pin/unpin it;
+- pinned entries do not expire automatically;
+- tap an entry to paste;
+- Clear recent preserves pinned items; Clear all removes everything.
+
+The clipboard listener is attached only while the IME window is shown and is removed when the window hides. Orbit does not run a background clipboard-harvesting service and cannot replace Android/host-app long-press menus.
+
+## Translation keyboard
+
+Translate is now an input mode rather than only a prompt/source panel.
+
+Chinese -> English:
+
+```text
+enter Translate while in Pinyin mode
+-> keep typing continuous Pinyin
+-> choose/space-commit Chinese candidates into the translation source buffer
+-> panel shows 原文 and 译文
+-> press 译文上屏 / Enter after the source candidate is committed
+-> translation is inserted into the current app
+```
+
+English -> Chinese works the same way from EN mode. Sources can also be loaded from the previous sentence, selected text, or clipboard.
+
+Translation order:
+
+```text
+exact packaged phrase tables
+-> conservative local longest-phrase sentence composer
+-> explicit "offline dictionary does not cover this sentence" state
+```
+
+If local coverage is insufficient, Orbit may offer a translation prompt for copying, but that prompt is never displayed as if it were a translation result. Runtime translation remains offline and deterministic; it is not equivalent to a cloud MT system such as Google Translate or DeepL.
+
+## Build-time data pipeline
+
+A normal build automatically runs:
+
+```text
+tools/test_ime_data_pipeline.py
+-> tools/prepare_mature_ime_data.py
+-> tools/ime_importer.py
+-> tools/validate_mature_ime_assets.py
+-> Android compilation
+```
+
+Sources are pinned by Git blob SHA. Required AOSP, Jieba, and ESDB/SCOWL notices are packaged with generated assets. The validator rejects suspiciously small packs, missing notices/pins, wrong version metadata, and forbidden runtime capabilities.
+
+## Runtime asset layout
+
+```text
+ime/lexicon/a.odict ... z.odict
+ime/english/a.odict ... z.odict
+ime/ngram1.odict
+ime/ngram2.odict
+ime/ngram3.odict
+```
+
+Frequencies/counts are encoded in base36. Chinese and English readers use bounded shard caches instead of loading the whole mature pack as a giant Kotlin map.
+
+## Other functions retained
+
 - Chinese/English quick phrases.
-- Local Clips clipboard panel; no background harvesting.
-- Local phrase translation; prompt fallback only when no local translation matches.
-- Keyboard pet panel with check-in, hatching, switching, outfits, catalog, and local growth.
-- Orbit Dark, Orbit Light, AMOLED Black, Study Blue, and Pro Aurora placeholder skin.
+- Fuzzy/typo correction at lower confidence than exact spelling.
+- Keyboard pet: local check-in, hatch, switch, outfits, catalog and growth.
+- Orbit Dark, Orbit Light, AMOLED Black, Study Blue, Pro Aurora placeholder.
 - Privacy mode for password-like/no-personalized-learning fields.
-- Android input-method picker entry.
+- Android input-method picker button.
 
 ## Privacy boundary
 
-Orbit IME v0.15 intentionally keeps:
+Orbit IME v0.16 intentionally has:
 
 - no `INTERNET` permission;
-- no ads/analytics/tracking;
+- no ads, analytics, or tracking SDK;
 - no Accessibility permission;
 - no overlay/floating-window permission;
-- no cloud prediction or dictionary sync;
+- no cloud prediction/dictionary sync;
 - no cloud/external translation API;
 - no background clipboard/input harvesting;
 - no full typed-stream persistence.
 
-Build-machine access to pinned public dictionaries is not an app runtime capability.
-
-## Data-source policy
-
-Do not paste arbitrary GitHub dictionaries into Orbit. Every bulk source must have explicit provenance, redistribution terms, attribution, and a pinned source/hash.
-
-AOSP LatinIME's English dictionary was deliberately rejected because its NOTICE includes third-party dictionary material marked “Used by permission”; Orbit uses ESDB/SCOWL instead. See `DATA_SOURCES.md`.
+Build-machine downloads of pinned public dictionary sources are not an installed-app network capability.
 
 ## Build
 
 GitHub Actions remains manual-only through `workflow_dispatch`.
-
-Required environment:
 
 ```text
 JDK 17
@@ -185,13 +196,13 @@ Android build-tools 35.0.0
 Gradle 8.10.2
 ```
 
-Build command:
+Command:
 
 ```text
 gradle assembleDebug --no-daemon
 ```
 
-Do not use `-PorbitSkipMatureImeData=true` for the APK intended for user testing.
+Do not use `-PorbitSkipMatureImeData=true` for the user-test APK.
 
 Expected APK:
 
@@ -202,13 +213,21 @@ app/build/outputs/apk/debug/app-debug.apk
 Actions artifact:
 
 ```text
-orbit-ime-v0.15-debug-apk
+orbit-ime-v0.16-debug-apk
 ```
 
-## Device acceptance after build
+## Post-build device acceptance
 
-At minimum retest continuous Pinyin, fuzzy correction, English composing/candidates, personal ranking/clear, direct local translation result insertion, Clips, pet controls, skins, privacy mode, and input-method switching.
+Prioritize:
 
-## Commercial direction
+- uninterrupted long Pinyin sentences and top-1 quality;
+- candidate latency while the buffer grows;
+- English composing/candidates;
+- local learning and clear/reset;
+- Clipboard Recent / pin / expiry / paste;
+- Translate 原文/译文 preview and 译文上屏;
+- Pet panel, skins, privacy mode, and input-method switching.
 
-The intended direction remains free base + optional paid Pro. Do not place ads inside the keyboard input surface. v0.15 implements no billing, ads, analytics, runtime network, cloud translation, or external translation API.
+## Commercial boundary
+
+The intended direction remains free base + optional paid Pro. v0.16 contains no billing, ads, analytics, runtime network, cloud translation, or external translation API.
