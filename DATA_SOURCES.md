@@ -1,18 +1,21 @@
 # Orbit IME data source strategy
 
-Orbit IME builds a reproducible offline dictionary pack on the build machine. The installed keyboard itself remains offline.
+Orbit IME builds a reproducible offline data pack on the build machine. The installed keyboard itself remains offline.
 
-## v0.16 default pipeline
+## v0.18 pipeline
 
 ```text
 tools/test_ime_data_pipeline.py
 -> tools/prepare_mature_ime_data.py
--> tools/ime_importer.py
+-> base AOSP/Jieba/ESDB pack
+-> tools/augment_v018_data.py
+-> CC-CEDICT lexicon + translation shards
+-> Unicode Emoji 17.0 asset
 -> tools/validate_mature_ime_assets.py
 -> Android compilation
 ```
 
-Pinned source metadata is stored in `data/ime_sources/mature_sources.json`. Downloaded files are verified against Git blob SHA-1 values; a changed upstream file fails the build.
+Pinned source metadata is stored in `data/ime_sources/mature_sources.json`.
 
 ## Chinese source 1: AOSP PinyinIME
 
@@ -24,7 +27,7 @@ Git blob SHA-1: 28805ba68eb8df265c1d227fb99e841ff3302aef
 License: Apache-2.0
 ```
 
-Orbit accepts normal `flag == 0` CJK entries, preserves their tone-less Pinyin and frequency signal, and derives bounded character 1/2/3-grams. The pinned AOSP NOTICE is packaged with the APK data assets.
+AOSP provides direct Pinyin/frequency rows and remains the highest-confidence general pronunciation source.
 
 ## Chinese source 2: Jieba frequency dictionary
 
@@ -34,68 +37,79 @@ Commit: 67fa2e36e72f69d9134b8a1037b83fbb070b9775
 File: jieba/dict.txt
 Git blob SHA-1: fc6075f64943e1861c420db4da38063de9d8afc5
 License: MIT
-LICENSE blob SHA-1: 9d7e66b431461c785329a1b52199d4207daefacc
 ```
 
-Jieba's default dictionary adds much broader Chinese word/frequency coverage, but it does not provide Pinyin. Orbit therefore does **not** blindly generate pronunciations.
+Jieba adds frequency coverage but does not provide Pinyin. Orbit only derives a reading when AOSP phrase/single-character evidence is sufficiently unambiguous; otherwise the row is skipped.
 
-Preparation policy:
+## Chinese + translation source 3: CC-CEDICT
 
-1. if the same word already exists in AOSP, keep AOSP's exact phrase Pinyin instead;
-2. otherwise derive a word reading only when every character has an AOSP single-character reading whose dominant frequency is sufficiently stronger than competing readings;
-3. skip ambiguous or missing readings rather than guessing;
-4. give these derived entries lower confidence than native AOSP phrase rows;
-5. derive additional bounded character N-grams from accepted Jieba words;
-6. package the pinned Jieba MIT license.
+```text
+Mirror: rhcarvalho/cedict
+Pinned commit: 9118dab4ea21849c571a20d56f1f1621a0423d07
+File: cedict_1_0_ts_utf-8_mdbg.txt
+Git blob SHA-1: 2b05f59d39ed57b4ca3512f9210aa8f11a402cc8
+Release metadata: 2026-09-10T22:27:42Z
+Entries reported by source: 125,050
+License: CC BY-SA 4.0
+```
 
-This trades some theoretical coverage for fewer incorrect polyphonic-word candidates.
+CC-CEDICT is used in two separate ways:
 
-## English source: ESDB / SCOWL
+1. its Pinyin + simplified word rows enter the packaged Chinese lexicon at a deliberately lower synthetic frequency than true corpus-frequency sources;
+2. its English glosses generate sharded local Chinese->English and English->Chinese lexical translation assets.
+
+CC-CEDICT-derived assets remain CC BY-SA 4.0 data. The generated `CC-CEDICT-NOTICE.txt` is packaged separately from application source code.
+
+## English source: ESDB / SCOWL large US English
 
 ```text
 Repository: en-wl/wordlist-diff
 Tag: rel-2026.02.25
-File: en_US.txt
-Git blob SHA-1: b4222bda8be5826fce1635230f9503234ec31e5a
+File: en_US-large.txt
+Git blob SHA-1: f802304dc6e436964094cdb6c6b743092e7af971
 License identifier in Orbit: ESDB-2026
 Copyright blob: 562ec7df17753481162f2b993e2dbd47cea77b2f
 ```
 
-The ESDB permission notice grants use/copy/modify/distribute/sell rights subject to retaining the required notice. Orbit treats this as vocabulary/completion data, not as a true frequency corpus; project-authored common English words/phrases keep stronger scores.
+v0.18 moves from `en_US.txt` to `en_US-large.txt`. This intentionally increases vocabulary/completion coverage. ESDB ordering is not treated as a real frequency corpus; project-authored common English overlays and exact-prefix behavior keep stronger ranking weight where appropriate.
 
-## Rejected English source
+AOSP/Lineage LatinIME's bundled dictionary remains rejected because its NOTICE contains third-party dictionary material marked `Used by permission`.
 
-AOSP/Lineage LatinIME's bundled dictionary is not imported because its NOTICE includes third-party dictionary material marked `Used by permission`. Orbit does not assume the surrounding Apache-licensed code grants equivalent redistribution rights for that data.
-
-## Required mature-pack minimums
-
-The v0.16 validator currently requires at least:
+## Emoji source: Unicode Emoji 17.0
 
 ```text
-AOSP Chinese entries: 40,000
-Jieba-derived additional entries: 40,000
-combined runtime Chinese lexicon: 90,000
-English entries: 50,000
-1-gram rows: 2,000
-2-gram rows: 10,000
-3-gram rows: 10,000
-Chinese shards: 20+
-English shards: 20+
+Source: https://www.unicode.org/Public/emoji/17.0/emoji-test.txt
+SHA-256: 07ee0565612af5d8cf36ea7d2cd7d255429441059133c60f863e97e648ebeb29
+License: Unicode License v3
 ```
 
-The exact generated counts are written to `app/src/main/assets/ime/mature-report.json` during a normal build. These thresholds are sanity gates, not claims that the pack equals proprietary commercial IME corpora.
+Only `fully-qualified` sequences are packaged into `ime/emoji_unicode.txt`. Project-authored categorized Emoji and kaomoji remain as curated overlays.
 
-## Project-authored fallback data
+The Unicode copyright/permission notice is packaged in `ime/third_party_notices/Unicode-Emoji-NOTICE.txt`.
+
+## Required v0.18 minimums
 
 ```text
-data/ime_sources/seed_lexicon.tsv
-data/ime_sources/seed_english.tsv
-data/ime_sources/seed_ngram.tsv
+AOSP Chinese >= 40,000
+Jieba-derived additions >= 40,000
+CC-CEDICT parsed entries >= 110,000
+combined runtime Chinese lexicon >= 150,000
+English vocabulary >= 100,000
+Unicode fully-qualified Emoji >= 3,000
+ZH->EN translation index >= 80,000
+EN->ZH translation index >= 50,000
+1-gram >= 5,000
+2-gram >= 30,000
+3-gram >= 30,000
+Chinese lexicon shards >= 20
+English shards >= 20
+Chinese translation shards >= 40
+English translation shards >= 20
 ```
 
-These provide deterministic fallback/product vocabulary and are merged with the mature pack.
+Exact generated counts are written to `app/src/main/assets/ime/mature-report.json`.
 
-## Runtime format
+## Runtime layout
 
 ```text
 ime/lexicon/a.odict ... z.odict
@@ -103,39 +117,42 @@ ime/english/a.odict ... z.odict
 ime/ngram1.odict
 ime/ngram2.odict
 ime/ngram3.odict
+ime/translation/zh/*.odict
+ime/translation/en/*.odict
+ime/emoji_unicode.txt
+ime/third_party_notices/*
 ```
 
-Counts use base36. Chinese and English runtime readers use bounded LRU shard caches rather than loading the entire vocabulary into one Kotlin map.
+Chinese/English and translation readers use bounded shard caches; the full data pack is not loaded as one giant Kotlin map.
 
-Generated notices:
+## Project-authored fallback data
 
 ```text
-ime/third_party_notices/AOSP-PinyinIME-NOTICE.txt
-ime/third_party_notices/Jieba-LICENSE.txt
-ime/third_party_notices/ESDB-SCOWL-Copyright.txt
+data/ime_sources/seed_lexicon.tsv
+data/ime_sources/seed_english.tsv
+data/ime_sources/seed_ngram.tsv
+ExpressionLibrary.kt
+SymbolLibrary.kt
 ```
 
-## License gate
+These provide deterministic product vocabulary, kaomoji and symbol behavior even when a development build intentionally skips the mature external data pack.
 
-Every imported source declares source name, path, format, license, URL, redistribution flag, and attribution. Strict accepted identifiers include:
+## Offline tests and fail-closed validation
 
-```text
-PROJECT
-Apache-2.0
-MIT
-BSD-2-Clause
-BSD-3-Clause
-CC-BY-4.0
-CC-BY-SA-4.0
-ESDB-2026
-```
+`python tools/test_ime_data_pipeline.py` covers:
 
-The importer fails closed on missing files, disallowed redistribution, missing third-party URL/attribution, or an unknown strict-mode license.
+- Git blob hashing;
+- AOSP parsing;
+- conservative Jieba pronunciation derivation;
+- ESDB normalization;
+- CC-CEDICT parsing and translation sharding;
+- Unicode Emoji fully-qualified parsing;
+- license fail-closed behavior;
+- compact lexicon/N-gram packing;
+- large English sharding.
 
-## Offline tests
-
-`python tools/test_ime_data_pipeline.py` covers hash calculation, AOSP parsing, conservative Jieba pronunciation derivation including ambiguous-character rejection, ESDB normalization, license fail-closed behavior, compact packing, N-gram packing, and English sharding.
+`validate_mature_ime_assets.py` rejects missing/suspiciously small packs, missing source pins/notices, insufficient shards, wrong app version or forbidden Android manifest capabilities.
 
 ## Runtime privacy boundary
 
-Build-machine source downloads do not grant runtime network capability. Orbit IME still requests no INTERNET, Accessibility, overlay, ads/analytics, cloud prediction, or background input collection.
+Build-machine source downloads do not grant runtime network capability. Orbit IME requests no INTERNET, Accessibility, overlay, external storage, ads/analytics, cloud prediction, cloud translation, or background input collection.
