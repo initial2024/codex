@@ -1,0 +1,19 @@
+name: Audit v0.27 CEDICT counts
+
+on:
+  push:
+    branches:
+      - fix/v027-ime-usability
+    paths:
+      - tools/audit_v027_cedict_counts.py
+      - .github/workflows/audit-v027-cedict-counts.yml
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v027-ime-usability
+      - name: Audit pinned CEDICT source counts
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/audit_v027_cedict_counts.py
