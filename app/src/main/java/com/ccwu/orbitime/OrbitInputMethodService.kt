@@ -27,7 +27,7 @@ import kotlin.math.ceil
 class OrbitInputMethodService : InputMethodService() {
     private enum class InputMode { ENGLISH, PINYIN }
 
-    private var inputMode = InputMode.ENGLISH
+    private var inputMode = InputMode.PINYIN
     private var caps = false
     private var symbols = false
     private var symbolPage = 0
@@ -48,6 +48,7 @@ class OrbitInputMethodService : InputMethodService() {
     private var translatePromptPreview: String? = null
     private var offlineTranslationPreview: String? = null
     private var contextTranslationBundle: ContextTranslationEngine.Bundle? = null
+    private var longFormTranslationPreview: LongFormTranslationEngine.Result? = null
     private var translateLiveMode = false
     private var translateComposeText = ""
 
@@ -64,6 +65,7 @@ class OrbitInputMethodService : InputMethodService() {
     private lateinit var userDictionary: UserDictionaryStore
     private lateinit var petRepository: PetRepository
     private lateinit var englishImeEngine: EnglishImeEngine
+    private lateinit var quickPhraseStore: QuickPhraseStore
     private lateinit var clipboardManager: ClipboardManager
     private var clipboardListenerAttached = false
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
@@ -72,11 +74,13 @@ class OrbitInputMethodService : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        inputMode = if (ImePreferences.inputMode(this) == ImePreferences.MODE_ENGLISH) InputMode.ENGLISH else InputMode.PINYIN
         store = ClipboardStore(this)
         expressionStore = ExpressionStore(this)
         userDictionary = UserDictionaryStore(this)
         petRepository = PetRepository(this)
         englishImeEngine = EnglishImeEngine(this)
+        quickPhraseStore = QuickPhraseStore(this)
         CedictTranslationAsset.initialize(this)
         clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
     }
@@ -114,6 +118,23 @@ class OrbitInputMethodService : InputMethodService() {
             clearTranslateState()
         }
         root?.let { rebuild(it) }
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        if (newSelStart != newSelEnd && (pinyinBuffer.isNotEmpty() || englishBuffer.isNotEmpty())) {
+            // External selection and IME composition are independent. Drop only our
+            // in-memory buffers so the next key replaces the selected editor text.
+            resetInternalCompositionState()
+            refreshDynamicHost()
+        }
     }
 
     override fun onCreateInputView(): View {
@@ -222,7 +243,7 @@ class OrbitInputMethodService : InputMethodService() {
         val visible = profile.displayMode != PetRepository.DISPLAY_HIDDEN
         val outfit = profile.equippedOutfitName ?: "无装扮"
         val next = profile.nextStageExp?.let { "距进化 ${it - profile.exp} EXP" } ?: "成熟阶段"
-        val avatar = PetAvatarView(this).apply {
+        val avatar = PetAvatarV21View(this).apply {
             bind(profile, activeSkin())
             contentDescription = "${profile.petName} ${profile.stageName}"
         }
@@ -365,6 +386,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun commitExpression(value: String) {
         val inputConnection = currentInputConnection ?: return
+        resetInternalCompositionState()
         inputConnection.commitText(value, 1)
         expressionStore.record(value)
         if (!sensitiveMode) petRepository.recordTypedChars(value.length)
@@ -398,6 +420,7 @@ class OrbitInputMethodService : InputMethodService() {
             petRepository.recordCandidateCommit()
             toast("目标 App 不支持 IME 图片直发；贴图已复制，请在微信/QQ输入框长按粘贴")
         } else {
+            resetInternalCompositionState()
             inputConnection.commitText(sticker.fallbackText, 1)
             expressionStore.record(sticker.fallbackText)
             if (!sensitiveMode) petRepository.recordTypedChars(sticker.fallbackText.length)
@@ -421,21 +444,28 @@ class OrbitInputMethodService : InputMethodService() {
         val source = currentTranslationSource()
         val contextAvailable = TranslationSettings.isContextTranslationAvailable(this)
         val contextEnabled = TranslationSettings.isContextTranslationEnabled(this)
-        val modeLabel = if (contextEnabled) "上下文" else "单句"
+        val modeLabel = when {
+            longFormTranslationPreview != null -> "全文"
+            contextEnabled -> "上下文"
+            else -> "单句"
+        }
         parent.addView(labelBox("翻译键盘 · ${translateDirection.label} · 本地 · $modeLabel", muted = false, accent = true))
         parent.addView(labelBox("原文：${source.ifBlank { if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) "输入中文或连续拼音" else "Type English" }.shortLabel(76)}", muted = source.isBlank(), accent = false))
         val translationLine = offlineTranslationPreview?.let { "译文：${it.shortLabel(90)}" }
             ?: if (source.isBlank()) "输入后自动显示本地译文" else OfflineTranslationPack.unavailableMessage()
         parent.addView(labelBox(translationLine, muted = offlineTranslationPreview == null, accent = offlineTranslationPreview != null))
 
+        longFormTranslationPreview?.let { result ->
+            parent.addView(labelBox("长文：${result.sourceChars} 字 · 已翻译 ${result.translatedSegments} 段 · 未覆盖 ${result.uncoveredSegments} 段", muted = result.uncoveredSegments > 0, accent = result.uncoveredSegments == 0))
+        }
         val contextBundle = contextTranslationBundle
-        if (contextEnabled && contextBundle != null && contextBundle.contextSentenceCount > 0) {
+        if (contextEnabled && contextBundle != null && contextBundle.contextSentenceCount > 0 && longFormTranslationPreview == null) {
             parent.addView(labelBox("上下文参考（前 ${contextBundle.contextSentenceCount} 句）：${contextBundle.contextSourcePreview.shortLabel(96)}", muted = true, accent = false))
             if (contextBundle.contextTranslationPreview.isNotBlank()) {
                 parent.addView(labelBox("上下文整段译文：${contextBundle.contextTranslationPreview.shortLabel(110)}", muted = false, accent = true))
             }
         } else if (!contextAvailable) {
-            parent.addView(labelBox("普通用户：单句本地翻译；上下文翻译为 Pro 可选功能", muted = true, accent = false))
+            parent.addView(labelBox("Free：单句本地翻译；Pro：上下文 + 选区全文/长文翻译", muted = true, accent = false))
         }
 
         if (pinyinBuffer.isNotEmpty()) buildPinyinCandidateBar(parent)
@@ -443,16 +473,22 @@ class OrbitInputMethodService : InputMethodService() {
 
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        if (offlineTranslationPreview != null) row.addView(chip("译文上屏", emphasized = true) { insertLiveTranslation() })
-        if (source.isNotBlank()) row.addView(chip("原文上屏") { insertLiveSource() })
+        if (offlineTranslationPreview != null) row.addView(chip(if (longFormTranslationPreview != null) "替换选区" else "译文上屏", emphasized = true) { insertLiveTranslation() })
+        if (source.isNotBlank() && longFormTranslationPreview == null) row.addView(chip("原文上屏") { insertLiveSource() })
+        if (ProGate.isLongFormTranslationUnlocked(this)) {
+            row.addView(chip("全文/长文") { prepareLongFormTranslation() })
+        } else {
+            row.addView(chip("全文·Pro") { toast("Pro 可对已全选/选择的文本进行本地长文翻译") })
+        }
         if (contextAvailable) {
             row.addView(chip(if (contextEnabled) "上下文：开" else "上下文：关", emphasized = contextEnabled) {
                 TranslationSettings.setContextTranslationEnabled(this, !contextEnabled)
+                longFormTranslationPreview = null
                 updateLiveTranslationPreview()
                 refreshDynamicHost()
             })
         } else {
-            row.addView(chip("上下文·Pro") { toast("普通用户仅提供单句翻译；Pro 可选择开启本地上下文参考") })
+            row.addView(chip("上下文·Pro") { toast("Free 仅单句翻译；Pro 可选择开启本地上下文参考") })
         }
         row.addView(chip("换方向") { toggleTranslateDirection(regenerate = true) })
         row.addView(chip("前一句") { loadTranslationSource("前一句", readPreviousSentence()) })
@@ -525,7 +561,7 @@ class OrbitInputMethodService : InputMethodService() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val profile = petRepository.profile()
         if (!sensitiveMode && profile.displayMode != PetRepository.DISPLAY_HIDDEN) {
-            val miniPet = PetAvatarView(this).apply {
+            val miniPet = PetAvatarV21View(this).apply {
                 bind(profile, activeSkin())
                 contentDescription = "打开宠物 ${profile.petName}"
                 setOnClickListener {
@@ -540,20 +576,19 @@ class OrbitInputMethodService : InputMethodService() {
             row.addView(miniPet, LinearLayout.LayoutParams(dp(64), dp(34)).apply { setMargins(dp(2), 0, dp(4), 0) })
         }
 
-        val associations = if (inputMode == InputMode.PINYIN) {
+        val associations = if (inputMode == InputMode.PINYIN && ImePreferences.associationsEnabled(this)) {
             userDictionary.nextSuggestions(readCandidateContextBeforeCursor(), NEXT_SUGGESTION_LIMIT)
-        } else {
-            emptyList()
-        }
+        } else emptyList()
         if (associations.isNotEmpty()) {
             row.addView(labelBox("联想", muted = false, accent = true))
             associations.forEach { value -> row.addView(chip(value.shortLabel()) { commitDirectText(value) }) }
         }
 
-        val phrases = if (inputMode == InputMode.PINYIN) TemplateLibrary.quickPhrasesForPinyin() else TemplateLibrary.quickPhrasesForEnglish()
+        val phrases = if (inputMode == InputMode.PINYIN) quickPhraseStore.phrasesForPinyin() else quickPhraseStore.phrasesForEnglish()
         phrases.asSequence().filterNot { it in associations }.take(24).forEach { phrase ->
             row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
         }
+        if (row.childCount == 0) return
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
@@ -646,9 +681,11 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun commitAuxiliaryText(text: String) {
         if (showTranslate && translateLiveMode) {
+            longFormTranslationPreview = null
             translateComposeText += text
             updateLiveTranslationPreview()
         } else {
+            resetInternalCompositionState()
             currentInputConnection?.commitText(text, 1)
             if (!sensitiveMode) petRepository.recordTypedChars(text.length)
         }
@@ -672,10 +709,12 @@ class OrbitInputMethodService : InputMethodService() {
         showExpressions = false
         val mapped = mapPrintableText(rawKey)
         if (showTranslate && translateLiveMode) {
+            longFormTranslationPreview = null
             translateComposeText += mapped
             updateLiveTranslationPreview()
             refreshDynamicHost()
         } else {
+            resetInternalCompositionState()
             currentInputConnection?.commitText(mapped, 1)
             if (!sensitiveMode) petRepository.recordTypedChars(mapped.length)
             refreshDynamicHost()
@@ -704,13 +743,19 @@ class OrbitInputMethodService : InputMethodService() {
             return
         }
         if (showTranslate && translateLiveMode && translateComposeText.isNotEmpty()) {
+            longFormTranslationPreview = null
             translateComposeText = translateComposeText.dropLast(1)
             updateLiveTranslationPreview()
             refreshDynamicHost()
             return
         }
         if (showExpressions) showExpressions = false
-        inputConnection.deleteSurroundingText(1, 0)
+        if (hasSelectedText()) {
+            inputConnection.commitText("", 1)
+        } else {
+            runCatching { inputConnection.deleteSurroundingTextInCodePoints(1, 0) }
+                .getOrElse { inputConnection.deleteSurroundingText(1, 0) }
+        }
         refreshDynamicHost()
     }
 
@@ -718,11 +763,13 @@ class OrbitInputMethodService : InputMethodService() {
         if (inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty()) { commitPendingPinyin(rawFallback = false); return }
         if (inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty()) { commitPendingEnglish(rawFallback = false, appendSpace = true); return }
         if (showTranslate && translateLiveMode) {
+            longFormTranslationPreview = null
             if (translateDirection == TranslatePromptBuilder.Direction.EN_TO_ZH) translateComposeText += " "
             refreshDynamicHost()
             return
         }
         showExpressions = false
+        resetInternalCompositionState()
         currentInputConnection?.commitText(" ", 1)
         if (!sensitiveMode) petRepository.recordTypedChars(1)
         refreshDynamicHost()
@@ -752,6 +799,7 @@ class OrbitInputMethodService : InputMethodService() {
         showClips = false
         showPet = false
         showExpressions = false
+        longFormTranslationPreview = null
         if (!sensitiveMode) petRepository.recordTypedChars(1)
         refreshDynamicHost()
     }
@@ -764,6 +812,7 @@ class OrbitInputMethodService : InputMethodService() {
         showClips = false
         showPet = false
         showExpressions = false
+        longFormTranslationPreview = null
         if (!sensitiveMode) petRepository.recordTypedChars(1)
         refreshDynamicHost()
     }
@@ -811,7 +860,6 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun candidatesForCurrentEnglish(): List<String> = englishImeEngine.candidatesFor(englishBuffer)
 
-    /** Commit candidate directly over the active composing region. Never finish raw Pinyin first. */
     private fun commitPinyinCandidate(candidate: String) {
         val inputConnection = currentInputConnection ?: return
         val learnedPinyin = pinyinBuffer
@@ -820,6 +868,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (showTranslate && translateLiveMode) {
             inputConnection.commitText("", 1)
             translateComposeText += candidate
+            longFormTranslationPreview = null
             updateLiveTranslationPreview()
         } else {
             inputConnection.commitText(candidate, 1)
@@ -839,6 +888,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (showTranslate && translateLiveMode) {
             inputConnection.commitText("", 1)
             translateComposeText += text
+            longFormTranslationPreview = null
             updateLiveTranslationPreview()
         } else {
             inputConnection.commitText(text, 1)
@@ -858,9 +908,16 @@ class OrbitInputMethodService : InputMethodService() {
         englishBuffer = ""
     }
 
+    private fun resetInternalCompositionState() {
+        pinyinBuffer = ""
+        englishBuffer = ""
+        invalidatePinyinUiCache()
+    }
+
     private fun toggleInputMode() {
         commitPendingForControl()
         inputMode = if (inputMode == InputMode.PINYIN) InputMode.ENGLISH else InputMode.PINYIN
+        ImePreferences.setInputMode(this, if (inputMode == InputMode.PINYIN) ImePreferences.MODE_PINYIN else ImePreferences.MODE_ENGLISH)
         if (showTranslate) translateDirection = if (inputMode == InputMode.PINYIN) TranslatePromptBuilder.Direction.ZH_TO_EN else TranslatePromptBuilder.Direction.EN_TO_ZH
         symbols = false
         caps = false
@@ -884,8 +941,13 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun commitDirectText(text: String) {
-        commitPendingPinyin(rawFallback = true)
-        commitPendingEnglish(rawFallback = true, appendSpace = false)
+        val replacingSelection = hasSelectedText()
+        if (replacingSelection) {
+            resetInternalCompositionState()
+        } else {
+            commitPendingPinyin(rawFallback = true)
+            commitPendingEnglish(rawFallback = true, appendSpace = false)
+        }
         clearTranslateState()
         showPet = false
         showExpressions = false
@@ -912,6 +974,7 @@ class OrbitInputMethodService : InputMethodService() {
         showPet = false
         showExpressions = false
         petPanelMessage = null
+        longFormTranslationPreview = null
         updateLiveTranslationPreview()
     }
 
@@ -926,22 +989,25 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun updateLiveTranslationPreview() {
-        if (!showTranslate || !translateLiveMode) return
+        if (!showTranslate || !translateLiveMode || longFormTranslationPreview != null) return
         val source = currentTranslationSource().trim()
         translateSourceText = source.ifBlank { null }
         translateSourceLabel = "翻译键盘"
         val direct = if (source.isBlank()) null else OfflineTranslationPack.translateOrNull(source, translateDirection)
         contextTranslationBundle = if (source.isNotBlank() && TranslationSettings.isContextTranslationEnabled(this)) {
             ContextTranslationEngine.translate(source, readTranslationContext().orEmpty(), translateDirection)
-        } else {
-            null
-        }
+        } else null
         offlineTranslationPreview = contextTranslationBundle?.currentTranslation ?: direct?.translatedText
         translatePromptPreview = if (source.isBlank()) null else TranslatePromptBuilder.build(source, translateDirection)
     }
 
     private fun loadTranslationSource(label: String, rawSource: String?) {
-        val source = rawSource?.trim().orEmpty()
+        var source = rawSource?.trim().orEmpty()
+        if (!ProGate.isProUnlocked(this)) {
+            val single = firstSentence(source)
+            if (single != source && source.isNotBlank()) toast("Free 仅翻译第一句；Pro 支持选区全文/长文翻译")
+            source = single
+        }
         if (!TranslatePromptBuilder.canUseSource(source)) {
             toast(if (source.length > 1200) TranslatePromptBuilder.sourceTooLongMessage() else TranslatePromptBuilder.unsafeSourceMessage())
             return
@@ -955,16 +1021,51 @@ class OrbitInputMethodService : InputMethodService() {
         showClips = false
         showPet = false
         showExpressions = false
+        longFormTranslationPreview = null
         updateLiveTranslationPreview()
+        refreshDynamicHost()
+    }
+
+    private fun prepareLongFormTranslation() {
+        if (!ProGate.isLongFormTranslationUnlocked(this)) {
+            toast("全文/长文翻译需要 Pro")
+            return
+        }
+        val selected = readSelectedText().orEmpty()
+        if (selected.isBlank()) {
+            toast("请先在目标 App 全选或选择需要翻译的文本")
+            return
+        }
+        val source = selected.take(LongFormTranslationEngine.MAX_SOURCE_CHARS)
+        val result = LongFormTranslationEngine.translate(source, translateDirection)
+        if (result == null) {
+            toast("所选文本无法进行本地长文翻译")
+            return
+        }
+        resetInternalCompositionState()
+        translateComposeText = source
+        translateSourceText = source
+        translateSourceLabel = "选区全文"
+        translateLiveMode = true
+        showTranslate = true
+        showClips = false
+        showPet = false
+        showExpressions = false
+        contextTranslationBundle = null
+        translatePromptPreview = null
+        longFormTranslationPreview = result
+        offlineTranslationPreview = result.translatedText
         refreshDynamicHost()
     }
 
     private fun toggleTranslateDirection(regenerate: Boolean) {
         translateDirection = if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) TranslatePromptBuilder.Direction.EN_TO_ZH else TranslatePromptBuilder.Direction.ZH_TO_EN
         inputMode = if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) InputMode.PINYIN else InputMode.ENGLISH
+        ImePreferences.setInputMode(this, if (inputMode == InputMode.PINYIN) ImePreferences.MODE_PINYIN else ImePreferences.MODE_ENGLISH)
         clearPinyinComposition()
         clearEnglishComposition()
         showExpressions = false
+        longFormTranslationPreview = null
         if (regenerate) updateLiveTranslationPreview()
         root?.let { rebuild(it) }
     }
@@ -977,10 +1078,11 @@ class OrbitInputMethodService : InputMethodService() {
         translatePromptPreview = null
         offlineTranslationPreview = null
         contextTranslationBundle = null
+        longFormTranslationPreview = null
     }
 
     private fun insertLiveTranslation() {
-        updateLiveTranslationPreview()
+        if (longFormTranslationPreview == null) updateLiveTranslationPreview()
         val text = offlineTranslationPreview ?: return
         currentInputConnection?.commitText(text, 1)
         if (!sensitiveMode) {
@@ -1015,17 +1117,26 @@ class OrbitInputMethodService : InputMethodService() {
         translatePromptPreview = null
         offlineTranslationPreview = null
         contextTranslationBundle = null
+        longFormTranslationPreview = null
     }
 
     private fun readSelectedText(): String? = currentInputConnection?.getSelectedText(0)?.toString()
+
+    private fun hasSelectedText(): Boolean = !readSelectedText().isNullOrEmpty()
 
     private fun readPreviousSentence(): String? {
         val text = currentInputConnection?.getTextBeforeCursor(360, 0)?.toString() ?: return null
         return extractLastSentence(text)
     }
 
-    private fun readTranslationContext(): String? =
-        currentInputConnection?.getTextBeforeCursor(720, 0)?.toString()?.takeLast(720)
+    private fun readTranslationContext(): String? = currentInputConnection?.getTextBeforeCursor(720, 0)?.toString()?.takeLast(720)
+
+    private fun firstSentence(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return ""
+        val end = trimmed.indexOfFirst { it == '。' || it == '！' || it == '？' || it == '.' || it == '!' || it == '?' || it == '\n' || it == '\r' }
+        return if (end >= 0) trimmed.substring(0, end + 1).trim() else trimmed
+    }
 
     private fun extractLastSentence(raw: String): String? {
         val cleaned = raw.trim().trimEnd('。', '！', '？', '.', '!', '?', '\n', '\r', ' ', '\t')
