@@ -1,0 +1,102 @@
+name: Validate v0.27 IME handoff
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/v027-ime-ux-polish
+    paths:
+      - tools/patch_v027_ime_handoff.py
+      - .github/workflows/patch-v027-ime-handoff.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/v027-ime-ux-polish
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Apply IME handoff patch
+        run: python3 tools/patch_v027_ime_handoff.py
+
+      - name: Static regression checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          method = Path('app/src/main/res/xml/method.xml').read_text()
+          service = Path('app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt').read_text()
+          gradle = Path('app/build.gradle.kts').read_text()
+          validator = Path('tools/validate_mature_ime_assets.py').read_text()
+          assert 'android:supportsSwitchingToNextInputMethod="true"' in method
+          assert 'override fun onFinishInputView(finishingInput: Boolean)' in service
+          assert 'override fun onFinishInput()' in service
+          assert 'override fun onUnbindInput()' in service
+          assert 'private fun resetSessionUiForImeHandoff()' in service
+          assert 'showInputMethodPickerSafely' not in service
+          assert 'InputMethodManager' not in service
+          assert 'resValue("string", "ime_name", "Orbit IME Test")' in gradle
+          assert 'IME switching protocol declaration missing' in validator
+          print('static IME handoff checks PASS')
+          PY
+          git diff --check
+
+      - name: Duplicate class checks
+        run: gradle :app:checkDebugDuplicateClasses :app:checkBundledModelsDebugDuplicateClasses --no-daemon
+
+      - name: Build formal and test APKs with full validation
+        run: gradle assembleDebug assembleBundledModelsDebug --no-daemon
+
+      - name: Verify APK outputs
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/apk/bundledModelsDebug/app-bundledModelsDebug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/bundledModelsDebug/app-bundledModelsDebug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/bundledModelsDebug/app-bundledModelsDebug.apk
+
+      - name: Upload validated APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit-ime-v027-handoff-validated-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/bundledModelsDebug/app-bundledModelsDebug.apk
+
+      - name: Commit validated source changes
+        run: |
+          git config user.name "initial2024"
+          git config user.email "zo46@qq.com"
+          git add app/build.gradle.kts \
+                  app/src/main/res/xml/method.xml \
+                  app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt \
+                  tools/validate_mature_ime_assets.py
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: make IME handoff and system switching reliable"
+          git push origin HEAD:fix/v027-ime-ux-polish
