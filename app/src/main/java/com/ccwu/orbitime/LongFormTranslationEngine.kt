@@ -7,6 +7,7 @@ object LongFormTranslationEngine {
         val translatedSegments: Int,
         val uncoveredSegments: Int,
         val sourceChars: Int,
+        val coverage: Double,
     )
 
     fun translate(
@@ -14,57 +15,57 @@ object LongFormTranslationEngine {
         direction: TranslatePromptBuilder.Direction,
         maxChars: Int = MAX_SOURCE_CHARS,
     ): Result? {
-        val source = rawSource.trim().take(maxChars)
+        val source = rawSource.replace("\r\n", "\n").replace('\r', '\n').trim().take(maxChars)
         if (source.isBlank() || !PrivacyGuard.isSafeForLocalLongForm(source, maxChars)) return null
-        val segments = splitSentences(source)
-        if (segments.isEmpty()) return null
 
         var translated = 0
         var uncovered = 0
-        val output = buildString {
-            segments.forEach { segment ->
-                val result = OfflineTranslationPack.translateOrNull(segment.text.take(1200), direction)
+        var totalSegments = 0
+        val outputLines = source.split('\n').map { line ->
+            if (line.isBlank()) return@map ""
+            val segments = splitSentences(line).take((MAX_SEGMENTS - totalSegments).coerceAtLeast(0))
+            totalSegments += segments.size
+            val rendered = segments.map { segment ->
+                val result = OfflineTranslationPack.translateOrNull(segment.text.take(MAX_SENTENCE_CHARS), direction)
                 val value = result?.translatedText?.trim().orEmpty()
                 if (value.isNotBlank()) {
-                    append(value.trimEnd('。', '.', '！', '!', '？', '?'))
-                    append(translatedEnd(segment.end, direction))
                     translated++
+                    value.trimEnd('。', '.', '！', '!', '？', '?', '；', ';') + translatedEnd(segment.end, direction)
                 } else {
-                    // Preserve uncovered source instead of silently inventing a translation.
-                    append(segment.text)
-                    if (segment.end != null && !segment.text.endsWith(segment.end)) append(segment.end)
                     uncovered++
+                    segment.text + (segment.end?.toString().orEmpty())
                 }
-                if (segment.lineBreak) append('\n') else append(' ')
             }
-        }.trim()
+            if (direction == TranslatePromptBuilder.Direction.ZH_TO_EN) rendered.joinToString(" ") else rendered.joinToString("")
+        }
 
-        return Result(output, translated, uncovered, source.length)
+        val denominator = (translated + uncovered).coerceAtLeast(1)
+        return Result(
+            translatedText = outputLines.joinToString("\n").trim(),
+            translatedSegments = translated,
+            uncoveredSegments = uncovered,
+            sourceChars = source.length,
+            coverage = translated.toDouble() / denominator,
+        )
     }
 
-    private data class Segment(val text: String, val end: Char?, val lineBreak: Boolean)
+    private data class Segment(val text: String, val end: Char?)
 
     private fun splitSentences(source: String): List<Segment> {
         val result = mutableListOf<Segment>()
         val buffer = StringBuilder()
         source.forEach { ch ->
-            when (ch) {
-                '。', '！', '？', '.', '!', '?', ';', '；' -> {
-                    val value = buffer.toString().trim()
-                    if (value.isNotBlank()) result += Segment(value, ch, false)
-                    buffer.clear()
-                }
-                '\n', '\r' -> {
-                    val value = buffer.toString().trim()
-                    if (value.isNotBlank()) result += Segment(value, null, true)
-                    buffer.clear()
-                }
-                else -> buffer.append(ch)
+            if (ch in SENTENCE_ENDINGS) {
+                val value = buffer.toString().trim()
+                if (value.isNotBlank()) result += Segment(value, ch)
+                buffer.clear()
+            } else {
+                buffer.append(ch)
             }
         }
         val tail = buffer.toString().trim()
-        if (tail.isNotBlank()) result += Segment(tail, null, false)
-        return result.take(MAX_SEGMENTS)
+        if (tail.isNotBlank()) result += Segment(tail, null)
+        return result
     }
 
     private fun translatedEnd(sourceEnd: Char?, direction: TranslatePromptBuilder.Direction): String = when (direction) {
@@ -83,5 +84,7 @@ object LongFormTranslationEngine {
     }
 
     const val MAX_SOURCE_CHARS = 8000
-    private const val MAX_SEGMENTS = 120
+    private const val MAX_SENTENCE_CHARS = 1400
+    private const val MAX_SEGMENTS = 240
+    private val SENTENCE_ENDINGS = setOf('。', '！', '？', '.', '!', '?', ';', '；')
 }
