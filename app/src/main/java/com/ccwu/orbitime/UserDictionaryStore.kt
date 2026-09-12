@@ -67,18 +67,20 @@ class UserDictionaryStore(private val context: Context) {
         contextBeforeCursor: String? = null,
     ): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
-        if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
+        if (query.isEmpty()) return emptyList()
         val engineCandidates = runCatching {
             imeEngine.exactCandidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
         }.getOrElse { emptyList() }
         if (engineCandidates.isNotEmpty()) {
-            return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
+            return engineCandidates.distinct().take(MAX_CANDIDATES)
         }
-        val exactUser = loadEntries()
+        // Do not reuse outer prefix/fuzzy static candidates here. This API is
+        // used by raw-fallback commits (Enter, punctuation, panel switches), so
+        // guessing a non-exact candidate would silently replace user input.
+        return loadEntries()
             .filter { it.pinyin == query }
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
             .map { it.text }
-        return (exactUser + staticCandidates)
             .distinct()
             .take(MAX_CANDIDATES)
     }
