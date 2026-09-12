@@ -15,13 +15,21 @@ object OfflineTranslationPack {
             TranslatePromptBuilder.Direction.ZH_TO_EN -> findExactZhToEn(text)
             TranslatePromptBuilder.Direction.EN_TO_ZH -> findExactEnToZh(text)
         }
-        if (exact != null) return Result(exact, "exact-local", "本地短句精确匹配")
+        if (exact != null) return Result(exact, "exact-local", "本地词典精确匹配")
+
+        val cedictComposed = when (direction) {
+            TranslatePromptBuilder.Direction.ZH_TO_EN -> CedictTranslationAsset.composeZhToEn(text)
+            TranslatePromptBuilder.Direction.EN_TO_ZH -> CedictTranslationAsset.composeEnToZh(text)
+        }
+        if (!cedictComposed.isNullOrBlank()) {
+            return Result(cedictComposed, "cedict-composed-local", "CC-CEDICT 本地词组最长匹配")
+        }
 
         val composed = when (direction) {
             TranslatePromptBuilder.Direction.ZH_TO_EN -> LocalTranslationComposer.translateZhToEn(text)
             TranslatePromptBuilder.Direction.EN_TO_ZH -> LocalTranslationComposer.translateEnToZh(text)
         }
-        return composed?.let { Result(it, "composed-local", "本地词组切分与句子拼接") }
+        return composed?.let { Result(it, "composed-local", "项目本地词组切分与句子拼接") }
     }
 
     fun unavailableMessage(): String = "离线词库暂未覆盖这句话。可继续编辑，或使用提示词交给外部模型翻译。"
@@ -34,6 +42,7 @@ object OfflineTranslationPack {
             TranslationBoostData.zhToEn[text]?.let { return it }
             TranslationLexiconData.zhToEn[text]?.let { return normalizeExactEnglish(it, raw) }
             BASE_ZH_TO_EN[text]?.let { return it }
+            CedictTranslationAsset.exactZhToEn(text)?.let { return normalizeExactEnglish(it, raw) }
         }
         return null
     }
@@ -45,6 +54,7 @@ object OfflineTranslationPack {
         TranslationBoostData.enToZh[key]?.let { return it }
         TranslationLexiconData.enToZh[key]?.let { return ensureChineseEnding(it, raw) }
         BASE_EN_TO_ZH[key]?.let { return it }
+        CedictTranslationAsset.exactEnToZh(key)?.let { return ensureChineseEnding(it, raw) }
         return null
     }
 
