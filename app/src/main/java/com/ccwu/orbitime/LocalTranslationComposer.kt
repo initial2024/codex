@@ -3,9 +3,8 @@ package com.ccwu.orbitime
 import java.util.Locale
 
 /**
- * Deterministic offline sentence composer. It is intentionally conservative:
- * it returns null instead of pretending to translate when local lexical
- * coverage is too low.
+ * Deterministic offline sentence composer. It returns null rather than pretending
+ * to translate when the local lexical coverage is too low.
  */
 object LocalTranslationComposer {
     private val zhLexicon: Map<String, String> = buildMap {
@@ -19,8 +18,8 @@ object LocalTranslationComposer {
         putAll(TranslationBoostData.enTokens)
     }
     private val enKeys: List<List<String>> = enLexicon.keys
-        .map { it.lowercase(Locale.ROOT).split(Regex("\\s+")).filter(String::isNotBlank) }
-        .filter(List<String>::isNotEmpty)
+        .map { key -> key.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() } }
+        .filter { it.isNotEmpty() }
         .sortedWith(compareByDescending<List<String>> { it.size }.thenByDescending { it.joinToString(" ").length })
 
     fun translateZhToEn(raw: String): String? {
@@ -47,13 +46,14 @@ object LocalTranslationComposer {
         for (char in source) {
             if (char in CLAUSE_PUNCTUATION_ZH) {
                 if (!flush(char)) return null
-            } else {
-                clause.append(char)
-            }
+            } else clause.append(char)
         }
         if (!flush()) return null
-        val cleaned = result.toString().replace(Regex("\\s+([,.!?;:])"), "$1").replace(Regex("\\s+"), " ").trim()
-        return cleaned.ifBlank { null }
+        return result.toString()
+            .replace(Regex("\\s+([,.!?;:])"), "$1")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .ifBlank { null }
     }
 
     fun translateEnToZh(raw: String): String? {
@@ -65,10 +65,7 @@ object LocalTranslationComposer {
         fun flush(punctuation: Char? = null): Boolean {
             val text = clause.toString().trim()
             clause.clear()
-            if (text.isNotEmpty()) {
-                val translated = translateEnClause(text) ?: return false
-                result.append(translated)
-            }
+            if (text.isNotEmpty()) result.append(translateEnClause(text) ?: return false)
             punctuation?.let { result.append(mapEnPunctuation(it)) }
             return true
         }
@@ -76,9 +73,7 @@ object LocalTranslationComposer {
         for (char in source) {
             if (char in CLAUSE_PUNCTUATION_EN) {
                 if (!flush(char)) return null
-            } else {
-                clause.append(char)
-            }
+            } else clause.append(char)
         }
         if (!flush()) return null
         return result.toString().trim().ifBlank { null }
@@ -88,7 +83,7 @@ object LocalTranslationComposer {
         val tokens = mutableListOf<String>()
         var index = 0
         var coveredCjk = 0
-        var totalCjk = source.count(::isCjk)
+        val totalCjk = source.count(::isCjk)
         var unknownCjk = 0
 
         while (index < source.length) {
@@ -117,11 +112,7 @@ object LocalTranslationComposer {
                 continue
             }
 
-            if (isCjk(char)) {
-                unknownCjk++
-            } else {
-                tokens += char.toString()
-            }
+            if (isCjk(char)) unknownCjk++ else tokens += char.toString()
             index++
         }
 
@@ -163,7 +154,7 @@ object LocalTranslationComposer {
                 out.append(translated)
                 covered += matchedWords.size
                 index += matchedWords.size
-            } else if (lowered[index].all(Char::isDigit)) {
+            } else if (lowered[index].all { it.isDigit() }) {
                 out.append(words[index])
                 covered++
                 index++
