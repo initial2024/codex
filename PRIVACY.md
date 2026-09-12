@@ -4,141 +4,111 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.15.0`.
+This policy applies to Orbit IME `0.16.0`.
 
 ## Network
 
-Orbit IME `0.15.0` does not request `INTERNET` permission.
+Orbit IME `0.16.0` does not request `INTERNET` permission.
 
-The app cannot upload input text, clipboard text, Pinyin buffers, English buffers, candidate-ranking state, N-gram data, templates, saved clips, skin selection, Translate Preview source text, generated prompts, user dictionary entries, pet data, or local translation inputs to a server because no network permission is declared.
+The installed app does not upload input text, clipboard text, Pinyin/English buffers, translation source/result text, candidate-ranking state, user dictionary entries, N-gram state, pet data, skin choice, or saved clips.
+
+Public dictionary files are downloaded only by the build machine, verified against pinned Git blob SHA values, converted to packaged offline assets, and then read locally by the installed IME.
 
 ## Advertising and analytics
 
-Orbit IME `0.15.0` includes:
+Orbit IME includes no ad SDK, analytics SDK, tracking SDK, or remote-configuration SDK.
 
-- No ad SDK.
-- No analytics SDK.
-- No tracking SDK.
-- No remote configuration SDK.
+## Clipboard history
 
-## Clipboard vault
+v0.16 provides local `Recent` and `Pinned` clipboard sections.
 
-Orbit IME can save clipboard text into a local vault only after the user opens Orbit's own Clips panel and taps `保存当前剪贴板`.
+- Orbit attaches a clipboard-change listener only while the IME window is visibly shown.
+- The listener is removed when the IME window hides and when the service is destroyed.
+- There is no background clipboard-harvesting service.
+- Non-sensitive copied text can be stored in app-private `SharedPreferences` while the keyboard is visible.
+- Unpinned Recent items expire after about one hour.
+- Pinned items remain until the user unpins/deletes/clears them.
+- The user can clear Recent items without deleting pinned items, or clear all items.
 
-The vault is stored locally using app-private `SharedPreferences` JSON.
+Before persistence, Orbit rejects text that looks like OTP-only numeric codes, passwords, API keys, bearer/authorization strings, cookies/sessions, or dense secret-like tokens.
 
-Orbit IME does not run a background clipboard harvesting service.
+Orbit cannot replace Android or host-app long-press text-selection menus.
 
-Orbit IME cannot replace the host app or Android system long-press text-selection menu.
+## Pinyin engine and temporary context
 
-Before saving, Orbit IME rejects text that looks like OTP-only numeric codes, passwords, API keys, bearer tokens, authorization headers, cookie/session strings, or very long dense secret-like tokens.
-
-## Pinyin mode and local IME engine
-
-Orbit IME `0.15.0` includes a local Pinyin 26-key engine.
-
-Candidate generation can use:
+Candidate generation runs locally and can use:
 
 - packaged `.odict` lexicon assets;
-- project-authored fallback dictionaries;
+- AOSP/Jieba-derived packaged Chinese data;
+- project-authored fallback data;
 - dynamic-programming Pinyin segmentation;
 - bounded phrase-level beam search;
-- packaged 1-gram, 2-gram, and 3-gram count data;
-- local user selection frequency;
-- local fuzzy/typo correction.
+- packaged 1/2/3-gram counts;
+- explicit local user-selection frequency;
+- lower-confidence fuzzy/typo correction.
 
-All of these operations run on-device.
+Pinyin composing buffers are temporary and are not persisted as a typed stream.
 
-Pinyin buffers are temporary composing state. They are not uploaded and are not persisted as typed streams.
-
-The N-gram model reads packaged count assets. It does not send text to a model or server.
-
-Candidate ranking may inspect only temporary in-memory context supplied by the current input session. Orbit IME does not persist surrounding sentence context for language-model ranking.
+For ranking, the IME may read a short piece of text immediately before the cursor from the current input session. This context is used in memory for N-gram ranking only. Orbit does not save surrounding sentences, target-field identity, or the app/package name.
 
 ## User dictionary
 
-The user dictionary learns only after explicit candidate commit:
-
-- Candidate tap.
-- Space-to-select while a Pinyin buffer exists.
-
-The stored record remains limited to:
+The user dictionary learns after explicit candidate commit. The persistent record remains limited to:
 
 ```text
-pinyin -> committed candidate text -> frequency -> updatedAt
+pinyin
+committed candidate text
+frequency
+updatedAt
 ```
 
-Orbit IME does not store the surrounding sentence, app/package name, target field identity, or full input history for user-dictionary learning.
-
-The dictionary is stored using app-private `SharedPreferences` JSON. v0.15 keeps an in-memory cache of these same records to avoid repeatedly parsing JSON during candidate ranking; this cache is process-local and is not a second persistent history.
+v0.16 allows longer personal phrase/sentence mappings, but does not persist the full conversation or raw key stream. Parsed entries may be cached in process memory for performance.
 
 ## Imported dictionary assets
 
-Large dictionary packs are build-time application assets, not user input records.
+Large dictionary packs are build-time application assets, not user records.
 
-The v0.15 importer requires source/license metadata and generates compact `.odict` assets. Runtime lookup reads these packaged files locally.
+Current mature sources are pinned/audited AOSP PinyinIME data, Jieba MIT frequency data, and ESDB/SCOWL US English vocabulary. Required third-party notices are packaged with generated assets. See `DATA_SOURCES.md`.
 
-Importing a third-party dictionary does not grant Orbit IME permission to upload user text or use network prediction.
+## English composing
 
-## English candidate mode
+English letters are held in a temporary composing buffer until the user chooses a candidate or commits with space/control behavior. The buffer is not uploaded and is not persisted as a typed stream.
 
-English candidates are generated locally from packaged English candidate data.
+## Translation keyboard
 
-The English composing buffer is not uploaded and is not persisted as a typed stream.
+v0.16 translation is a local keyboard mode.
 
-Typing English letters enters a temporary composing buffer. The user commits by tapping a candidate or pressing space.
+- Chinese/Pinyin or English text is accumulated in a temporary translation source buffer.
+- The panel can show the current source and a local translation result.
+- Translation first uses exact packaged phrase tables, then a conservative local longest-phrase composer.
+- If local lexical coverage is insufficient, Orbit explicitly reports that the offline dictionary does not cover the sentence.
+- An optional generated translation prompt can be copied for use elsewhere, but is not represented as a translation result.
+- `前一句`, selected text, and clipboard text are read only after explicit user action.
+- Translation source text, generated prompt text, and translated output are not persisted by the translation module.
 
-## Local phrase translation and Translate Preview
-
-Orbit IME `0.15.0` first attempts local phrase translation using packaged phrase tables.
-
-If a phrase exists in the local table, the translated text can be inserted directly.
-
-If no local phrase translation exists, Orbit falls back to local Translate Preview prompt generation.
-
-Orbit IME does not include cloud translation, external translation APIs, model endpoints, or automatic background translation.
-
-Source text is read only after explicit source-button taps such as `前一句`, `选中文本`, `剪贴板`, `拼音草稿`, `英文草稿`, or `草稿`.
-
-Translate Preview source text, generated prompts, local translation inputs, and translated outputs are not persisted.
+Orbit has no cloud translation endpoint, external translation API, or background translation service.
 
 ## Skin system
 
-The selected skin ID is stored locally using app-private `SharedPreferences`.
-
-Built-in skin tokens are packaged inside the app. Skin selection is not uploaded, synced, tracked, or used for advertising.
+The selected skin ID is stored locally using app-private preferences. Skin selection is not uploaded, synced, tracked, or used for advertising.
 
 ## Keyboard Pet
 
-Orbit IME `0.15.0` includes a local keyboard pet panel.
+The local pet panel stores only local counters/state such as pet id, owned ids, EXP, Stars, streak, typed-character counters, display mode, and equipped outfit. It does not store full input streams, surrounding sentences, app names, or target-field identity.
 
-The keyboard Hub has a `宠物` / `Pet` entry. The panel supports local check-in, daily free hatch, Stars-based hatch, owned-pet switching, outfit rotation, catalog display, show/hide, and local status chat.
-
-The pet system stores only local counters and state, including active pet id, owned pet ids, EXP, Stars, streak, total typed character count, today typed character count, display mode, and equipped outfit id.
-
-It does not store full input streams, surrounding sentences, app names, or target field identifiers.
-
-It does not request overlay / floating-window permission. The pet cannot draw outside the IME surface.
-
-It does not send notifications, play sounds, call a model, use cloud chat, or upload pet data.
+The pet does not request overlay permission, cannot draw outside the IME, and does not use cloud/AI chat.
 
 ## Sensitive fields
 
-Orbit IME enters privacy mode for password-like fields and fields that request no personalized learning.
+Orbit enters privacy mode for password-like fields and fields requesting no personalized learning. In privacy mode:
 
-In privacy mode:
-
-- Hub actions are hidden.
-- Clipboard vault actions are hidden.
-- Pinyin candidate tools are disabled.
-- Pinyin composition is cleared.
-- English composition is cleared.
-- Translate Preview is cleared.
-- Keyboard Pet panel is cleared.
-- User dictionary learning is blocked.
-- Pet growth is blocked.
-- Saving is blocked.
-- The keyboard visual state uses warning/border colors derived from the selected skin.
+- Hub tools are hidden;
+- clipboard capture/history actions are disabled;
+- clipboard listener is detached;
+- Pinyin/English composition is cleared;
+- translation state is cleared;
+- pet panel/growth is disabled;
+- user-dictionary learning is blocked.
 
 ## Permissions intentionally not requested
 
@@ -153,9 +123,8 @@ Orbit IME does not request:
 - Camera
 - Microphone
 - External storage
+- Notifications
 
 ## Commercial boundary
 
-Orbit IME `0.15.0` contains a Pro placeholder only.
-
-It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
+Orbit IME `0.16.0` contains only Pro placeholders. It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
