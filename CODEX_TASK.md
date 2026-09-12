@@ -2,7 +2,7 @@
 
 ## Scope
 
-All product design, data-source audit, dictionary preparation, importer work, local data-pipeline tests, engine architecture, documentation, privacy boundaries, and build wiring are already prepared in the repository.
+All product design, data-source audit, dictionary preparation, importer work, data-pipeline tests, mature-asset validation, engine architecture, documentation, privacy boundaries, and build wiring are already prepared in the repository.
 
 **Codex's task is only to build the APK and make minimum compilation repairs if required. Do not redesign or expand the product.**
 
@@ -33,10 +33,14 @@ tools/prepare_mature_ime_data.py
         ↓
 tools/ime_importer.py
         ↓
-generated mature offline assets under app/src/main/assets/ime
+generated mature offline assets
+        ↓
+tools/validate_mature_ime_assets.py
         ↓
 Android build
 ```
+
+The final validator fails the build if the mature pack is suspiciously small, required N-grams/shards/notices are missing, source pins/licenses are absent, the version is wrong, or forbidden manifest capabilities appear.
 
 Do not manually replace this process with copied dictionary files.
 
@@ -55,13 +59,7 @@ From repository root, run exactly:
 gradle assembleDebug --no-daemon
 ```
 
-Do **not** add:
-
-```text
--PorbitSkipMatureImeData=true
-```
-
-for the APK intended for user testing. That switch is only for deliberately offline development.
+Do **not** add `-PorbitSkipMatureImeData=true` for the APK intended for user testing.
 
 ## Expected APK
 
@@ -78,23 +76,9 @@ versionName = 0.15.0
 
 ## If build fails
 
-Only make the minimum necessary repair for:
+Only make the minimum necessary repair for Kotlin compilation, imports/method signatures, Android resources/XML, Gradle task wiring, Python invocation portability, IME metadata, or an obvious deterministic data-pipeline bug. Then rerun the same Gradle command.
 
-- Kotlin compilation;
-- imports or method signatures;
-- Android resources/XML;
-- Gradle task wiring;
-- Python invocation portability;
-- IME metadata;
-- an obvious deterministic data-pipeline bug.
-
-After the minimum repair, rerun:
-
-```bash
-gradle assembleDebug --no-daemon
-```
-
-Do not delete or bypass the mature-data preparation merely to make the build pass.
+Do not delete or bypass mature-data testing/preparation/validation merely to make the build pass.
 
 ## Architecture that must remain intact
 
@@ -118,29 +102,9 @@ English composing buffer
 -> EnglishDictionary fallback
 ```
 
-Do not replace these with a giant hardcoded Kotlin map.
-
 ## Non-negotiable constraints
 
-Do not add or enable:
-
-- `INTERNET` permission;
-- cloud prediction;
-- cloud dictionary sync;
-- cloud translation or an external translation API;
-- ad/analytics/tracking SDKs;
-- Accessibility permission;
-- overlay/floating-window permission;
-- background input/clipboard harvesting;
-- full typed-key-stream persistence;
-- surrounding-sentence or app/package learning history;
-- AI pet chat;
-- paid gacha;
-- Pinyin 9-key, Wubi, handwriting;
-- Canvas keyboard rewrite;
-- Compose migration;
-- Room/Realm migration;
-- billing or skin marketplace.
+Do not add or enable `INTERNET`, cloud prediction/dictionary sync/translation, external translation APIs, ads/analytics/tracking, Accessibility, overlay/floating-window capabilities, background input/clipboard harvesting, full typed-stream persistence, surrounding-sentence/app-package learning history, AI pet chat, paid gacha, 9-key, Wubi, handwriting, Canvas/Compose rewrites, Room/Realm, billing, or a skin marketplace.
 
 ## Final report
 
@@ -149,12 +113,13 @@ Return only the build-relevant result:
 ```text
 1. git status before build
 2. exact build command
-3. whether preBuild data tests passed
-4. whether mature-data preparation passed
-5. generated mature-report.json counts (Chinese / English / 1-2-3 gram)
-6. any files changed by the minimum compilation repair
-7. build success/failure
-8. APK path and APK size if successful
-9. key error and exact minimum repair if failed
-10. confirmation that prohibited permissions/features were not added
+3. preBuild data-pipeline test result
+4. mature-data preparation result
+5. mature asset validation result
+6. mature-report.json counts (Chinese / English / 1-2-3 gram / shard counts)
+7. any files changed by minimum compilation repair
+8. build success/failure
+9. APK path and size if successful
+10. key error + exact minimum repair if failed
+11. confirmation prohibited permissions/features were not added
 ```
