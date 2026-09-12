@@ -21,11 +21,11 @@ if text.count('"version": "0.26.0"') != 1:
 text = text.replace('"version": "0.26.0"', '"version": "0.27.0"', 1)
 validator.write_text(text, encoding="utf-8")
 
+# build-apk.yml is updated separately through the GitHub contents API because
+# the Actions token is intentionally not allowed to push workflow-file changes.
 workflow = root / ".github/workflows/build-apk.yml"
 wf = workflow.read_text(encoding="utf-8")
-if wf.count("orbit-ime-v0.26-debug-apk") != 1:
-    raise RuntimeError("build workflow v0.26 artifact name not found exactly once")
-wf = wf.replace("orbit-ime-v0.26-debug-apk", "orbit-ime-v0.27-debug-apk", 1)
-workflow.write_text(wf, encoding="utf-8")
+if "orbit-ime-v0.27-debug-apk" not in wf:
+    raise RuntimeError("build workflow is not pinned to the v0.27 debug artifact")
 
-print("patched validator historical sentinels and current v0.27 release metadata")
+print("patched validator historical sentinels and verified current v0.27 release metadata")
