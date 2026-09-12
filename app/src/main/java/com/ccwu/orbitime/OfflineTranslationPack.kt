@@ -8,78 +8,89 @@ object OfflineTranslationPack {
     )
 
     fun translateOrNull(source: String, direction: TranslatePromptBuilder.Direction): Result? {
-        val text = normalizeSource(source)
-        if (!PrivacyGuard.isSafeToUseForPrompt(text)) return null
+        val text = source.trim()
+        if (text.isBlank() || !PrivacyGuard.isSafeToUseForPrompt(text)) return null
 
         val exact = when (direction) {
-            TranslatePromptBuilder.Direction.ZH_TO_EN ->
-                ProfessionalTranslationData.zhToEn[text]
-                    ?: TranslationExpansionData.zhToEn[text]
-                    ?: zhToEn[text]
-                    ?: TranslationBoostData.zhToEn[text]
+            TranslatePromptBuilder.Direction.ZH_TO_EN -> findExactZhToEn(text)
+            TranslatePromptBuilder.Direction.EN_TO_ZH -> findExactEnToZh(text)
+        }
+        if (exact != null) return Result(exact, "exact-local", "本地短句精确匹配")
 
-            TranslatePromptBuilder.Direction.EN_TO_ZH -> {
-                val key = normalizeEnglishKey(text)
-                ProfessionalTranslationData.enToZh[key]
-                    ?: TranslationExpansionData.enToZh[key]
-                    ?: enToZh[key]
-                    ?: TranslationBoostData.enToZh[key]
+        val composed = when (direction) {
+            TranslatePromptBuilder.Direction.ZH_TO_EN -> LocalTranslationComposer.translateZhToEn(text)
+            TranslatePromptBuilder.Direction.EN_TO_ZH -> LocalTranslationComposer.translateEnToZh(text)
+        }
+        return composed?.let { Result(it, "composed-local", "本地词组切分与句子拼接") }
+    }
+
+    fun unavailableMessage(): String = "离线词库暂未覆盖这句话。可继续编辑，或使用提示词交给外部模型翻译。"
+
+    private fun findExactZhToEn(raw: String): String? {
+        val variants = exactVariants(raw)
+        for (text in variants) {
+            ProfessionalTranslationData.zhToEn[text]?.let { return it }
+            TranslationExpansionData.zhToEn[text]?.let { return it }
+            TranslationBoostData.zhToEn[text]?.let { return it }
+            TranslationLexiconData.zhToEn[text]?.let { return normalizeExactEnglish(it, raw) }
+            BASE_ZH_TO_EN[text]?.let { return it }
+        }
+        return null
+    }
+
+    private fun findExactEnToZh(raw: String): String? {
+        val key = normalizeEnglishKey(raw)
+        ProfessionalTranslationData.enToZh[key]?.let { return it }
+        TranslationExpansionData.enToZh[key]?.let { return it }
+        TranslationBoostData.enToZh[key]?.let { return it }
+        TranslationLexiconData.enToZh[key]?.let { return ensureChineseEnding(it, raw) }
+        BASE_EN_TO_ZH[key]?.let { return it }
+        return null
+    }
+
+    private fun exactVariants(raw: String): List<String> {
+        val trimmed = raw.trim()
+        val withoutEnd = trimmed.trimEnd('。', '！', '？', '.', '!', '?', ' ', '\n', '\r', '\t')
+        return listOf(trimmed, withoutEnd).filter { it.isNotBlank() }.distinct()
+    }
+
+    private fun normalizeEnglishKey(text: String): String = text.lowercase()
+        .replace(Regex("[^a-z0-9\\s']"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+    private fun normalizeExactEnglish(value: String, source: String): String {
+        var text = value.trim()
+        if (text.isEmpty()) return text
+        text = text.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        val end = source.trim().lastOrNull()
+        if (text.lastOrNull() !in setOf('.', '!', '?', ';', ':')) {
+            text += when (end) {
+                '？', '?' -> "?"
+                '！', '!' -> "!"
+                else -> "."
             }
         }
-        if (exact != null) {
-            return Result(exact, "exact-local", "本地短句精确匹配")
+        return text
+    }
+
+    private fun ensureChineseEnding(value: String, source: String): String {
+        var text = value.trim()
+        if (text.isEmpty()) return text
+        if (text.lastOrNull() !in setOf('。', '！', '？', '；', '：')) {
+            text += when (source.trim().lastOrNull()) {
+                '?' -> "？"
+                '!' -> "！"
+                else -> "。"
+            }
         }
-
-        val rough = when (direction) {
-            TranslatePromptBuilder.Direction.ZH_TO_EN -> roughZhToEn(text)
-            TranslatePromptBuilder.Direction.EN_TO_ZH -> roughEnToZh(text)
-        }
-        return rough?.let { Result(it, "rough-local", "本地短语保守拼接") }
+        return text
     }
 
-    fun unavailableMessage(): String = "暂无离线译文，可插入提示词。"
-
-    private fun normalizeSource(source: String): String {
-        return source.trim().trimEnd('。', '！', '？', '.', '!', '?', ' ', '\n', '\r', '\t')
-    }
-
-    private fun normalizeEnglishKey(text: String): String {
-        return text.lowercase()
-            .replace(Regex("[^a-z0-9\\s']"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-    }
-
-    private fun roughZhToEn(text: String): String? {
-        if (text.length > 42) return null
-        val tokenMap = TranslationExpansionData.zhTokens + TranslationBoostData.zhTokens + zhTokens
-        var remaining = text
-        val output = mutableListOf<String>()
-        while (remaining.isNotEmpty()) {
-            val match = tokenMap.keys.sortedByDescending { it.length }.firstOrNull { remaining.startsWith(it) } ?: return null
-            output.add(tokenMap.getValue(match))
-            remaining = remaining.removePrefix(match)
-        }
-        if (output.isEmpty()) return null
-        return output.joinToString(" ").replace(Regex("\\s+"), " ").trim().replaceFirstChar { it.uppercase() } + "."
-    }
-
-    private fun roughEnToZh(text: String): String? {
-        if (text.length > 100) return null
-        val tokenMap = TranslationExpansionData.enTokens + TranslationBoostData.enTokens + enTokens
-        val tokens = normalizeEnglishKey(text)
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return null
-        val mapped = tokens.map { tokenMap[it] ?: return null }
-        return mapped.joinToString("") + "。"
-    }
-
-    private val zhToEn = mapOf(
+    private val BASE_ZH_TO_EN = mapOf(
         "你好" to "Hello.",
         "你是谁" to "Who are you?",
         "我是谁" to "Who am I?",
-        "我是" to "I am.",
         "谢谢" to "Thank you.",
         "收到" to "Got it.",
         "好的" to "Okay.",
@@ -89,29 +100,16 @@ object OfflineTranslationPack {
         "没有问题" to "There is no problem.",
         "还是有问题" to "There is still a problem.",
         "稍等" to "Please wait a moment.",
-        "稍等一下" to "Please wait a moment.",
-        "等一下" to "Wait a moment.",
         "我知道" to "I know.",
         "我来处理" to "I will handle it.",
         "我晚点处理" to "I will handle it later.",
-        "晚点处理" to "I will handle it later.",
-        "晚点再处理" to "I will handle it later.",
         "请给出可执行步骤" to "Please provide actionable steps.",
         "请给我完整指令" to "Please give me the complete instructions.",
         "先不要扩大范围" to "Do not expand the scope yet.",
-        "先完成当前版本" to "Finish the current version first.",
-        "不要继续加新功能" to "Do not continue adding new features.",
-        "构建是否成功" to "Did the build succeed?",
-        "日志关键错误是什么" to "What is the key error in the log?",
-        "有没有新增权限" to "Were any new permissions added?",
-        "请检查" to "Please check it.",
-        "请修复" to "Please fix it.",
-        "请确认" to "Please confirm it.",
-        "请不要改其他地方" to "Please do not change anything else.",
-        "只做最小修复" to "Only make the minimum necessary fix."
+        "先完成当前版本" to "Finish the current version first."
     )
 
-    private val enToZh = mapOf(
+    private val BASE_EN_TO_ZH = mapOf(
         "hello" to "你好。",
         "who are you" to "你是谁？",
         "who am i" to "我是谁？",
@@ -119,62 +117,13 @@ object OfflineTranslationPack {
         "thanks" to "谢谢。",
         "got it" to "收到。",
         "okay" to "好的。",
-        "ok" to "好的。",
         "no problem" to "没问题。",
         "there is still a problem" to "还是有问题。",
         "please wait a moment" to "请稍等。",
-        "wait a moment" to "等一下。",
         "i know" to "我知道。",
         "i will handle it" to "我来处理。",
         "i will handle it later" to "我晚点处理。",
         "please provide actionable steps" to "请给出可执行步骤。",
-        "please give me the complete instructions" to "请给我完整指令。",
-        "do not expand the scope yet" to "先不要扩大范围。",
-        "finish the current version first" to "先完成当前版本。",
-        "do not continue adding new features" to "不要继续加新功能。",
-        "did the build succeed" to "构建是否成功？",
-        "please check it" to "请检查。",
-        "please fix it" to "请修复。",
-        "please confirm it" to "请确认。"
-    )
-
-    private val zhTokens = mapOf(
-        "我" to "I",
-        "你" to "you",
-        "我们" to "we",
-        "这个" to "this",
-        "还是" to "still",
-        "有" to "have",
-        "没有" to "do not have",
-        "问题" to "problem",
-        "处理" to "handle",
-        "稍等" to "wait a moment",
-        "现在" to "now",
-        "之后" to "later",
-        "晚点" to "later",
-        "可以" to "can",
-        "不" to "not",
-        "需要" to "need",
-        "步骤" to "steps",
-        "风险" to "risks"
-    )
-
-    private val enTokens = mapOf(
-        "i" to "我",
-        "you" to "你",
-        "we" to "我们",
-        "this" to "这个",
-        "still" to "仍然",
-        "have" to "有",
-        "problem" to "问题",
-        "issue" to "问题",
-        "handle" to "处理",
-        "later" to "之后",
-        "now" to "现在",
-        "can" to "可以",
-        "not" to "不",
-        "need" to "需要",
-        "steps" to "步骤",
-        "risks" to "风险"
+        "please give me the complete instructions" to "请给我完整指令。"
     )
 }
