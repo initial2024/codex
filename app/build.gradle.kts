@@ -35,9 +35,9 @@ val orbitPython = providers.environmentVariable("ORBIT_PYTHON").orNull
 
 val testImeDataPipeline by tasks.registering(Exec::class) {
     group = "orbit ime"
-    description = "Run offline tests for Orbit IME dictionary parsing, licensing and packing"
+    description = "Run offline tests for Orbit IME mature + v0.20 dictionary preparation"
     workingDir(rootProject.projectDir)
-    commandLine(orbitPython, "tools/test_ime_data_pipeline.py")
+    commandLine(orbitPython, "tools/test_ime_data_pipeline_v020.py")
 }
 
 val prepareMatureImeAssets by tasks.registering(Exec::class) {
@@ -54,7 +54,6 @@ val prepareMatureImeAssets by tasks.registering(Exec::class) {
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
-// Introduced in v0.18 and retained: CC-CEDICT lexicon/translation + Unicode Emoji.
 val augmentLicensedImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
     description = "Add pinned CC-CEDICT translation/lexicon data and Unicode Emoji 17.0 assets"
@@ -69,8 +68,6 @@ val augmentLicensedImeAssets by tasks.registering(Exec::class) {
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
-// v0.20: boost four-character idioms from the already-licensed CC-CEDICT pack
-// and merge project-authored common software/platform/product vocabulary.
 val augmentV020ImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
     description = "Add CC-CEDICT four-character idiom boost and project software vocabulary"
