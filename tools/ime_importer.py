@@ -31,10 +31,13 @@ ALLOWED_LICENSES = {
     "BSD-3-Clause",
     "CC-BY-4.0",
     "CC-BY-SA-4.0",
+    "ESDB-2026",
 }
 CEDICT_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+/(.*)/$")
 TONE_RE = re.compile(r"[1-5]")
 NON_PINYIN_RE = re.compile(r"[^a-zv]+")
+NON_ENGLISH_KEY_RE = re.compile(r"[^a-z]+")
+ENGLISH_SHARD_THRESHOLD = 10_000
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,10 @@ def normalize_pinyin(value: str) -> str:
     return NON_PINYIN_RE.sub("", value)
 
 
+def normalize_english_key(value: str) -> str:
+    return NON_ENGLISH_KEY_RE.sub("", value.lower())
+
+
 def load_manifest(path: Path) -> list[SourceSpec]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     base = path.parent
@@ -102,8 +109,8 @@ def validate_source(spec: SourceSpec, strict: bool) -> None:
         raise ValueError(f"license is not in strict allow-list: {spec.name}: {spec.license}")
     if spec.license != "PROJECT" and not spec.url:
         raise ValueError(f"third-party source needs URL: {spec.name}")
-    if spec.license.startswith("CC-BY") and not spec.attribution:
-        raise ValueError(f"CC licensed source needs attribution: {spec.name}")
+    if spec.license != "PROJECT" and not spec.attribution:
+        raise ValueError(f"third-party source needs attribution: {spec.name}")
 
 
 def iter_non_comment_lines(path: Path) -> Iterable[tuple[int, str]]:
@@ -148,7 +155,7 @@ def iter_english_tsv(spec: SourceSpec) -> Iterable[tuple[str, int, list[str]]]:
         parts = line.split("\t")
         if len(parts) < 2:
             raise ValueError(f"{spec.name}:{line_no}: expected word<TAB>frequency[<TAB>candidate...]")
-        key = parts[0].strip().lower()
+        key = normalize_english_key(parts[0])
         try:
             freq = clamp_frequency(float(parts[1]))
         except ValueError as exc:
@@ -173,17 +180,18 @@ def iter_ngram_tsv(spec: SourceSpec) -> Iterable[tuple[tuple[str, ...], int]]:
 
 
 def prepare_output_dir(out_dir: Path) -> None:
-    """Delete only files owned by this generator so stale shards cannot survive."""
+    """Delete only generator-owned files so stale dictionary shards cannot survive."""
     out_dir.mkdir(parents=True, exist_ok=True)
     for name in ("manifest.json", "english.odict", "ngram1.odict", "ngram2.odict", "ngram3.odict"):
         path = out_dir / name
         if path.is_file():
             path.unlink()
-    lexicon_dir = out_dir / "lexicon"
-    if lexicon_dir.is_dir():
-        for path in lexicon_dir.glob("*.odict"):
-            if path.is_file():
-                path.unlink()
+    for dirname in ("lexicon", "english"):
+        directory = out_dir / dirname
+        if directory.is_dir():
+            for path in directory.glob("*.odict"):
+                if path.is_file():
+                    path.unlink()
 
 
 def write_lexicon_assets(records: dict[tuple[str, str], int], out_dir: Path) -> dict[str, int]:
@@ -205,15 +213,31 @@ def write_lexicon_assets(records: dict[tuple[str, str], int], out_dir: Path) -> 
     return counts
 
 
-def write_english_asset(records: dict[str, tuple[int, set[str]]], out_dir: Path) -> int:
-    target = out_dir / "english.odict"
-    rows = sorted(records.items(), key=lambda item: (-item[1][0], item[0]))
+def _write_english_rows(target: Path, rows: list[tuple[str, tuple[int, set[str]]]]) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write("#ORBIT_ODICT\t1\tENGLISH\n")
         for key, (freq, candidates) in rows:
             extra = "\t".join(sorted(candidates))
             handle.write(f"{key}\t{base36(freq)}" + (f"\t{extra}" if extra else "") + "\n")
-    return len(rows)
+
+
+def write_english_asset(records: dict[str, tuple[int, set[str]]], out_dir: Path) -> tuple[int, dict[str, int]]:
+    rows = sorted(records.items(), key=lambda item: (-item[1][0], item[0]))
+    if len(rows) <= ENGLISH_SHARD_THRESHOLD:
+        _write_english_rows(out_dir / "english.odict", rows)
+        return len(rows), {"single": len(rows)}
+
+    shards: dict[str, list[tuple[str, tuple[int, set[str]]]]] = defaultdict(list)
+    for row in rows:
+        key = row[0]
+        shard = key[0] if key and "a" <= key[0] <= "z" else "_"
+        shards[shard].append(row)
+    counts: dict[str, int] = {}
+    for shard, shard_rows in shards.items():
+        _write_english_rows(out_dir / "english" / f"{shard}.odict", shard_rows)
+        counts[shard] = len(shard_rows)
+    return len(rows), counts
 
 
 def write_ngram_assets(ngrams: dict[tuple[str, ...], int], out_dir: Path) -> dict[str, int]:
@@ -242,11 +266,7 @@ def sha256(path: Path) -> str:
 
 def write_runtime_manifest(out_dir: Path, specs: list[SourceSpec], counts: dict[str, object]) -> None:
     files = [
-        {
-            "path": path.relative_to(out_dir).as_posix(),
-            "bytes": path.stat().st_size,
-            "sha256": sha256(path),
-        }
+        {"path": path.relative_to(out_dir).as_posix(), "bytes": path.stat().st_size, "sha256": sha256(path)}
         for path in sorted(out_dir.rglob("*.odict"))
     ]
     payload = {
@@ -300,12 +320,13 @@ def build(args: argparse.Namespace) -> int:
 
     prepare_output_dir(out_dir)
     lexicon_counts = write_lexicon_assets(lexicon, out_dir)
-    english_count = write_english_asset(english, out_dir) if english else 0
+    english_count, english_shards = write_english_asset(english, out_dir) if english else (0, {})
     ngram_counts = write_ngram_assets(ngrams, out_dir)
     counts = {
         "lexicon": sum(lexicon_counts.values()),
         "lexicon_shards": lexicon_counts,
         "english": english_count,
+        "english_shards": english_shards,
         "ngrams": ngram_counts,
     }
     write_runtime_manifest(out_dir, specs, counts)
