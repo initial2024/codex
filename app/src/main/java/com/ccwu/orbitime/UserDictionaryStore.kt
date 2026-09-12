@@ -52,14 +52,16 @@ class UserDictionaryStore(private val context: Context) {
         rawInput: String,
         staticCandidates: List<String>,
         contextBeforeCursor: String? = null,
+        limit: Int = MAX_CANDIDATES,
     ): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
-        if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
+        val safeLimit = limit.coerceIn(1, MAX_CANDIDATES)
+        if (query.isEmpty()) return staticCandidates.take(safeLimit)
         val engineCandidates = runCatching {
-            imeEngine.candidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
+            imeEngine.candidates(query, contextBeforeCursor = contextBeforeCursor, limit = safeLimit)
         }.getOrElse { emptyList() }
         if (engineCandidates.isNotEmpty()) {
-            return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
+            return (engineCandidates + staticCandidates).distinct().take(safeLimit)
         }
 
         ensureLoaded()
@@ -68,31 +70,33 @@ class UserDictionaryStore(private val context: Context) {
         val prefixUser = entriesByPinyin.asSequence()
             .filter { (pinyin, _) -> pinyin != query && pinyin.startsWith(query) }
             .flatMap { (_, bucket) -> bucket.values.asSequence() }
-            .sortedWith(ENTRY_ORDER).map { it.text }.take(MAX_CANDIDATES).toList()
+            .sortedWith(ENTRY_ORDER).map { it.text }.take(safeLimit).toList()
         val containsUser = if (exactUser.isEmpty() && prefixUser.size < 6) {
             entriesByPinyin.asSequence()
                 .filter { (pinyin, _) -> pinyin != query && pinyin.contains(query) }
                 .flatMap { (_, bucket) -> bucket.values.asSequence() }
-                .sortedWith(ENTRY_ORDER).map { it.text }.take(MAX_CANDIDATES).toList()
+                .sortedWith(ENTRY_ORDER).map { it.text }.take(safeLimit).toList()
         } else emptyList()
         return (exactUser + staticCandidates + prefixUser + containsUser)
-            .distinct().take(MAX_CANDIDATES)
+            .distinct().take(safeLimit)
     }
 
     fun exactCandidatesFor(
         rawInput: String,
         staticCandidates: List<String>,
         contextBeforeCursor: String? = null,
+        limit: Int = MAX_CANDIDATES,
     ): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
+        val safeLimit = limit.coerceIn(1, MAX_CANDIDATES)
         val engineCandidates = runCatching {
-            imeEngine.exactCandidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
+            imeEngine.exactCandidates(query, contextBeforeCursor = contextBeforeCursor, limit = safeLimit)
         }.getOrElse { emptyList() }
-        if (engineCandidates.isNotEmpty()) return engineCandidates.distinct().take(MAX_CANDIDATES)
+        if (engineCandidates.isNotEmpty()) return engineCandidates.distinct().take(safeLimit)
         ensureLoaded()
         return entriesByPinyin[query].orEmpty().values
-            .sortedWith(ENTRY_ORDER).map { it.text }.distinct().take(MAX_CANDIDATES)
+            .sortedWith(ENTRY_ORDER).map { it.text }.distinct().take(safeLimit)
     }
 
     fun nextSuggestions(contextBeforeCursor: String?, limit: Int = DEFAULT_ASSOCIATION_LIMIT): List<String> {

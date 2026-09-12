@@ -45,7 +45,7 @@ class ImeSpeechController(private val context: Context) {
         if (!capture.isRecording()) {
             val pack = executablePack(OrbitModelPackType.ASR)
             if (pack == null) {
-                onState("请先在 Orbit 设置中安装并启用可执行的 sherpa ASR 模型包")
+                onState(asrUnavailableMessage())
                 return
             }
             val started = capture.start()
@@ -126,6 +126,15 @@ class ImeSpeechController(private val context: Context) {
             busy.set(false)
             main.post { onState(message) }
         }.start()
+    }
+
+
+    private fun asrUnavailableMessage(): String {
+        val installed = modelPacks.listInstalled().filter { it.manifest.type == OrbitModelPackType.ASR }
+        if (installed.isEmpty()) return "未安装 ASR 模型包；请在 Orbit 设置中导入 .orbitpack"
+        val executable = installed.filter { it.runtimeStatus.executable }
+        if (executable.isEmpty()) return "已安装 ASR 模型，但当前 model_family/runtime_config 不可执行"
+        return "已安装可执行 ASR 模型，但尚未设为首选；请在 Orbit 设置中启用"
     }
 
     private fun executablePack(type: OrbitModelPackType): ModelPackManager.InstalledPack? {

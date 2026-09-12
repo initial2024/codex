@@ -58,6 +58,7 @@ class OrbitInputMethodService : InputMethodService() {
     private var translateComposeText = ""
 
     private var petPanelMessage: String? = null
+    private var speechStatusMessage: String? = null
     private var root: LinearLayout? = null
     private var dynamicHost: LinearLayout? = null
 
@@ -236,6 +237,13 @@ class OrbitInputMethodService : InputMethodService() {
         primaryScroller.addView(primary)
         parent.addView(primaryScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
 
+        speechStatusMessage?.let { message ->
+            parent.addView(
+                labelBox("语音：${message.shortLabel(72)}", muted = false, accent = true),
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)),
+            )
+        }
+
         if (!showMoreTools) return
         val moreScroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val more = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -264,7 +272,6 @@ class OrbitInputMethodService : InputMethodService() {
         })
         more.addView(chip(label("朗读", "Read")) { speakCurrentText(cloned = false) })
         more.addView(chip(label("音色", "Clone")) { speakCurrentText(cloned = true) })
-        more.addView(chip(label("切换", "Switch")) { showInputMethodPickerSafely() })
         more.addView(chip(label("粘贴", "Paste")) { pasteClipboard(saveAfterPaste = false) })
         moreScroller.addView(more)
         parent.addView(moreScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
@@ -601,27 +608,53 @@ class OrbitInputMethodService : InputMethodService() {
         val candidates = candidatesForCurrentPinyin()
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(labelBox("拼音：${pinyinBuffer.shortLabel(32)} · ${candidates.size}候选", muted = false, accent = true))
-        candidates.forEachIndexed { index, candidate -> row.addView(chip(candidate, emphasized = index == 0) { commitPinyinCandidate(candidate) }) }
+        if (candidates.isEmpty()) {
+            row.addView(labelBox("暂无候选 · ${pinyinBuffer.shortLabel(18)}", muted = true, accent = false))
+        } else {
+            candidates.take(CANDIDATE_UI_LIMIT).forEachIndexed { index, candidate ->
+                row.addView(chip(candidate, emphasized = index == 0) { commitPinyinCandidate(candidate) })
+            }
+        }
         row.addView(chip("清空", warning = true) { clearPinyinComposition(); refreshDynamicHost() })
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
     }
 
     private fun buildEnglishCandidateBar(parent: LinearLayout) {
         val candidates = candidatesForCurrentEnglish()
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(labelBox("word: ${englishBuffer.shortLabel(32)} · ${candidates.size}", muted = false, accent = true))
-        candidates.forEachIndexed { index, candidate -> row.addView(chip(candidate, emphasized = index == 0) { commitEnglishCandidate(candidate, appendSpace = false) }) }
+        if (candidates.isEmpty()) {
+            row.addView(labelBox("no suggestion", muted = true, accent = false))
+        } else {
+            candidates.take(CANDIDATE_UI_LIMIT).forEachIndexed { index, candidate ->
+                row.addView(chip(candidate, emphasized = index == 0) { commitEnglishCandidate(candidate, appendSpace = false) })
+            }
+        }
         row.addView(chip("clear", warning = true) { clearEnglishComposition(); refreshDynamicHost() })
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
     }
 
     private fun buildPhraseBar(parent: LinearLayout) {
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+
+        val associations = if (inputMode == InputMode.PINYIN && ImePreferences.associationsEnabled(this)) {
+            userDictionary.nextSuggestions(readCandidateContextBeforeCursor(), NEXT_SUGGESTION_LIMIT)
+        } else emptyList()
+
+        if (associations.isNotEmpty()) {
+            associations.take(NEXT_SUGGESTION_LIMIT).forEachIndexed { index, value ->
+                row.addView(chip(value.shortLabel(), emphasized = index == 0) { commitDirectText(value) })
+            }
+        } else {
+            val phrases = if (inputMode == InputMode.PINYIN) quickPhraseStore.phrasesForPinyin() else quickPhraseStore.phrasesForEnglish()
+            phrases.take(IDLE_QUICK_PHRASE_LIMIT).forEach { phrase ->
+                row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
+            }
+        }
+
         val profile = petRepository.profile()
         if (!sensitiveMode && profile.displayMode != PetRepository.DISPLAY_HIDDEN) {
             val miniPet = PetAvatarV21View(this).apply {
@@ -636,24 +669,12 @@ class OrbitInputMethodService : InputMethodService() {
                 }
                 isClickable = true
             }
-            row.addView(miniPet, LinearLayout.LayoutParams(dp(64), dp(34)).apply { setMargins(dp(2), 0, dp(4), 0) })
+            row.addView(miniPet, LinearLayout.LayoutParams(dp(56), dp(34)).apply { setMargins(dp(6), 0, dp(2), 0) })
         }
 
-        val associations = if (inputMode == InputMode.PINYIN && ImePreferences.associationsEnabled(this)) {
-            userDictionary.nextSuggestions(readCandidateContextBeforeCursor(), NEXT_SUGGESTION_LIMIT)
-        } else emptyList()
-        if (associations.isNotEmpty()) {
-            row.addView(labelBox("联想", muted = false, accent = true))
-            associations.forEach { value -> row.addView(chip(value.shortLabel()) { commitDirectText(value) }) }
-        }
-
-        val phrases = if (inputMode == InputMode.PINYIN) quickPhraseStore.phrasesForPinyin() else quickPhraseStore.phrasesForEnglish()
-        phrases.asSequence().filterNot { it in associations }.take(24).forEach { phrase ->
-            row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
-        }
         if (row.childCount == 0) return
         scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
     }
 
     private fun buildKeyboard(parent: LinearLayout) {
@@ -944,7 +965,7 @@ class OrbitInputMethodService : InputMethodService() {
         if (pinyinBuffer == lastPinyinQuery && context == lastPinyinContext && lastPinyinCandidates.isNotEmpty()) return lastPinyinCandidates
         val boosted = PinyinSentenceDictionary.candidatesFor(pinyinBuffer)
         val staticCandidates = (boosted + PinyinDictionary.candidatesFor(pinyinBuffer)).distinct()
-        val result = userDictionary.candidatesFor(pinyinBuffer, staticCandidates, contextBeforeCursor = context)
+        val result = userDictionary.candidatesFor(pinyinBuffer, staticCandidates, contextBeforeCursor = context, limit = CANDIDATE_UI_LIMIT)
         lastPinyinQuery = pinyinBuffer
         lastPinyinContext = context
         lastPinyinCandidates = result
@@ -953,7 +974,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun exactCandidatesForCurrentPinyin(): List<String> {
         val staticCandidates = (PinyinSentenceDictionary.exactCandidatesFor(pinyinBuffer) + PinyinDictionary.exactCandidatesFor(pinyinBuffer)).distinct()
-        return userDictionary.exactCandidatesFor(pinyinBuffer, staticCandidates, contextBeforeCursor = readCandidateContextBeforeCursor())
+        return userDictionary.exactCandidatesFor(pinyinBuffer, staticCandidates, contextBeforeCursor = readCandidateContextBeforeCursor(), limit = CANDIDATE_UI_LIMIT)
     }
 
     private fun readCandidateContextBeforeCursor(): String? {
@@ -968,7 +989,7 @@ class OrbitInputMethodService : InputMethodService() {
         lastPinyinCandidates = emptyList()
     }
 
-    private fun candidatesForCurrentEnglish(): List<String> = englishImeEngine.candidatesFor(englishBuffer)
+    private fun candidatesForCurrentEnglish(): List<String> = englishImeEngine.candidatesFor(englishBuffer, CANDIDATE_UI_LIMIT)
 
     private fun commitPinyinCandidate(candidate: String) {
         val inputConnection = currentInputConnection ?: return
@@ -1235,23 +1256,38 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun handleLocalVoiceInput() {
-        if (sensitiveMode) { toast("隐私模式不启用语音输入"); return }
+        if (sensitiveMode) {
+            speechStatusMessage = "隐私模式不启用语音输入"
+            root?.let { rebuild(it) }
+            return
+        }
         if (pinyinBuffer.isNotEmpty()) clearPinyinComposition()
         if (englishBuffer.isNotEmpty()) clearEnglishComposition()
+        speechStatusMessage = if (speechController.isRecording()) "正在停止录音…" else "正在检查本地语音…"
+        root?.let { rebuild(it) }
         speechController.toggleAsr(
             language = if (inputMode == InputMode.PINYIN) "zh" else "en",
             onPermissionRequired = {
-                toast("需要麦克风授权；正在打开 Orbit 设置")
+                speechStatusMessage = "需要麦克风权限，已打开 Orbit 设置"
+                root?.let { rebuild(it) }
                 runCatching {
                     startActivity(
                         Intent(this, MainActivity::class.java)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             .putExtra(MainActivity.EXTRA_REQUEST_AUDIO, true),
                     )
+                }.onFailure {
+                    speechStatusMessage = "无法打开设置：${it.message ?: it.javaClass.simpleName}"
+                    root?.let { rebuild(it) }
                 }
             },
-            onState = { message -> toast(message); root?.let { rebuild(it) } },
+            onState = { message ->
+                speechStatusMessage = if (message == "识别完成") null else message
+                toast(message)
+                root?.let { rebuild(it) }
+            },
             onText = { text ->
+                speechStatusMessage = null
                 resetInternalCompositionState()
                 currentInputConnection?.commitText(text, 1)
                 if (!sensitiveMode) {
@@ -1261,7 +1297,6 @@ class OrbitInputMethodService : InputMethodService() {
                 refreshDynamicHost()
             },
         )
-        root?.let { rebuild(it) }
     }
 
     private fun speakCurrentText(cloned: Boolean) {
@@ -1398,7 +1433,9 @@ class OrbitInputMethodService : InputMethodService() {
     companion object {
         private const val MAX_PINYIN_BUFFER = 192
         private const val MAX_ENGLISH_BUFFER = 96
-        private const val NEXT_SUGGESTION_LIMIT = 24
+        private const val CANDIDATE_UI_LIMIT = 12
+        private const val NEXT_SUGGESTION_LIMIT = 6
+        private const val IDLE_QUICK_PHRASE_LIMIT = 8
         private const val EXPRESSION_RECENT = "recent"
         private const val EXPRESSION_UNICODE = "unicode_all"
         private const val EXPRESSION_STICKERS = "stickers"

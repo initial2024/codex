@@ -103,12 +103,23 @@ class ModelPackManager(private val context: Context) {
 
             staged.tempFile.delete()
             val status = OrbitModelRuntimeRegistry.statusFor(inspected.manifest)
+            val autoEnabled = status.executable && enabledPackId(inspected.manifest.type) == null
+            if (autoEnabled) {
+                prefs.edit().putString(enabledKey(inspected.manifest.type), inspected.manifest.packId).apply()
+            }
+            val testVariantNote = if (context.packageName.endsWith(".bundledmodels")) {
+                " 测试版使用独立私有模型目录，与正式版需要分别导入。"
+            } else ""
             OperationResult(
                 true,
                 if (status.executable) {
-                    "已安装 ${inspected.manifest.displayName}。${status.label}；请在模型包列表中设为首选后使用。"
+                    if (autoEnabled) {
+                        "已安装 ${inspected.manifest.displayName} 并自动设为 ${inspected.manifest.type.wireValue} 首选。${status.label}。$testVariantNote"
+                    } else {
+                        "已安装 ${inspected.manifest.displayName}。${status.label}；当前已有首选模型，未自动切换。$testVariantNote"
+                    }
                 } else {
-                    "已安装 ${inspected.manifest.displayName}。${status.label}"
+                    "已安装 ${inspected.manifest.displayName}。${status.label}。$testVariantNote"
                 },
             )
         }.getOrElse { OperationResult(false, "安装失败：${it.message ?: it.javaClass.simpleName}") }
