@@ -62,7 +62,6 @@ class AssociationAsset(private val context: Context) {
                     val key = parts[0]
                     val candidate = parts[1]
                     if (key.isBlank() || candidate.isBlank()) return@forEach
-                    // v0.23 writer uses compact hexadecimal counts for this dedicated asset.
                     val frequency = runCatching { parts[2].lowercase().toLong(16) }
                         .getOrDefault(1L).coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
                     temp.getOrPut(key) { mutableListOf() }.add(candidate to frequency)
@@ -76,7 +75,7 @@ class AssociationAsset(private val context: Context) {
         }
     }
 
-    private fun associationShard(contextKey: String): Int = contextKey.sumOf { it.code }.mod(SHARD_COUNT)
+    private fun associationShard(contextKey: String): Int = contextKey.sumOf { it.code } % SHARD_COUNT
 
     private fun isCjk(char: Char): Boolean {
         val block = Character.UnicodeBlock.of(char)
