@@ -11,8 +11,8 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.15.0"
+        versionCode = 16
+        versionName = "0.16.0"
     }
 
     compileOptions {
@@ -25,7 +25,7 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Builds materialize and validate a pinned mature offline dictionary before
+// Builds materialize and validate pinned mature offline dictionaries before
 // Android packages assets. Network access is build-time only; the installed IME
 // has no INTERNET permission. -PorbitSkipMatureImeData=true is reserved for
 // deliberately offline development and must not be used for the user-test APK.
