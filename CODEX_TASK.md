@@ -1,15 +1,15 @@
-# Codex handoff: build Orbit IME v0.22.0 APK only
+# Codex handoff: build Orbit IME v0.23.0 APK only
 
-All non-build implementation is already prepared. Codex must build **current main** only and make only the smallest compile/portability repair exposed by the build.
+All non-build implementation is prepared. Build **current main** only and make only the smallest compile/portability repair exposed by the build.
 
-## Confirm current version first
+## Confirm version
 
 ```text
-versionCode = 22
-versionName = 0.22.0
+versionCode = 23
+versionName = 0.23.0
 ```
 
-If local checkout still says v0.21 or older, pull current `main` before doing anything else.
+If local checkout is older, pull `main` first.
 
 ## Build
 
@@ -17,100 +17,87 @@ If local checkout still says v0.21 or older, pull current `main` before doing an
 gradle assembleDebug --no-daemon
 ```
 
-Do not use:
-
-```text
--PorbitSkipMatureImeData=true
-```
+Do not use `-PorbitSkipMatureImeData=true`.
 
 ## Mandatory preBuild
 
 ```text
-tools/test_ime_data_pipeline_v020.py
--> tools/test_model_pack_pipeline.py
--> tools/prepare_mature_ime_data.py
--> AOSP + Jieba + pinned ESDB/SCOWL en_US-large
--> tools/augment_v018_data.py
--> CC-CEDICT lexicon/translation + Unicode Emoji 17.0
--> tools/augment_v020_data.py
--> broad normalized ESDB-large + four-character CC-CEDICT boost + project software vocabulary
--> tools/validate_mature_ime_assets.py
+test_ime_data_pipeline_v020.py
+-> test_ime_data_pipeline_v023.py
+-> test_model_pack_pipeline.py
+-> prepare_mature_ime_data.py
+-> AOSP + Jieba + ESDB/SCOWL en_US-large
+-> augment_v018_data.py
+-> CC-CEDICT + Unicode Emoji 17.0
+-> augment_v020_data.py
+-> broad English normalization + CC-CEDICT 4-char boost + software vocabulary
+-> augment_v023_data.py
+-> THUOCL domain vocabulary + FrequencyWords zh/en ranking + 32-shard association asset
+-> validate_mature_ime_assets.py
 -> Android compilation
 ```
 
-Do not lower any existing mature-data gate.
+Do not lower data gates or bypass source/hash/license checks.
 
-## v0.22 model-pack gates
+## v0.23 input-quality gates
 
-Keep these files and behaviors:
+Preserve:
 
-```text
-ModelPackManifest.kt
-ModelPackManager.kt
-ModelRuntimeContracts.kt
-CuratedModelCatalog.kt
-MODEL_PACKS.md
-docs/orbitpack-manifest.example.json
-tools/build_orbitpack.py
-tools/test_model_pack_pipeline.py
-```
+- THUOCL pinned domain sources and MIT notices;
+- FrequencyWords zh/en 50k ranking data with CC-BY-SA-4.0 attribution;
+- runtime Chinese gate >= 250,000;
+- English gate >= 100,000;
+- precomputed `ime/association/00.odict..1f.odict` with >= 10,000 association rows;
+- `AssociationAsset` LRU shard reader + `NextAssociationEngine` association-first/N-gram-fallback path;
+- 32 displayed Chinese/English candidates;
+- continuous Pinyin, DP segmentation, adaptive Beam and 1/2/3-gram;
+- persistent fuzzy modes `off / standard / enhanced`;
+- enhanced Pinyin missing-key/repeated-key/neighbor/transposition/fuzzy recovery;
+- `EnglishFuzzyEngine` bounded typo recovery;
+- exact candidates always rank ahead of fuzzy candidates;
+- long-query Beam remains bounded; do not increase it indiscriminately just to show more candidates.
 
-Required `.orbitpack` policy:
+## v0.23 translation gates
 
-```text
-manifest.json
-LICENSE.txt
-NOTICE.txt
-checksums.sha256
-model/...
-```
-
-ModelPackManager must continue to:
-
-- import only after explicit user selection through Android `ACTION_OPEN_DOCUMENT`;
-- store installed packs under app-private `files/orbit-model-packs/<pack_id>/`;
-- reject absolute/traversal/duplicate ZIP paths;
-- enforce file-count, packed-size, unpacked-size and per-entry limits;
-- require non-empty LICENSE and NOTICE;
-- require `privacy=offline_only`;
-- reject a pack that declares `android.permission.INTERNET`;
-- verify SHA-256 for every regular file before install and again while extracting;
-- show source/license/commercial-use/redistribution/size/RAM/permission warnings before installation;
-- require explicit disclaimer acceptance;
-- support installed-pack list, preferred-pack enable/disable selection and uninstall.
-
-Do not replace this with a simple unverified ZIP extractor.
-
-## Important v0.22 runtime boundary
-
-v0.22 **does not execute neural inference yet**.
-
-Keep provider contracts for:
+Keep:
 
 ```text
-OrbitTranslationProvider
-OrbitAsrProvider
-OrbitTtsProvider
-OrbitVoiceCloneProvider
+FluentLocalTranslationEngine.kt
+OfflineTranslationPack.exactOnly(...)
+LongFormTranslationEngine.kt
+ContextTranslationEngine.kt
 ```
 
-but `OrbitModelRuntimeRegistry` must continue to report the imported packs as non-executable in v0.22.
+Required behavior:
 
-Do not add fake neural output or claim imported models are already active.
+- exact local translation first;
+- coverage-scored dynamic-programming phrase translation before older greedy fallback;
+- uncovered source text is preserved rather than fabricated;
+- Pro long-form translation preserves paragraph/line breaks and supports up to 8,000 source chars;
+- context preview uses the paragraph-aware local translation path;
+- no cloud API/INTERNET permission.
 
-## Model source/license notes
+The v0.22 `.orbitpack` manager remains. Imported neural packs are still **non-executable** unless a separately validated Android runtime is actually bundled. Do not fake neural translation output and do not add an unverified native dependency just to satisfy the build.
 
-Preserve the curated-source warning logic:
+## Night/appearance gates
 
-- Helsinki-NLP OPUS-MT zh->en: CC-BY-4.0 candidate; attribution obligations apply;
-- Helsinki-NLP OPUS-MT en->zh: Apache-2.0 candidate;
-- Meta NLLB-200 distilled 600M: CC-BY-NC-4.0 research/personal candidate, **not** the default commercial Orbit path;
-- sherpa-onnx: planned Android speech runtime candidate; each speech model still needs its own license audit;
-- Piper-style TTS voices: runtime/model/voice licenses must be checked individually.
+Keep `SkinManager` appearance modes:
 
-Do not silently relabel a non-commercial model as commercial-safe.
+```text
+system
+light
+dark
+amoled
+custom
+```
 
-## Permissions in v0.22
+Default is `system`; Android `UI_MODE_NIGHT_YES` selects Orbit Dark. Appearance and fuzzy settings persist locally. Choosing a custom skin switches appearance to `custom`.
+
+## Preserve model-pack security
+
+Keep v0.22 `.orbitpack` validation: ACTION_OPEN_DOCUMENT, app-private storage, mandatory manifest/LICENSE/NOTICE/checksums, SHA-256 verification, Zip Slip/duplicate path/size limits, explicit disclaimer, enable/disable/uninstall, and INTERNET-declaring-pack rejection.
+
+## Permissions
 
 Do not add:
 
@@ -121,64 +108,24 @@ Accessibility
 SYSTEM_ALERT_WINDOW
 overlay/floating window
 external storage
-contacts
-SMS
-location
-camera
-notifications
-ads
-analytics
-tracking
-cloud sync
-cloud translation
+contacts/SMS/location/camera/notifications
+ads/analytics/tracking/cloud sync/cloud translation
 background clipboard/input harvesting
 ```
 
-Importing an ASR/TTS/voice pack alone must not request microphone permission or start recording.
+## Existing features must not regress
 
-The settings page may open a model source URL in the user's external browser via `ACTION_VIEW`; this does not require adding INTERNET permission to Orbit.
-
-## Preserved v0.21/v0.20 features
-
-Do not regress:
-
-- selection-aware replace/delete;
-- remembered input/settings state;
-- custom/disableable quick phrases;
-- Free single-sentence translation;
-- Pro previous-context + selected long-form local translation;
-- 32 Chinese/English candidates;
-- continuous long Pinyin + DP segmentation + adaptive Beam + 1/2/3-gram;
-- fuzzy/keyboard typo recovery;
-- next-word/phrase association;
-- AOSP/Jieba/CC-CEDICT Chinese;
-- ESDB/SCOWL large English;
-- Unicode Emoji, kaomoji, 7-page symbols and long press;
-- Recent/Pinned clipboard;
-- 16 pets, 24 outfit catalog entries, 128 local stickers;
-- polished pet idle/outfit layer;
-- image commit -> image clipboard -> Emoji fallback;
-- file+journal personal learning (20k Free / 100k Pro).
+Selection-aware replace/delete, composing replacement, custom/disableable quick phrases, file+journal learning (20k Free/100k Pro), Recent/Pinned clipboard, Unicode Emoji, kaomoji, 7-page symbols, long press, 16 pets, 24 outfits, 128 stickers and polished pet rendering must remain.
 
 ## If build fails
 
-Only repair the minimum blocker:
-
-- Kotlin syntax/import/method signature;
-- Android API compatibility;
-- Storage Access Framework / ZIP / file I/O compatibility;
-- XML/Manifest/resource issue;
-- Gradle ordering/config;
-- Python portability/deterministic test issue;
-- IME metadata.
-
-Do not redesign features, lower data gates, delete v0.22 model-pack security checks, add runtime networking, or add neural runtimes just to make the APK build.
+Only repair the minimum Kotlin/import/API/resource/Gradle/Python/SAF/file-I/O/IME metadata blocker. Do not redesign features, lower data gates or add network/native runtimes.
 
 ## Expected output
 
 ```text
 APK = app/build/outputs/apk/debug/app-debug.apk
-artifact = orbit-ime-v0.22-debug-apk
+artifact = orbit-ime-v0.23-debug-apk
 Actions = workflow_dispatch only
 ```
 
@@ -186,31 +133,14 @@ Actions = workflow_dispatch only
 
 Return:
 
-```text
-1. git status before build
-2. git log -1 --oneline
-3. exact build command
-4. test_ime_data_pipeline_v020.py PASS/FAIL
-5. test_model_pack_pipeline.py PASS/FAIL
-6. every mature-data stage PASS/FAIL
-7. mature-report.json counts
-8. validate_mature_ime_assets.py PASS/FAIL
-9. any minimum repair files + exact reason
-10. Kotlin compile result for:
-    OrbitInputMethodService
-    MainActivity
-    ModelPackManifest
-    ModelPackManager
-    ModelRuntimeContracts
-    CuratedModelCatalog
-    ImePreferences
-    QuickPhraseStore
-    ProLicenseManager
-    LongFormTranslationEngine
-    PetAvatarV21View
-11. BUILD SUCCESSFUL / FAILED
-12. APK full path and size
-13. versionCode/versionName confirmation
-14. confirm no INTERNET / RECORD_AUDIO / Accessibility / overlay / external-storage permission was added
-15. confirm Actions remains workflow_dispatch only
-```
+1. git status and current commit;
+2. exact build command;
+3. v0.20/v0.23/model-pack Python test PASS/FAIL;
+4. every data stage PASS/FAIL;
+5. mature-report counts for AOSP/Jieba/CC-CEDICT/THUOCL/FrequencyWords/runtime Chinese/runtime English/association/N-grams/translations;
+6. validator PASS/FAIL;
+7. any minimum repair file + reason;
+8. compile result for `MainActivity`, `OrbitInputMethodService`, `PinyinImeEngine`, `PinyinCorrectionEngine`, `EnglishImeEngine`, `AssociationAsset`, `NextAssociationEngine`, `FluentLocalTranslationEngine`, `LongFormTranslationEngine`, `ContextTranslationEngine`, `SkinManager`, `ModelPackManager`;
+9. BUILD SUCCESSFUL/FAILED;
+10. APK absolute path and size;
+11. version confirmation and prohibited-permission confirmation.
