@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build when Orbit v0.21 mature assets or local features regress."""
+"""Fail the build when Orbit v0.22 mature assets or local features regress."""
 from __future__ import annotations
 
 import argparse
@@ -106,26 +106,29 @@ def main() -> int:
     android_manifest = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
     forbidden = (
         "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",  # v0.22 installs speech packs but does not record yet
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.QUERY_ALL_PACKAGES",
         "android.permission.POST_NOTIFICATIONS",
         "android.accessibilityservice.AccessibilityService",
     )
     for token in forbidden:
-        require(token not in android_manifest, f"forbidden manifest capability found: {token}")
+        require(token not in android_manifest, f"forbidden v0.22 manifest capability found: {token}")
     require('android:name=".OrbitStickerProvider"' in android_manifest, "local sticker provider missing")
     require('android:exported="false"' in android_manifest, "sticker provider must stay non-exported")
     require('android:grantUriPermissions="true"' in android_manifest, "sticker provider URI grants missing")
 
     gradle = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-    require('versionCode = 21' in gradle, "versionCode is not 21")
-    require('versionName = "0.21.0"' in gradle, "versionName is not 0.21.0")
+    require('versionCode = 22' in gradle, "versionCode is not 22")
+    require('versionName = "0.22.0"' in gradle, "versionName is not 0.22.0")
     require("buildConfig = true" in gradle, "BuildConfig must be generated for debug-only Pro tester gate")
     require("augment_v020_data.py" in gradle, "v0.20 idiom/software augmentation is not wired into preBuild")
+    require("test_model_pack_pipeline.py" in gradle, "v0.22 model-pack pipeline tests are not wired into preBuild")
 
     pro_gate = (SRC / "ProGate.kt").read_text(encoding="utf-8")
     require("ProLicenseManager.isUnlocked" in pro_gate, "ProGate is not routed through license manager")
     require("100000 else 20000" in pro_gate, "user-dictionary capacities regressed")
+    require("isLocalModelPackManagerUnlocked" in pro_gate, "Pro model-pack gate missing")
     pro_license = (SRC / "ProLicenseManager.kt").read_text(encoding="utf-8")
     require("BuildConfig.DEBUG" in pro_license and "DEBUG_TEST_CODE_SHA256" in pro_license, "debug Pro activation gate missing")
     require("private signing key" in pro_license, "production signed-license boundary documentation missing")
@@ -149,19 +152,51 @@ def main() -> int:
     require("deleteSurroundingTextInCodePoints" in service, "Unicode-safe no-selection backspace path missing")
     require("QuickPhraseStore" in service and "ImePreferences" in service, "persistent/custom quick phrase wiring missing")
     require("prepareLongFormTranslation" in service and "LongFormTranslationEngine" in service, "Pro long-form translation wiring missing")
-    require("PetAvatarV21View" in service, "polished v0.21 pet view is not used by IME")
+    require("PetAvatarV21View" in service, "polished pet view is not used by IME")
     require("TranslationSettings.isContextTranslationEnabled" in service, "context translation toggle is not wired into IME")
     require("ContextTranslationEngine.translate" in service, "context translation engine is not wired into IME")
     require("userDictionary.nextSuggestions" in service and "联想" in service, "post-commit next-phrase UI missing")
     require("ClipData.newUri" in service and "grantUriPermission" in service, "image clipboard sticker compatibility fallback missing")
 
-    require((SRC / "ImePreferences.kt").is_file(), "ImePreferences.kt missing")
-    require((SRC / "QuickPhraseStore.kt").is_file(), "QuickPhraseStore.kt missing")
-    require((SRC / "LongFormTranslationEngine.kt").is_file(), "LongFormTranslationEngine.kt missing")
-    require((SRC / "PetAvatarV21View.kt").is_file(), "PetAvatarV21View.kt missing")
-    require((SRC / "ContextTranslationEngine.kt").is_file(), "ContextTranslationEngine.kt missing")
-    require((SRC / "NextAssociationEngine.kt").is_file(), "NextAssociationEngine.kt missing")
+    required_sources = (
+        "ImePreferences.kt",
+        "QuickPhraseStore.kt",
+        "LongFormTranslationEngine.kt",
+        "PetAvatarV21View.kt",
+        "ContextTranslationEngine.kt",
+        "NextAssociationEngine.kt",
+        "ModelPackManifest.kt",
+        "ModelPackManager.kt",
+        "ModelRuntimeContracts.kt",
+        "CuratedModelCatalog.kt",
+    )
+    for source in required_sources:
+        require((SRC / source).is_file(), f"{source} missing")
     require((ROOT / "data/ime_sources/seed_software.tsv").is_file(), "seed_software.tsv missing")
+    require((ROOT / "MODEL_PACKS.md").is_file(), "MODEL_PACKS.md missing")
+    require((ROOT / "docs/orbitpack-manifest.example.json").is_file(), "orbitpack manifest example missing")
+    require((ROOT / "tools/build_orbitpack.py").is_file(), "orbitpack builder missing")
+    require((ROOT / "tools/test_model_pack_pipeline.py").is_file(), "orbitpack pipeline test missing")
+
+    manifest_source = (SRC / "ModelPackManifest.kt").read_text(encoding="utf-8")
+    require('privacy == "offline_only"' in manifest_source, "offline-only model-pack policy missing")
+    require('android.permission.INTERNET' in manifest_source, "model-pack INTERNET rejection missing")
+    pack_manager = (SRC / "ModelPackManager.kt").read_text(encoding="utf-8")
+    require("checksums.sha256" in pack_manager and "MessageDigest.getInstance(\"SHA-256\")" in pack_manager, "model-pack SHA-256 validation missing")
+    require('PACK_ROOT = "orbit-model-packs"' in pack_manager, "private model-pack storage root missing")
+    require("normalizedEntryName" in pack_manager and 'it == ".."' in pack_manager, "Zip Slip/path traversal guard missing")
+    require("MAX_PACK_BYTES" in pack_manager and "MAX_UNPACKED_BYTES" in pack_manager, "model-pack size/bomb limits missing")
+    require("OrbitModelRuntimeRegistry.statusFor" in pack_manager, "model-pack runtime readiness status missing")
+
+    main_activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
+    require("ACTION_OPEN_DOCUMENT" in main_activity and "ModelPackManager" in main_activity, "system file picker/model manager UI missing")
+    require("我已了解并安装" in main_activity and "LICENSE 摘要" in main_activity, "model disclaimer/license confirmation UI missing")
+    require("CuratedModelCatalog" in main_activity, "curated model source UI missing")
+
+    runtime_contracts = (SRC / "ModelRuntimeContracts.kt").read_text(encoding="utf-8")
+    for contract in ("OrbitTranslationProvider", "OrbitAsrProvider", "OrbitTtsProvider", "OrbitVoiceCloneProvider"):
+        require(contract in runtime_contracts, f"future runtime contract missing: {contract}")
+    require("executable = false" in runtime_contracts, "v0.22 must not pretend neural inference is active")
 
     privacy_guard = (SRC / "PrivacyGuard.kt").read_text(encoding="utf-8")
     require("isSafeForLocalLongForm" in privacy_guard, "long-form translation privacy boundary missing")
@@ -172,7 +207,7 @@ def main() -> int:
     require(pet_count >= 16, f"pet catalog regressed: {pet_count}")
     require(outfit_count >= 24, f"outfit catalog regressed: {outfit_count}")
     polished_pet = (SRC / "PetAvatarV21View.kt").read_text(encoding="utf-8")
-    require("equippedOutfitId = null" in polished_pet, "old outfit layer is not suppressed before v0.21 polish")
+    require("equippedOutfitId = null" in polished_pet, "old outfit layer is not suppressed before pet polish")
     require("ValueAnimator" in polished_pet and "PolishedPetOutfits" in polished_pet, "pet idle motion/outfit polish missing")
 
     sticker_source = (SRC / "StickerPack.kt").read_text(encoding="utf-8")
@@ -182,7 +217,7 @@ def main() -> int:
 
     summary = {
         "status": "PASS",
-        "version": "0.21.0",
+        "version": "0.22.0",
         "aosp_lexicon_entries": stats["aosp_lexicon_entries"],
         "jieba_generated_entries": stats["jieba_generated_entries"],
         "cedict_entries": stats["cedict_entries"],
@@ -203,6 +238,7 @@ def main() -> int:
         "selected_text_editing": "replace/delete selection aware",
         "quick_phrases": "persistent + custom + disableable",
         "pro_translation": "context + selected long-form up to 8000 chars",
+        "model_packs": "Pro local import + checksum/license/disclaimer + private storage; no inference in v0.22",
         "pet_visuals": "polished idle animation + coherent outfit overlay",
         "pet_catalog": pet_count,
         "outfit_catalog": outfit_count,
