@@ -24,12 +24,17 @@ class UserDictionaryStore(private val context: Context) {
         PinyinImeEngine(context.applicationContext, this)
     }
 
-    fun candidatesFor(rawInput: String, staticCandidates: List<String>): List<String> {
+    fun candidatesFor(
+        rawInput: String,
+        staticCandidates: List<String>,
+        contextBeforeCursor: String? = null,
+    ): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
 
-        val engineCandidates = runCatching { imeEngine.candidates(query, limit = MAX_CANDIDATES) }
-            .getOrElse { emptyList() }
+        val engineCandidates = runCatching {
+            imeEngine.candidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
+        }.getOrElse { emptyList() }
         if (engineCandidates.isNotEmpty()) {
             return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
         }
@@ -56,11 +61,16 @@ class UserDictionaryStore(private val context: Context) {
             .take(MAX_CANDIDATES)
     }
 
-    fun exactCandidatesFor(rawInput: String, staticCandidates: List<String>): List<String> {
+    fun exactCandidatesFor(
+        rawInput: String,
+        staticCandidates: List<String>,
+        contextBeforeCursor: String? = null,
+    ): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
-        val engineCandidates = runCatching { imeEngine.exactCandidates(query, limit = MAX_CANDIDATES) }
-            .getOrElse { emptyList() }
+        val engineCandidates = runCatching {
+            imeEngine.exactCandidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
+        }.getOrElse { emptyList() }
         if (engineCandidates.isNotEmpty()) {
             return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
         }
