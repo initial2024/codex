@@ -11,8 +11,8 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.19.0"
+        versionCode = 20
+        versionName = "0.20.0"
     }
 
     compileOptions {
@@ -54,8 +54,7 @@ val prepareMatureImeAssets by tasks.registering(Exec::class) {
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
-// Introduced in v0.18 and retained by v0.19: CC-CEDICT lexicon/translation
-// plus Unicode Emoji. The task name is historical; the stage is mandatory.
+// Introduced in v0.18 and retained: CC-CEDICT lexicon/translation + Unicode Emoji.
 val augmentLicensedImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
     description = "Add pinned CC-CEDICT translation/lexicon data and Unicode Emoji 17.0 assets"
@@ -70,6 +69,22 @@ val augmentLicensedImeAssets by tasks.registering(Exec::class) {
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
+// v0.20: boost four-character idioms from the already-licensed CC-CEDICT pack
+// and merge project-authored common software/platform/product vocabulary.
+val augmentV020ImeAssets by tasks.registering(Exec::class) {
+    group = "orbit ime"
+    description = "Add CC-CEDICT four-character idiom boost and project software vocabulary"
+    workingDir(rootProject.projectDir)
+    commandLine(
+        orbitPython,
+        "tools/augment_v020_data.py",
+        "--output",
+        "app/src/main/assets/ime",
+    )
+    dependsOn(augmentLicensedImeAssets)
+    onlyIf { !orbitSkipMatureImeData.get() }
+}
+
 val validateMatureImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
     description = "Reject incomplete mature packs, feature regressions, wrong versions or forbidden capabilities"
@@ -80,7 +95,7 @@ val validateMatureImeAssets by tasks.registering(Exec::class) {
         "--assets",
         "app/src/main/assets/ime",
     )
-    dependsOn(augmentLicensedImeAssets)
+    dependsOn(augmentV020ImeAssets)
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
