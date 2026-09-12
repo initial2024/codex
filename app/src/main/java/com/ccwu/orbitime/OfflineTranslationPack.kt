@@ -7,14 +7,17 @@ object OfflineTranslationPack {
         val text = source.trim()
         if (text.isBlank() || !PrivacyGuard.isSafeToUseForPrompt(text)) return null
 
-        exactOnly(text, direction)?.let { return Result(it, "exact-local", "本地词典精确匹配") }
+        exactOnly(text, direction)?.let {
+            return result(it, "exact-local", "本地词典精确匹配", direction)
+        }
 
         val fluent = FluentLocalTranslationEngine.translateOrNull(text, direction)
         if (fluent != null && fluent.coverage >= MIN_FLUENT_COVERAGE) {
-            return Result(
+            return result(
                 fluent.translatedText,
                 "fluent-local-${(fluent.coverage * 100).toInt()}",
                 "v0.23 本地动态规划片段翻译，覆盖率 ${(fluent.coverage * 100).toInt()}%",
+                direction,
             )
         }
 
@@ -23,14 +26,16 @@ object OfflineTranslationPack {
             TranslatePromptBuilder.Direction.EN_TO_ZH -> CedictTranslationAsset.composeEnToZh(text)
         }
         if (!cedictComposed.isNullOrBlank()) {
-            return Result(cedictComposed, "cedict-composed-local", "CC-CEDICT 本地词组最长匹配")
+            return result(cedictComposed, "cedict-composed-local", "CC-CEDICT 本地词组最长匹配", direction)
         }
 
         val composed = when (direction) {
             TranslatePromptBuilder.Direction.ZH_TO_EN -> LocalTranslationComposer.translateZhToEn(text)
             TranslatePromptBuilder.Direction.EN_TO_ZH -> LocalTranslationComposer.translateEnToZh(text)
         }
-        return composed?.let { Result(it, "composed-local", "项目本地词组切分与句子拼接") }
+        return composed?.let {
+            result(it, "composed-local", "项目本地词组切分与句子拼接", direction)
+        }
     }
 
     /** Exact lookup only; used by the v0.23 DP translator without recursive composition. */
@@ -40,6 +45,9 @@ object OfflineTranslationPack {
     }
 
     fun unavailableMessage(): String = "本地翻译暂未覆盖足够内容。未覆盖片段会保留原文；可安装 Pro 神经翻译模型包获得更完整的离线翻译。"
+
+    private fun result(text: String, confidence: String, note: String, direction: TranslatePromptBuilder.Direction): Result =
+        Result(TranslationOutputNormalizer.normalize(text, direction), confidence, note)
 
     private fun findExactZhToEn(raw: String): String? {
         for (text in exactVariants(raw)) {
