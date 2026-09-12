@@ -73,6 +73,8 @@ Actions artifact = orbit-ime-v0.16-debug-apk
 Do not remove or bypass:
 
 - continuous long-sentence Pinyin buffer and DP segmentation;
+- adaptive long-query search limits: short input can use wider Beam/search, long input narrows segmentation/beam/entry limits instead of using one fixed expensive setting;
+- candidate-query LRU and phrase-lookup LRU used to reduce repeated work while a sentence grows;
 - `CompactLexiconAsset` + sentence beam search + 1/2/3-gram + local personalization;
 - AOSP + conservative Jieba mature Chinese data path;
 - English composing + sharded ESDB/SCOWL asset path;
@@ -80,6 +82,7 @@ Do not remove or bypass:
 - Recent/Pinned clipboard with IME-window-only listener and one-hour Recent expiry;
 - live translation keyboard showing source and actual local translation preview;
 - exact phrase translation -> conservative local sentence composer -> explicit unavailable state;
+- normalized English local-translation lookup keys;
 - local pet, skins, privacy mode, and system input-method picker.
 
 ## If build fails
@@ -96,7 +99,7 @@ Only repair the smallest build blocker, such as:
 
 Then rerun the same Gradle command.
 
-Do not bypass mature-data testing/preparation/validation to get a green build. Do not substitute a different word list or redesign the input engine.
+Do not bypass mature-data testing/preparation/validation to get a green build. Do not substitute a different word list or redesign the input engine. Do not remove the adaptive search/cache changes merely to simplify compilation.
 
 ## Forbidden changes
 
@@ -106,15 +109,16 @@ Do not add or enable:
 - cloud prediction/dictionary sync/translation;
 - external translation APIs;
 - ads/analytics/tracking;
-- Accessibility;
+- Accessibility permission;
 - overlay/floating-window permission;
 - background clipboard/input harvesting;
-- full typed-stream persistence;
-- surrounding-sentence/app-package persistence;
+- full typed-key-stream persistence;
+- surrounding-sentence or app/package learning history;
 - AI pet chat;
 - paid gacha;
-- 9-key/Wubi/handwriting;
-- Compose/Canvas keyboard rewrite;
+- Pinyin 9-key, Wubi, handwriting;
+- Canvas keyboard rewrite;
+- Compose migration;
 - Room/Realm migration;
 - billing or skin marketplace.
 
