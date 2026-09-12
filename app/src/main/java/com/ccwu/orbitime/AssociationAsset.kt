@@ -6,10 +6,7 @@ import java.util.LinkedHashMap
 
 /**
  * Low-latency reader for v0.23 precomputed next-word/phrase associations.
- *
- * The build pipeline shards contexts into 32 files. Runtime loads only the shards
- * needed by the current 1..4 CJK suffixes and keeps a small LRU cache. This avoids
- * rebuilding a large continuation index after every committed candidate.
+ * The build pipeline shards contexts into 32 files; runtime loads only needed shards.
  */
 class AssociationAsset(private val context: Context) {
     data class Suggestion(val text: String, val frequency: Int, val contextLength: Int)
@@ -28,8 +25,7 @@ class AssociationAsset(private val context: Context) {
         val maxWidth = minOf(MAX_CONTEXT_CHARS, cjkTail.length)
         for (width in maxWidth downTo 1) {
             val key = cjkTail.takeLast(width)
-            val rows = shardFor(key)[key].orEmpty()
-            rows.take(limit * 2).forEach { (candidate, frequency) ->
+            shardFor(key)[key].orEmpty().take(limit * 2).forEach { (candidate, frequency) ->
                 if (candidate.isBlank()) return@forEach
                 val next = Suggestion(candidate, frequency, width)
                 val old = merged[candidate]
@@ -50,9 +46,7 @@ class AssociationAsset(private val context: Context) {
     private fun shardFor(contextKey: String): Map<String, List<Pair<String, Int>>> {
         val shard = associationShard(contextKey)
         shardCache[shard]?.let { return it }
-        val loaded = loadShard(shard)
-        shardCache[shard] = loaded
-        return loaded
+        return loadShard(shard).also { shardCache[shard] = it }
     }
 
     private fun loadShard(shard: Int): Map<String, List<Pair<String, Int>>> {
@@ -68,10 +62,9 @@ class AssociationAsset(private val context: Context) {
                     val key = parts[0]
                     val candidate = parts[1]
                     if (key.isBlank() || candidate.isBlank()) return@forEach
-                    val frequency = runCatching { parts[2].lowercase().toLong(36) }
-                        .getOrDefault(1L)
-                        .coerceIn(1L, Int.MAX_VALUE.toLong())
-                        .toInt()
+                    // v0.23 writer uses compact hexadecimal counts for this dedicated asset.
+                    val frequency = runCatching { parts[2].lowercase().toLong(16) }
+                        .getOrDefault(1L).coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
                     temp.getOrPut(key) { mutableListOf() }.add(candidate to frequency)
                 }
             }
@@ -83,8 +76,7 @@ class AssociationAsset(private val context: Context) {
         }
     }
 
-    private fun associationShard(contextKey: String): Int =
-        contextKey.sumOf { it.code }.mod(SHARD_COUNT)
+    private fun associationShard(contextKey: String): Int = contextKey.sumOf { it.code }.mod(SHARD_COUNT)
 
     private fun isCjk(char: Char): Boolean {
         val block = Character.UnicodeBlock.of(char)
