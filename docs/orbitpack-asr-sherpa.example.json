@@ -1,0 +1,32 @@
+{
+  "pack_format": 1,
+  "pack_id": "example-sherpa-zh-asr",
+  "display_name": "Example sherpa offline ASR",
+  "version": "1",
+  "type": "asr",
+  "runtime": "sherpa_onnx",
+  "model_family": "sherpa_offline_transducer",
+  "model_name": "Replace with exact upstream checkpoint name",
+  "source_url": "https://huggingface.co/k2-fsa/sherpa-onnx-models",
+  "license": "VERIFY-UPSTREAM-LICENSE",
+  "commercial_use": false,
+  "redistribution": "unknown",
+  "languages": ["zh", "en"],
+  "size_mb": 0,
+  "min_ram_mb": 0,
+  "recommended_ram_mb": 0,
+  "requires_permissions": ["android.permission.RECORD_AUDIO"],
+  "privacy": "offline_only",
+  "disclaimer_required": true,
+  "experimental": false,
+  "description": "Schema example only. Replace source/license/size/RAM values with audited checkpoint metadata before packaging.",
+  "runtime_config": {
+    "encoder": "model/encoder.int8.onnx",
+    "decoder": "model/decoder.onnx",
+    "joiner": "model/joiner.int8.onnx",
+    "tokens": "model/tokens.txt",
+    "num_threads": "2",
+    "decoding_method": "greedy_search",
+    "max_active_paths": "4"
+  }
+}
