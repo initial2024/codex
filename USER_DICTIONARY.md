@@ -1,34 +1,20 @@
 # Orbit IME User Dictionary and Candidate Personalization
 
-This file documents local personalized ranking in Orbit IME `0.15.0`.
+This file documents local personalized ranking in Orbit IME `0.16.0`.
 
 ## Goal
 
-Repeated user choices should move upward over time without uploading, syncing, or persisting full typed text.
+Repeated explicit user choices should move upward over time without uploading, syncing, or persisting full typed text.
 
-## v0.15 candidate stack
+## Candidate stack
 
-The visible Chinese candidate list can now combine:
-
-1. Exact local user-dictionary matches.
-2. Exact packaged `.odict` lexicon matches.
-3. Project-authored sentence/shortcut matches.
-4. Continuous-Pinyin segmented and beam-generated candidates.
-5. Static word/phrase frequency.
-6. Local 1/2/3-gram scores.
-7. Fuzzy/typo candidates with an explicit penalty.
-8. Local user-selection frequency.
-
-The final list is de-duplicated and capped at 12 candidates.
+The visible Chinese candidate list can combine exact local-user matches, packaged `.odict` entries, project-authored sentence/shortcut data, continuous-Pinyin segmented/beam candidates, static frequency, local 1/2/3-gram evidence, lower-confidence fuzzy correction, and explicit local user frequency. The final visible list is de-duplicated and capped at 12 candidates.
 
 ## What gets learned
 
-Orbit IME learns only after the user explicitly commits a Pinyin candidate by:
+Learning happens after an explicit Pinyin candidate commit such as a candidate tap or space-to-select.
 
-- tapping a candidate;
-- pressing space while a Pinyin buffer exists.
-
-The persistent record is limited to:
+Persistent fields remain only:
 
 ```text
 pinyin
@@ -37,92 +23,65 @@ frequency
 updatedAt
 ```
 
-It does not store:
+Orbit does not store surrounding sentence text, app/package identity, target-field identity, or a full raw input history.
 
-- surrounding sentence text;
-- app/package name;
-- target field identity;
-- full input history;
-- clipboard contents unless the user separately saves them in Clips.
+## v0.16 longer personal phrases
+
+To support long-sentence input, a learned mapping may now contain:
+
+```text
+normalized Pinyin: 1..192 characters
+committed CJK text: 1..96 characters
+```
+
+This increases the maximum size of one explicit learned phrase/sentence mapping; it does **not** turn the user dictionary into a persisted keystroke log.
 
 ## Ranking effect
-
-`CandidateRanker` treats local user frequency as a strong ranking feature.
 
 Conceptually:
 
 ```text
-score =
-  static-frequency score
-  + N-gram score
-  + segmentation score
-  + local user-frequency boost
-  + source priority
-  - fuzzy/typo penalty
+score = static frequency
+      + N-gram score
+      + segmentation score
+      + local user-frequency boost
+      + source priority
+      - fuzzy/typo penalty
 ```
 
-This means a repeatedly selected candidate can rise above the default packaged order without rewriting the packaged dictionary.
+A repeatedly selected candidate can therefore rise above packaged defaults.
 
-## In-memory cache
+## Runtime caches
 
-v0.15 keeps parsed user-dictionary entries in a process-local memory cache.
+Parsed user records are cached in process memory to avoid decoding the same SharedPreferences JSON during each candidate score. `PinyinImeEngine` also has a bounded recent-query candidate cache. Learning or clearing the user dictionary invalidates the candidate cache so stale ranking is not retained.
 
-Purpose:
+Neither cache is a second persistent history.
 
-- avoid parsing the same `SharedPreferences` JSON for every candidate score;
-- reduce candidate latency;
-- keep ranking deterministic.
+## Storage and quota
 
-The cache contains only the same four fields already stored persistently. It is replaced after learning, cleared when the user clears the dictionary, and disappears with the app process.
-
-## Storage
-
-Persistent storage remains app-private `SharedPreferences` JSON:
+Persistent storage remains app-private SharedPreferences JSON:
 
 ```text
 prefs: orbit_user_dictionary
 key: entries_json
 ```
 
-Current quotas remain controlled by `ProGate`.
+Quota is controlled by `ProGate`. When over quota, higher-frequency and more-recent entries are retained.
 
-When quota is exceeded, the store keeps the highest-frequency and most-recent entries.
+## Safety
 
-## Safety filters
+A learned mapping must contain CJK text, must not be identical to the raw Pinyin, must fit the limits above, and must pass the existing secret/OTP/token safety filter. Privacy/password-like fields block learning.
 
-A learned mapping must satisfy all current safety checks:
+## Packaged data is separate
 
-- normalized Pinyin length: 1 to 64 characters;
-- candidate text length: 1 to 40 characters;
-- candidate contains CJK characters;
-- candidate is not identical to raw Pinyin;
-- candidate does not look like an OTP, password, token, API key, authorization header, cookie/session value, or long dense secret.
-
-Password-like fields enter privacy mode and do not learn.
-
-## Large packaged dictionaries are separate
-
-User learning is not the same thing as the large packaged lexicon.
-
-The packaged lexicon is generated at build time with:
-
-```text
-tools/ime_importer.py
-```
-
-and stored as compact `.odict` assets. User selections are never written back into those files.
+Build-time AOSP/Jieba/project `.odict` data is immutable application data. User selections are never written back to packaged dictionary assets.
 
 ## Failure behavior
 
-`UserDictionaryStore.candidatesFor()` routes through the v0.15 local IME engine first.
+`UserDictionaryStore.candidatesFor()` uses the v0.16 local engine first and retains a legacy static/user fallback so malformed or missing development assets do not produce an empty keyboard.
 
-If the new engine returns no candidates or throws because an asset is malformed, the code keeps a legacy static/user-dictionary fallback path so the keyboard does not become unusable.
+Exact/raw-fallback commits use only exact engine/user matches; prefix/fuzzy suggestions are not forced onto the user when no exact candidate exists.
 
-## Settings controls
+## Settings
 
-The settings page continues to show:
-
-- local learned-entry count;
-- cumulative learned selection count;
-- current quota;
-- a button to clear the local user dictionary.
+The settings page displays learned-entry count, cumulative selection count, quota, and a local clear button.
