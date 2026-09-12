@@ -1,290 +1,202 @@
 # Orbit IME Android
 
-Orbit IME is a privacy-first Android input method with local Pinyin/English candidates, local personalization, clipboard history, offline translation, visual keyboard pets, Emoji/kaomoji, local pet stickers, and skins.
+Orbit IME is a privacy-first Android input method with local Chinese/English prediction, local personalization, clipboard history, offline translation, visual keyboard pets, Emoji/kaomoji, local pet stickers and skins.
 
 ## Current version
 
 ```text
-0.17.0
+0.18.0
 ```
 
-v0.17 keeps the v0.16 long-sentence input/data-engine work and adds two user-facing modules that were previously incomplete:
+v0.18 focuses on the remaining “toy IME” gaps reported from real device testing:
 
-- the pet is now actually rendered instead of being only text/state;
-- the keyboard now has a large local Emoji/kaomoji panel plus locally generated image stickers.
+- fixes candidate commit so Chinese/English candidates **replace** active composing text instead of being appended after raw letters;
+- greatly expands licensed Chinese, English, translation and Emoji data;
+- makes the mature packaged Chinese lexicon participate in fuzzy/typo and prefix association;
+- adds a 7-page symbol keyboard;
+- adds long-press number/symbol mappings on the 26-key layout;
+- keeps v0.17 visual pets, kaomoji, local PNG stickers, clipboard and translation UI.
 
-## Chinese input pipeline
+## Chinese input engine
 
 ```text
 continuous Pinyin
 -> exact packaged/user candidates
 -> dynamic-programming segmentation
--> compact lexicon lookup
--> bounded/adaptive phrase beam search
+-> compact sharded lexicon
+-> adaptive phrase Beam Search
 -> static frequency + 1/2/3-gram
 -> local user-frequency boost
--> fuzzy/typo penalty
+-> packaged-prefix association
+-> fuzzy initials/finals + keyboard-neighbor typo recovery
 -> top candidates
 ```
 
-Current long-input behavior:
+The composing buffer supports up to 192 normalized letters. Short input can use a wider search; longer input progressively narrows segmentation/Beam limits to control latency.
 
-- Pinyin composing buffer: up to 192 normalized letters.
-- Segmentation paths: up to 6 for short input; progressively fewer paths for long input.
-- Phrase span: up to 8 syllables per beam edge.
-- Beam width: up to 56 for short input and automatically reduced as the syllable count grows.
-- Visible candidates: 12.
-- Candidate-query LRU plus phrase-lookup LRU reduce repeated work as one sentence grows letter by letter.
-- Very long queries skip whole-sentence fuzzy expansion and use tighter beam/entry limits.
-- Normal letter/backspace input refreshes the dynamic candidate/tool region rather than recreating every key row.
-- Temporary text-before-cursor context can improve local N-gram ranking but is not persisted.
+### v0.18 composing fix
 
-Examples include:
+Candidate commit no longer calls `finishComposingText()` before committing a Chinese/English candidate. The candidate is committed directly over Android's active composing region. Clearing or entering translation mode also replaces the composing region with empty text rather than committing raw Pinyin/English first.
+
+This specifically prevents failures such as:
 
 ```text
-nihaoma -> 你好吗
-nishishei -> 你是谁
-shurufa -> 输入法
-haishiyouwenti -> 还是有问题
+sj数据库不够hy还有问题
 ```
 
-## Mature Chinese data
+where raw Pinyin fragments remained in the target field.
 
-Normal builds merge:
+## Mature local data
+
+A normal v0.18 build merges and validates:
 
 ```text
 AOSP PinyinIME raw Pinyin/frequency data (Apache-2.0)
-+
-Jieba default Chinese frequency dictionary (MIT)
+Jieba default frequency dictionary (MIT; conservative AOSP-backed Pinyin derivation)
+CC-CEDICT 2026-09-10 (CC BY-SA 4.0)
+ESDB/SCOWL en_US-large (ESDB redistribution notice)
+Unicode Emoji 17.0 emoji-test data (Unicode License v3)
+project-authored fallback / product vocabulary / kaomoji
 ```
 
-Jieba does not provide Pinyin. Orbit derives extra word readings conservatively:
-
-1. prefer exact AOSP phrase readings;
-2. otherwise use only AOSP single-character readings whose dominant pronunciation is sufficiently clear;
-3. skip ambiguous/missing readings instead of guessing;
-4. give these derived entries lower confidence than native AOSP phrase rows;
-5. derive additional bounded character N-grams from accepted Jieba words;
-6. package the pinned Jieba MIT license.
-
-The mature validator requires at least:
+Minimum build gates are intentionally much higher than earlier versions:
 
 ```text
-AOSP accepted lexicon: 40,000
-Jieba-derived additions: 40,000
-combined runtime Chinese lexicon: 90,000
-English vocabulary: 50,000
+AOSP Chinese >= 40,000
+Jieba-derived additions >= 40,000
+CC-CEDICT parsed entries >= 110,000
+combined runtime Chinese lexicon >= 150,000
+English vocabulary >= 100,000
+Unicode fully-qualified Emoji >= 3,000
+ZH->EN translation index >= 80,000
+EN->ZH translation index >= 50,000
 ```
 
-Exact generated counts are written to `app/src/main/assets/ime/mature-report.json` during a normal build. These are sanity gates, not claims of parity with proprietary commercial IMEs.
-
-## English input
-
-English letters stay in a composing buffer and show local candidates before commit. The mature pack uses pinned ESDB/SCOWL US English vocabulary plus project-authored high-frequency/phrase/typo data. Large English assets are sharded by first letter and read through a bounded LRU.
-
-## Local personalization
-
-Orbit stores only:
+Exact generated counts are written to:
 
 ```text
-pinyin
-committed candidate text
-frequency
-updatedAt
+app/src/main/assets/ime/mature-report.json
 ```
 
-Longer learned phrases/sentences are supported up to 192 Pinyin letters / 96 text characters. Orbit does not persist full chat streams, app/package identity, target fields, or surrounding sentences.
+These are sanity gates, not a claim of parity with proprietary commercial IME corpora.
 
-## Visual keyboard pet
+## Fuzzy / typo / association
 
-The pet module is no longer text-only.
+Fuzzy correction now uses the mature packaged lexicon instead of only a small hard-coded map. It combines:
 
-v0.17 adds `PetAvatarView` / `PetAvatarRenderer`:
+- `zh/z`, `ch/c`, `sh/s` and common final confusions;
+- `n/l`, `f/h`, `r/l`, `u/v` compatibility variants;
+- adjacent-key transposition;
+- QWERTY neighboring-key substitutions;
+- one-extra-key deletion recovery;
+- existing explicit high-confidence shortcuts;
+- prefix lookup against the packaged lexicon for partial-Pinyin association.
 
-- all 8 existing pets have different local vector-style silhouettes;
-- the four growth stages change scale and visual detail;
-- later stages gain aura/orbit details;
-- equipped outfits are drawn on top of the pet;
-- the full pet panel contains a large visual preview;
-- when the pet is not hidden, the idle quick-phrase bar also contains a small clickable pet preview;
-- settings shows the current pet visually as well.
+Exact candidates remain higher confidence than fuzzy guesses.
 
-Existing local pet state remains intact:
+## English
+
+The build now uses the pinned ESDB/SCOWL `en_US-large` vocabulary. English still stays in a composing buffer and shows candidates before commit; project-authored common words/phrases and typo corrections remain higher-quality overlays where appropriate.
+
+## Translation
+
+The translation keyboard remains fully local at runtime.
+
+Order:
 
 ```text
-pet id / owned pets
-EXP / Stars / streak
-stage / level / typed-character counters
-visibility
-outfit
+project exact phrase tables
+-> CC-CEDICT exact lexical lookup
+-> CC-CEDICT sharded longest-match sentence composition
+-> project local sentence composer
+-> explicit offline-unavailable state
 ```
 
-No overlay permission is used; the pet is drawn only inside Orbit's own IME/settings surfaces.
+CC-CEDICT generates separate Chinese->English and English->Chinese sharded translation assets at build time. The translation prompt fallback is never presented as if it were a translation result.
 
-## Emoji and kaomoji panel
+## Emoji / kaomoji / stickers
 
-The top keyboard toolbar now has a `表情 / Emoji` entry.
+`表情 / Emoji` now contains:
 
-Local categories include:
+- existing project-authored categorized Emoji;
+- the complete build-generated Unicode 17.0 fully-qualified Emoji list;
+- project-authored happy/sad/angry/funny/love kaomoji categories;
+- Recent expressions;
+- 24 local graphical pet stickers (8 pets × 3 moods).
+
+Emoji/kaomoji support one-tap insert and long-press copy. Pet stickers are generated locally to private cache and use `InputContentInfo` when a target editor advertises `image/png`; otherwise they fall back to Emoji text.
+
+## Symbols and long press
+
+The `123` keyboard is no longer a single small symbol page. v0.18 contains 7 rotating pages:
 
 ```text
-😀 faces
-👍 gestures
-❤️ hearts
-🐱 animals
-🍜 food
-🎉 activity/atmosphere
-✨ symbols
-happy kaomoji
-sad kaomoji
-angry kaomoji
-weird/funny kaomoji
-love kaomoji
+常用
+标点
+括号
+数学
+货币
+箭头
+标记
 ```
 
-The library contains hundreds of selectable Unicode Emoji and kaomoji strings. The panel supports:
+The `符号` key rotates pages.
 
-- horizontal category navigation;
-- paging for large categories;
-- one-tap commit to the current input field;
-- long-press copy;
-- a local Recent list (up to 48 unique recently used expressions);
-- Clear Recent.
-
-The recent-expression store contains only the expression string itself, not the message around it.
-
-## Local image sticker pack
-
-`🪐 贴图` provides 24 locally generated pet stickers:
-
-```text
-8 pets × 3 moods
-happy / love / angry
-```
-
-The sticker panel shows actual graphical pet thumbnails rather than text labels alone.
-
-Sending behavior:
-
-```text
-target editor advertises image/png support
--> commit InputContentInfo with a temporary content URI
--> host app receives the locally generated PNG
-
-otherwise
--> automatically commit the sticker's fallback Emoji text
-```
-
-Sticker PNGs are generated into the app-private cache from the same pet renderer. There is no sticker download, external storage permission, cloud service, or runtime network dependency.
-
-The provider is:
-
-```text
-exported = false
-grantUriPermissions = true
-```
-
-so other apps do not get general browsing access to Orbit's cache. Temporary URI read access is granted only through an explicit user sticker action.
+Letter keys also expose visible long-press hints. The top row maps to digits (`q→1 ... p→0`) and the other rows map to common punctuation such as `@ # $ % & - + ( ) * ! ?`.
 
 ## Clipboard
 
-The keyboard clipboard is split into:
+Clipboard remains `Pinned + Recent`:
 
-```text
-Pinned
-Recent
-```
+- listener attached only while the IME window is visible;
+- non-sensitive Recent entries expire after about one hour;
+- long-press pins/unpins;
+- no background clipboard service;
+- password-like/sensitive fields disable clipboard capture.
 
-Behavior:
+## Visual keyboard pet
 
-- while the IME window is visible, newly copied non-sensitive text can enter Orbit's local Recent history;
-- the clipboard listener is detached when the IME window hides;
-- unpinned entries expire after about one hour;
-- long-press an entry to pin/unpin it;
-- pinned entries do not expire automatically;
-- tap an entry to paste;
-- Clear recent preserves pinned items; Clear all removes everything.
+v0.17 visual-pet work remains intact:
 
-Orbit does not run a background clipboard-harvesting service and cannot replace Android/host-app long-press menus.
-
-## Translation keyboard
-
-Translate remains an input mode rather than only a prompt/source panel.
-
-Chinese -> English:
-
-```text
-enter Translate while in Pinyin mode
--> keep typing continuous Pinyin
--> current best Chinese candidate participates in source preview
--> space/candidate commits Chinese chunks into temporary translation source
--> panel shows 原文 and 译文
--> tap 译文上屏
--> translation is inserted into the current app
-```
-
-English -> Chinese works analogously from EN mode. Sources can also be loaded from the previous sentence, selected text, or clipboard.
-
-Translation order:
-
-```text
-exact packaged phrase tables
--> conservative local longest-phrase sentence composer
--> explicit "offline dictionary does not cover this sentence" state
-```
-
-The translation prompt fallback is never displayed as if it were a translation result.
+- 8 distinct pets;
+- four growth stages;
+- actual graphical pet preview in keyboard and settings;
+- outfit overlays;
+- local check-in, hatch, switch, catalog and growth;
+- no overlay permission or cloud AI chat.
 
 ## Build-time data pipeline
 
-A normal build automatically runs:
+A normal build runs:
 
 ```text
 tools/test_ime_data_pipeline.py
 -> tools/prepare_mature_ime_data.py
 -> tools/ime_importer.py
+-> tools/augment_v018_data.py
+-> CC-CEDICT lexicon + translation shards
+-> Unicode Emoji 17.0 asset
 -> tools/validate_mature_ime_assets.py
 -> Android compilation
 ```
 
-Sources are pinned by Git blob SHA. Required AOSP, Jieba, and ESDB/SCOWL notices are packaged with generated assets. The validator rejects suspiciously small packs, missing notices/pins, wrong version metadata, and forbidden runtime capabilities.
+The user-test APK must **not** use `-PorbitSkipMatureImeData=true`.
 
-## Runtime asset layout
+## Runtime privacy boundary
 
-```text
-ime/lexicon/a.odict ... z.odict
-ime/english/a.odict ... z.odict
-ime/ngram1.odict
-ime/ngram2.odict
-ime/ngram3.odict
-```
-
-Frequencies/counts are encoded in base36. Chinese and English readers use bounded shard caches instead of loading the whole mature pack as one giant Kotlin map.
-
-## Other functions retained
-
-- Chinese/English quick phrases.
-- Fuzzy/typo correction at lower confidence than exact spelling.
-- Keyboard pet check-in, hatch, switch, outfits, catalog and growth.
-- Orbit Dark, Orbit Light, AMOLED Black, Study Blue, Pro Aurora placeholder.
-- Privacy mode for password-like/no-personalized-learning fields.
-- Android input-method picker button.
-
-## Privacy boundary
-
-Orbit IME v0.17 intentionally has:
+Orbit IME v0.18 intentionally has:
 
 - no `INTERNET` permission;
-- no ads, analytics, or tracking SDK;
+- no ads/analytics/tracking SDK;
 - no Accessibility permission;
 - no overlay/floating-window permission;
-- no cloud prediction/dictionary sync;
-- no cloud/external translation API;
+- no cloud prediction/dictionary sync/translation;
+- no external translation API;
 - no background clipboard/input harvesting;
 - no full typed-stream persistence;
-- no external-storage permission for stickers.
+- no external-storage permission.
 
-Sensitive/password-like fields hide the pet, Emoji/kaomoji/sticker, clipboard, and translation tools.
+Build-machine dictionary downloads do not grant runtime network capability to the installed keyboard.
 
 ## Build
 
@@ -304,8 +216,6 @@ Command:
 gradle assembleDebug --no-daemon
 ```
 
-Do not use `-PorbitSkipMatureImeData=true` for the user-test APK.
-
 Expected APK:
 
 ```text
@@ -315,30 +225,22 @@ app/build/outputs/apk/debug/app-debug.apk
 Actions artifact:
 
 ```text
-orbit-ime-v0.17-debug-apk
+orbit-ime-v0.18-debug-apk
 ```
 
-## Post-build device acceptance
+## Post-build acceptance priorities
 
-Prioritize:
+1. Type Pinyin, choose a Chinese candidate, and confirm the raw Pinyin is replaced rather than retained.
+2. Test long uninterrupted Pinyin sentences and candidate latency.
+3. Test typo/fuzzy queries and partial-Pinyin association.
+4. Long-press every letter row and confirm the hinted number/symbol commits.
+5. Rotate through all seven symbol pages.
+6. Confirm Unicode Emoji all-page data, kaomoji, Recent and pet stickers.
+7. Test English composing/candidates.
+8. Test local CC-CEDICT-backed translation preview and `译文上屏`.
+9. Re-test Clipboard Recent/Pinned and visual pets.
+10. Confirm privacy mode hides extra tools and disables learning/capture.
 
-- uninterrupted long Pinyin sentences and top-1 quality;
-- candidate latency while the buffer grows;
-- English composing/candidates;
-- local learning and clear/reset;
-- Clipboard Recent / pin / expiry / paste;
-- Translate 原文/译文 preview and 译文上屏;
-- full-size pet preview actually renders for every pet;
-- small idle pet preview opens the pet panel;
-- stage/outfit changes visibly affect the pet;
-- Emoji categories, paging, recent list, one-tap insert and long-press copy;
-- kaomoji rendering and insertion;
-- all 24 sticker thumbnails render;
-- sticker image commit works in an app advertising image/png IME content;
-- unsupported image editors fall back to Emoji text;
-- privacy mode hides all extra tool panels;
-- input-method switching remains correct.
+## Commercial/data-license boundary
 
-## Commercial boundary
-
-The intended direction remains free base + optional paid Pro. v0.17 contains no billing, ads, analytics, runtime network, cloud translation, external translation API, or paid sticker/gacha implementation.
+Runtime code remains Orbit code. Third-party datasets keep their own notices/licenses in `assets/ime/third_party_notices/`. In particular, CC-CEDICT-derived dictionary/translation data remains CC BY-SA 4.0 data and is documented separately from the application source-code license.
