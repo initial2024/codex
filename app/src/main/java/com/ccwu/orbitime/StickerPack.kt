@@ -46,7 +46,9 @@ object StickerPack {
             StickerDefinition(
                 id = "${pet.id}_${meta.variant.name.lowercase()}",
                 label = "${pet.name}·${meta.name}",
-                petId = pet.id,
+                // New v0.19 catalog variants reuse one of the eight stable visual
+                // archetypes, so every sticker renders instead of falling back to Orbi.
+                petId = pet.visualBaseId,
                 mood = meta.baseMood,
                 variant = meta.variant,
                 fallbackText = meta.fallback,
