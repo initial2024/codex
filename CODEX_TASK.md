@@ -1,14 +1,14 @@
-# Codex handoff: build Orbit IME v0.19.0 APK only
+# Codex handoff: build Orbit IME v0.20.0 APK only
 
 ## Scope
 
-All non-build implementation is already prepared. Codex's task is **only** to build the current `main` APK and make the smallest compilation/portability repair exposed by that build.
+All non-build implementation for v0.20 is already prepared. Codex must only build current `main` and make the smallest compilation/portability repair exposed by the build.
 
-Do not build an old v0.17/v0.18 checkout. Before building, confirm:
+Before building confirm:
 
 ```text
-versionCode = 19
-versionName = 0.19.0
+versionCode = 20
+versionName = 0.20.0
 ```
 
 Repository:
@@ -19,8 +19,6 @@ https://github.com/initial2024/codex
 
 ## Build
 
-Environment:
-
 ```text
 JDK 17
 Python 3.12 recommended
@@ -29,146 +27,128 @@ Android build-tools 35.0.0
 Gradle 8.10.2 or compatible
 ```
 
-Run from repository root:
+Run:
 
 ```bash
 gradle assembleDebug --no-daemon
 ```
 
-Do **not** pass `-PorbitSkipMatureImeData=true` for the user-test APK.
+Do not pass `-PorbitSkipMatureImeData=true`.
 
-## Mandatory preBuild chain
+## Mandatory preBuild
 
 ```text
-tools/test_ime_data_pipeline.py
+tools/test_ime_data_pipeline_v020.py
 -> tools/prepare_mature_ime_data.py
 -> AOSP + Jieba + ESDB/SCOWL en_US-large
 -> tools/augment_v018_data.py
 -> CC-CEDICT lexicon/translation + Unicode Emoji 17.0
+-> tools/augment_v020_data.py
+-> CC-CEDICT four-character idiom boost + project software vocabulary
 -> tools/validate_mature_ime_assets.py
 -> Android compilation
 ```
 
-`augment_v018_data.py` is the historical filename of the licensed augmentation stage; it remains mandatory in v0.19.
-
-## Data gates
-
-Do not lower these thresholds just to obtain a green build:
+## Required data gates
 
 ```text
-AOSP Chinese >= 40,000
+AOSP >= 40,000
 Jieba-derived >= 40,000
 CC-CEDICT >= 110,000
+CC-CEDICT four-character layer >= 3,000
+project software/platform vocabulary >= 100
 runtime Chinese >= 150,000
 English >= 100,000
 Unicode Emoji >= 3,000
-ZH->EN translation >= 80,000
-EN->ZH translation >= 50,000
+ZH->EN >= 80,000
+EN->ZH >= 50,000
 1-gram >= 5,000
 2-gram >= 30,000
 3-gram >= 30,000
 ```
 
-The previous report showing `English=81,373` and `CC-CEDICT not configured` came from the stale v0.17 pipeline. A valid v0.19 build must run the current chain above and must not reuse that result.
+Do not lower a gate simply to get a green build.
 
-## v0.19 feature gates
+## v0.20 behavior that must remain intact
 
-The validator also rejects these regressions:
+### Candidate depth and association
 
-```text
-personal learning free capacity = 20,000
-personal learning Pro placeholder = 100,000
-personal learning store = app-private base file + journal + compaction
-pet catalog >= 16
-outfit catalog >= 24
-sticker moods >= 8
-local sticker definitions >= 128
-```
+- Chinese and English visible candidate pools are up to 32.
+- `PinyinImeEngine` short-input internal search remains expanded (`MAX_RESULTS=32`, Beam result pool 32, prefix pool 64).
+- long input still adaptively narrows Beam/segmentation to avoid latency regression.
+- after Chinese commit, `NextAssociationEngine` + `NextPhraseData` generate next-word/next-phrase suggestions from bounded local context and packaged N-grams.
+- surrounding context is not persisted.
 
-### Personal learning
+### Idioms/software vocabulary
 
-Keep `UserDictionaryStore` file-backed. Do not revert to one giant SharedPreferences JSON value. Preserve legacy migration, app-private storage, append journal, periodic compaction and candidate-cache invalidation.
+- `augment_v020_data.py` remains wired into preBuild.
+- it derives four-character phrase/idiom boost data from the pinned CC-CEDICT source.
+- it merges `data/ime_sources/seed_software.tsv`.
+- do not replace this with an unreviewed internet idiom dump.
 
-Persistent records remain limited to:
+### Context translation
 
-```text
-pinyin
-candidate text
-frequency
-updatedAt
-```
+- ordinary/free behavior remains single-sentence local translation.
+- optional context translation is Pro-gated through `TranslationSettings` and disabled by default.
+- when enabled, only a bounded previous two-sentence cursor context is used in memory through `ContextTranslationEngine`.
+- previous context is not persisted and is not automatically inserted into the target editor.
+- no cloud/external translation API.
 
-Do not add surrounding conversation, app/package identity or full typed-stream persistence.
+### Sticker compatibility
 
-### Pets / outfits / feedback
+- direct image path remains `InputContentInfo` / `commitContent` when `image/png` is supported.
+- if direct IME image commit fails/unsupported, Orbit copies the generated PNG content URI to the system clipboard and grants temporary read permission to the current target package.
+- user can then try long-press paste in WeChat/QQ/etc.
+- if image clipboard cannot be prepared, Emoji fallback remains.
+- do not claim or code a bypass around target-app restrictions using Accessibility/overlay.
 
-Keep 16 catalog pets. New v0.19 pet variants intentionally reuse one of the eight stable local renderer archetypes through `visualBaseId`, so every new pet renders without requiring remote artwork.
+### Existing protections
 
-Keep 24 catalog outfits. New variants map through `visualId` to the stable visible accessory layers, so they must not become invisible list-only items.
-
-Keep local micro-feedback for recent candidate commit, clipboard save, translation, check-in, adoption, pet switch and outfit change. The feedback store contains only a short event code + timestamp, not the user's surrounding text.
-
-### Stickers
-
-With 16 pets × 8 states, `StickerPack` now defines at least 128 local stickers. New pet variants render through `visualBaseId`. Preserve `StickerOverlayRenderer`, PNG commit and Emoji fallback.
-
-### Input / translation / symbols
-
-Do not regress the existing v0.18 behavior:
-
-- candidate commit replaces active composing text instead of appending raw Pinyin;
-- continuous long Pinyin + DP segmentation + adaptive Beam + N-gram + local learning;
-- large lexicon participates in prefix and fuzzy recovery;
-- ESDB/SCOWL `en_US-large` English path;
-- 7-page `SymbolLibrary` and 26-key long-press mappings;
-- Unicode Emoji 17.0 full asset plus project kaomoji;
-- CC-CEDICT local translation shards through `CedictTranslationAsset`;
-- Recent/Pinned clipboard;
-- visual pet renderer;
-- privacy mode.
+Keep composing replacement, continuous long Pinyin, DP/adaptive Beam/N-gram/local learning, prefix/fuzzy recovery, 7-page symbols, letter long press, Unicode Emoji, personal file+journal learning, Recent/Pinned clipboard, 16 pets, 24 outfits, 128 stickers, privacy mode and non-exported sticker provider.
 
 ## If build fails
 
-Only repair the smallest blocker:
+Only repair the minimum blocker:
 
 - Kotlin syntax/import/method signature;
-- Android API/ContentProvider/InputContentInfo signature;
+- Android API/ContentProvider/InputContentInfo/ClipData signature;
 - XML/manifest/resource issue;
 - Gradle task ordering;
-- Python portability/deterministic parser bug;
+- Python portability/deterministic parser issue;
 - IME metadata.
 
-Do not bypass validation, delete v0.19 features, lower data gates, revert to small hard-coded dictionaries, or add runtime networking.
+Do not redesign, remove v0.20 features, bypass validators, lower data gates, revert to small dictionaries, or add runtime network access.
 
 ## Forbidden
 
-Do not add INTERNET, cloud prediction/translation, external APIs, ads/analytics/tracking, Accessibility, overlay, external-storage permission, background clipboard/input harvesting, full typed-stream persistence, app/package learning history, AI pet chat, 9-key, Wubi, handwriting, Compose migration, full keyboard Canvas rewrite, Room/Realm, billing or marketplace features.
+No INTERNET, cloud prediction/translation, external APIs, ads/analytics/tracking, Accessibility, overlay, external-storage permission, background clipboard/input harvesting, full typed-stream persistence, app/package learning history, AI pet chat, 9-key/Wubi/handwriting, Compose migration, full keyboard Canvas rewrite, Room/Realm, billing or marketplace changes.
 
-## Expected output
+## Expected
 
 ```text
-versionCode = 19
-versionName = 0.19.0
+versionCode = 20
+versionName = 0.20.0
 APK = app/build/outputs/apk/debug/app-debug.apk
-Actions artifact = orbit-ime-v0.19-debug-apk
+artifact = orbit-ime-v0.20-debug-apk
 ```
 
-## Build report
+Actions must remain manual `workflow_dispatch`.
+
+## Report
 
 Return:
 
 ```text
-1. git status before build
-2. git log -1 --oneline
-3. exact build command
-4. data-test result
-5. base mature-data preparation result
-6. CC-CEDICT/Unicode augmentation result
-7. mature validation result
-8. mature-report.json counts
-9. validator-reported personal-learning/pet/outfit/sticker counts
-10. minimum repair files, if any
-11. build success/failure
-12. APK path and size
-13. confirmation prohibited permissions/features were not added
+1. git status / current commit
+2. exact build command
+3. v0.20 offline data-test result
+4. base mature-data result
+5. v0.18 licensed augmentation result
+6. v0.20 idiom/software augmentation result
+7. validation result
+8. mature-report counts including idiom/software rows
+9. any minimum repair files and why
+10. build result
+11. APK path and size
+12. permission confirmation
 ```
