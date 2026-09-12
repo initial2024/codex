@@ -3,6 +3,7 @@ package com.ccwu.orbitime
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.text.SpannableString
@@ -46,6 +47,7 @@ class OrbitInputMethodService : InputMethodService() {
     private var translateSourceLabel: String? = null
     private var translatePromptPreview: String? = null
     private var offlineTranslationPreview: String? = null
+    private var contextTranslationBundle: ContextTranslationEngine.Bundle? = null
     private var translateLiveMode = false
     private var translateComposeText = ""
 
@@ -316,8 +318,12 @@ class OrbitInputMethodService : InputMethodService() {
                     bind(sticker, activeSkin())
                     setOnClickListener { commitSticker(sticker) }
                     setOnLongClickListener {
-                        clipboardManager.setPrimaryClip(ClipData.newPlainText("Orbit sticker fallback", sticker.fallbackText))
-                        toast("已复制备用 Emoji")
+                        if (copyStickerImageToClipboard(sticker)) {
+                            toast("图片贴图已复制，可在微信/QQ输入框长按粘贴")
+                        } else {
+                            clipboardManager.setPrimaryClip(ClipData.newPlainText("Orbit sticker fallback", sticker.fallbackText))
+                            toast("图片复制失败，已复制备用 Emoji")
+                        }
                         true
                     }
                     isClickable = true
@@ -384,22 +390,54 @@ class OrbitInputMethodService : InputMethodService() {
             expressionStore.record(sticker.fallbackText)
             petRepository.recordCandidateCommit()
             toast("已发送 ${sticker.label}")
+            return
+        }
+
+        if (copyStickerImageToClipboard(sticker)) {
+            expressionStore.record(sticker.fallbackText)
+            petRepository.recordCandidateCommit()
+            toast("目标 App 不支持 IME 图片直发；贴图已复制，请在微信/QQ输入框长按粘贴")
         } else {
             inputConnection.commitText(sticker.fallbackText, 1)
             expressionStore.record(sticker.fallbackText)
             if (!sensitiveMode) petRepository.recordTypedChars(sticker.fallbackText.length)
-            toast("当前输入框不支持图片贴图，已使用 Emoji")
+            toast("图片贴图不可用，已使用 Emoji")
         }
     }
+
+    private fun copyStickerImageToClipboard(sticker: StickerDefinition): Boolean = runCatching {
+        StickerRenderer.fileFor(this, sticker)
+        val uri = StickerPack.uri(this, sticker)
+        val targetPackage = currentInputEditorInfo?.packageName
+        if (!targetPackage.isNullOrBlank()) {
+            grantUriPermission(targetPackage, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        clipboardManager.setPrimaryClip(ClipData.newUri(contentResolver, sticker.label, uri))
+        true
+    }.getOrDefault(false)
 
     private fun buildTranslatePanel(parent: LinearLayout) {
         updateLiveTranslationPreview()
         val source = currentTranslationSource()
-        parent.addView(labelBox("翻译键盘 · ${translateDirection.label} · 本地", muted = false, accent = true))
+        val contextAvailable = TranslationSettings.isContextTranslationAvailable(this)
+        val contextEnabled = TranslationSettings.isContextTranslationEnabled(this)
+        val modeLabel = if (contextEnabled) "上下文" else "单句"
+        parent.addView(labelBox("翻译键盘 · ${translateDirection.label} · 本地 · $modeLabel", muted = false, accent = true))
         parent.addView(labelBox("原文：${source.ifBlank { if (translateDirection == TranslatePromptBuilder.Direction.ZH_TO_EN) "输入中文或连续拼音" else "Type English" }.shortLabel(76)}", muted = source.isBlank(), accent = false))
         val translationLine = offlineTranslationPreview?.let { "译文：${it.shortLabel(90)}" }
             ?: if (source.isBlank()) "输入后自动显示本地译文" else OfflineTranslationPack.unavailableMessage()
         parent.addView(labelBox(translationLine, muted = offlineTranslationPreview == null, accent = offlineTranslationPreview != null))
+
+        val contextBundle = contextTranslationBundle
+        if (contextEnabled && contextBundle != null && contextBundle.contextSentenceCount > 0) {
+            parent.addView(labelBox("上下文参考（前 ${contextBundle.contextSentenceCount} 句）：${contextBundle.contextSourcePreview.shortLabel(96)}", muted = true, accent = false))
+            if (contextBundle.contextTranslationPreview.isNotBlank()) {
+                parent.addView(labelBox("上下文整段译文：${contextBundle.contextTranslationPreview.shortLabel(110)}", muted = false, accent = true))
+            }
+        } else if (!contextAvailable) {
+            parent.addView(labelBox("普通用户：单句本地翻译；上下文翻译为 Pro 可选功能", muted = true, accent = false))
+        }
+
         if (pinyinBuffer.isNotEmpty()) buildPinyinCandidateBar(parent)
         if (englishBuffer.isNotEmpty()) buildEnglishCandidateBar(parent)
 
@@ -407,6 +445,15 @@ class OrbitInputMethodService : InputMethodService() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         if (offlineTranslationPreview != null) row.addView(chip("译文上屏", emphasized = true) { insertLiveTranslation() })
         if (source.isNotBlank()) row.addView(chip("原文上屏") { insertLiveSource() })
+        if (contextAvailable) {
+            row.addView(chip(if (contextEnabled) "上下文：开" else "上下文：关", emphasized = contextEnabled) {
+                TranslationSettings.setContextTranslationEnabled(this, !contextEnabled)
+                updateLiveTranslationPreview()
+                refreshDynamicHost()
+            })
+        } else {
+            row.addView(chip("上下文·Pro") { toast("普通用户仅提供单句翻译；Pro 可选择开启本地上下文参考") })
+        }
         row.addView(chip("换方向") { toggleTranslateDirection(regenerate = true) })
         row.addView(chip("前一句") { loadTranslationSource("前一句", readPreviousSentence()) })
         row.addView(chip("选中文本") { loadTranslationSource("选中文本", readSelectedText()) })
@@ -455,7 +502,7 @@ class OrbitInputMethodService : InputMethodService() {
         val candidates = candidatesForCurrentPinyin()
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(labelBox("拼音：${pinyinBuffer.shortLabel(40)}", muted = false, accent = true))
+        row.addView(labelBox("拼音：${pinyinBuffer.shortLabel(32)} · ${candidates.size}候选", muted = false, accent = true))
         candidates.forEachIndexed { index, candidate -> row.addView(chip(candidate, emphasized = index == 0) { commitPinyinCandidate(candidate) }) }
         row.addView(chip("清空", warning = true) { clearPinyinComposition(); refreshDynamicHost() })
         scroller.addView(row)
@@ -466,7 +513,7 @@ class OrbitInputMethodService : InputMethodService() {
         val candidates = candidatesForCurrentEnglish()
         val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(labelBox("word: ${englishBuffer.shortLabel(40)}", muted = false, accent = true))
+        row.addView(labelBox("word: ${englishBuffer.shortLabel(32)} · ${candidates.size}", muted = false, accent = true))
         candidates.forEachIndexed { index, candidate -> row.addView(chip(candidate, emphasized = index == 0) { commitEnglishCandidate(candidate, appendSpace = false) }) }
         row.addView(chip("clear", warning = true) { clearEnglishComposition(); refreshDynamicHost() })
         scroller.addView(row)
@@ -492,8 +539,21 @@ class OrbitInputMethodService : InputMethodService() {
             }
             row.addView(miniPet, LinearLayout.LayoutParams(dp(64), dp(34)).apply { setMargins(dp(2), 0, dp(4), 0) })
         }
+
+        val associations = if (inputMode == InputMode.PINYIN) {
+            userDictionary.nextSuggestions(readCandidateContextBeforeCursor(), NEXT_SUGGESTION_LIMIT)
+        } else {
+            emptyList()
+        }
+        if (associations.isNotEmpty()) {
+            row.addView(labelBox("联想", muted = false, accent = true))
+            associations.forEach { value -> row.addView(chip(value.shortLabel()) { commitDirectText(value) }) }
+        }
+
         val phrases = if (inputMode == InputMode.PINYIN) TemplateLibrary.quickPhrasesForPinyin() else TemplateLibrary.quickPhrasesForEnglish()
-        phrases.forEach { phrase -> row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) }) }
+        phrases.asSequence().filterNot { it in associations }.take(24).forEach { phrase ->
+            row.addView(chip(phrase.shortLabel()) { commitDirectText(phrase) })
+        }
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
@@ -738,9 +798,9 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun readCandidateContextBeforeCursor(): String? {
-        val raw = currentInputConnection?.getTextBeforeCursor(96, 0)?.toString() ?: return null
+        val raw = currentInputConnection?.getTextBeforeCursor(192, 0)?.toString() ?: return null
         val withoutComposition = if (pinyinBuffer.isNotEmpty() && raw.endsWith(pinyinBuffer)) raw.dropLast(pinyinBuffer.length) else raw
-        return withoutComposition.takeLast(64)
+        return withoutComposition.takeLast(128)
     }
 
     private fun invalidatePinyinUiCache() {
@@ -870,7 +930,13 @@ class OrbitInputMethodService : InputMethodService() {
         val source = currentTranslationSource().trim()
         translateSourceText = source.ifBlank { null }
         translateSourceLabel = "翻译键盘"
-        offlineTranslationPreview = if (source.isBlank()) null else OfflineTranslationPack.translateOrNull(source, translateDirection)?.translatedText
+        val direct = if (source.isBlank()) null else OfflineTranslationPack.translateOrNull(source, translateDirection)
+        contextTranslationBundle = if (source.isNotBlank() && TranslationSettings.isContextTranslationEnabled(this)) {
+            ContextTranslationEngine.translate(source, readTranslationContext().orEmpty(), translateDirection)
+        } else {
+            null
+        }
+        offlineTranslationPreview = contextTranslationBundle?.currentTranslation ?: direct?.translatedText
         translatePromptPreview = if (source.isBlank()) null else TranslatePromptBuilder.build(source, translateDirection)
     }
 
@@ -910,6 +976,7 @@ class OrbitInputMethodService : InputMethodService() {
         translateSourceText = null
         translatePromptPreview = null
         offlineTranslationPreview = null
+        contextTranslationBundle = null
     }
 
     private fun insertLiveTranslation() {
@@ -947,6 +1014,7 @@ class OrbitInputMethodService : InputMethodService() {
         translateSourceLabel = null
         translatePromptPreview = null
         offlineTranslationPreview = null
+        contextTranslationBundle = null
     }
 
     private fun readSelectedText(): String? = currentInputConnection?.getSelectedText(0)?.toString()
@@ -955,6 +1023,9 @@ class OrbitInputMethodService : InputMethodService() {
         val text = currentInputConnection?.getTextBeforeCursor(360, 0)?.toString() ?: return null
         return extractLastSentence(text)
     }
+
+    private fun readTranslationContext(): String? =
+        currentInputConnection?.getTextBeforeCursor(720, 0)?.toString()?.takeLast(720)
 
     private fun extractLastSentence(raw: String): String? {
         val cleaned = raw.trim().trimEnd('。', '！', '？', '.', '!', '?', '\n', '\r', ' ', '\t')
@@ -983,7 +1054,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun pasteClipboard(saveAfterPaste: Boolean) {
         val text = readClipboardText()
-        if (text.isNullOrBlank()) { toast("剪贴板为空"); return }
+        if (text.isNullOrBlank()) { toast("剪贴板没有可粘贴文字"); return }
         if (!sensitiveMode) store.capture(text)
         commitDirectText(text)
         if (saveAfterPaste && !sensitiveMode) store.capture(text)
@@ -992,7 +1063,7 @@ class OrbitInputMethodService : InputMethodService() {
     private fun saveClipboard() {
         if (sensitiveMode) { toast("隐私模式"); return }
         val text = readClipboardText()
-        if (text.isNullOrBlank()) { toast("剪贴板为空"); return }
+        if (text.isNullOrBlank()) { toast("剪贴板没有文字内容"); return }
         if (store.capture(text)) {
             petRepository.recordClipSave()
             toast("已同步到本机剪贴板历史")
@@ -1003,7 +1074,9 @@ class OrbitInputMethodService : InputMethodService() {
     private fun readClipboardText(): String? {
         val clip = clipboardManager.primaryClip ?: return null
         if (clip.itemCount <= 0) return null
-        return clip.getItemAt(0).coerceToText(this)?.toString()
+        val item = clip.getItemAt(0)
+        return item.text?.toString()?.takeIf { it.isNotBlank() }
+            ?: item.htmlText?.toString()?.takeIf { it.isNotBlank() }
     }
 
     private fun chip(
@@ -1059,6 +1132,7 @@ class OrbitInputMethodService : InputMethodService() {
     companion object {
         private const val MAX_PINYIN_BUFFER = 192
         private const val MAX_ENGLISH_BUFFER = 96
+        private const val NEXT_SUGGESTION_LIMIT = 24
         private const val EXPRESSION_RECENT = "recent"
         private const val EXPRESSION_UNICODE = "unicode_all"
         private const val EXPRESSION_STICKERS = "stickers"
