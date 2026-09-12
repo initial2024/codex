@@ -84,8 +84,8 @@ def main() -> int:
         require(token not in android_manifest, f"forbidden manifest capability found: {token}")
 
     gradle = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-    require('versionCode = 16' in gradle, "versionCode is not 16")
-    require('versionName = "0.16.0"' in gradle, "versionName is not 0.16.0")
+    require('versionCode = 17' in gradle, "versionCode is not 17")
+    require('versionName = "0.17.0"' in gradle, "versionName is not 0.17.0")
 
     summary = {
         "status": "PASS",
