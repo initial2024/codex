@@ -69,7 +69,7 @@ class UserDictionaryStore(private val context: Context) {
             .filter { (pinyin, _) -> pinyin != query && pinyin.startsWith(query) }
             .flatMap { (_, bucket) -> bucket.values.asSequence() }
             .sortedWith(ENTRY_ORDER).map { it.text }.take(MAX_CANDIDATES).toList()
-        val containsUser = if (exactUser.isEmpty() && prefixUser.size < 4) {
+        val containsUser = if (exactUser.isEmpty() && prefixUser.size < 6) {
             entriesByPinyin.asSequence()
                 .filter { (pinyin, _) -> pinyin != query && pinyin.contains(query) }
                 .flatMap { (_, bucket) -> bucket.values.asSequence() }
@@ -95,10 +95,10 @@ class UserDictionaryStore(private val context: Context) {
             .sortedWith(ENTRY_ORDER).map { it.text }.distinct().take(MAX_CANDIDATES)
     }
 
-    fun nextSuggestions(contextBeforeCursor: String?, limit: Int = 24): List<String> {
+    fun nextSuggestions(contextBeforeCursor: String?, limit: Int = DEFAULT_ASSOCIATION_LIMIT): List<String> {
         val context = contextBeforeCursor.orEmpty().trimEnd()
         if (context.isBlank()) return emptyList()
-        return associationEngine.suggestions(context, limit)
+        return associationEngine.suggestions(context, limit.coerceIn(1, MAX_ASSOCIATION_LIMIT))
     }
 
     @Synchronized
@@ -314,7 +314,9 @@ class UserDictionaryStore(private val context: Context) {
         private const val JOURNAL_FILE = "journal.tsv"
         private const val JOURNAL_COMPACT_WRITES = 512
         private const val JOURNAL_COMPACT_BYTES = 1_048_576L
-        private const val MAX_CANDIDATES = 32
+        private const val MAX_CANDIDATES = 48
+        private const val DEFAULT_ASSOCIATION_LIMIT = 48
+        private const val MAX_ASSOCIATION_LIMIT = 64
         private const val MAX_FREQUENCY = 999_999
         private const val MAX_PINYIN_LENGTH = 192
         private const val MAX_TEXT_LENGTH = 128
