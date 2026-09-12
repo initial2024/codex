@@ -11,8 +11,8 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.23.0"
+        versionCode = 26
+        versionName = "0.26.0"
     }
 
     buildFeatures { buildConfig = true }
@@ -24,6 +24,12 @@ android {
 }
 
 kotlin { jvmToolchain(17) }
+
+dependencies {
+    // Pinned official sherpa-onnx Android AAR through the project's JitPack setup.
+    // Used by v0.24 ASR, v0.25 TTS and v0.26 ZipVoice voice-clone providers.
+    implementation("com.github.k2-fsa:sherpa-onnx:1.13.4")
+}
 
 val orbitSkipMatureImeData = providers.gradleProperty("orbitSkipMatureImeData")
     .map { it.toBoolean() }.orElse(false)
