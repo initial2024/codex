@@ -17,22 +17,22 @@ class NextAssociationEngine(context: Context) {
     private val trigram: Map<String, Int> by lazy { loadNGramAsset(3) }
 
     private val unigramTop: List<TokenScore> by lazy {
-        unigram.entries.sortedByDescending { it.value }.take(96)
-            .map { TokenScore(it.key, it.value, 0.18) }
+        unigram.entries.sortedByDescending { it.value }.take(160)
+            .map { TokenScore(it.key, it.value, 0.16) }
     }
 
-    private val bigramNext: Map<String, List<TokenScore>> by lazy { buildNextIndex(bigram, 2, 0.72) }
-    private val trigramNext: Map<String, List<TokenScore>> by lazy { buildNextIndex(trigram, 3, 1.08) }
+    private val bigramNext: Map<String, List<TokenScore>> by lazy { buildNextIndex(bigram, 2, 0.76) }
+    private val trigramNext: Map<String, List<TokenScore>> by lazy { buildNextIndex(trigram, 3, 1.14) }
 
-    fun suggestions(rawContext: String, limit: Int = 32): List<String> {
-        val fast = associationAsset.suggestions(rawContext, limit * 2).map { it.text }
-        val curated = NextPhraseData.suggestions(rawContext, limit)
+    fun suggestions(rawContext: String, limit: Int = DEFAULT_LIMIT): List<String> {
+        val safeLimit = limit.coerceIn(1, MAX_LIMIT)
+        val fast = associationAsset.suggestions(rawContext, safeLimit * 3).map { it.text }
+        val curated = NextPhraseData.suggestions(rawContext, safeLimit)
         val contextTokens = extractContextTokens(rawContext)
-        if (contextTokens.isEmpty()) return (fast + curated).distinct().take(limit)
+        if (contextTokens.isEmpty()) return (fast + curated).distinct().take(safeLimit)
 
-        // The large precomputed association pack is the primary path. N-gram Beam is
-        // retained as a flexible fallback/continuation layer and only explores a small
-        // bounded graph, keeping post-commit latency stable as dictionaries grow.
+        // Mature IMEs make next-word prediction cheap by front-loading indexed results.
+        // The precomputed association pack stays first; bounded N-gram Beam only fills gaps.
         var beam = listOf(Hypothesis(emptyList(), 0.0))
         val generated = mutableListOf<Pair<String, Double>>()
         repeat(MAX_CONTINUATION_TOKENS) { step ->
@@ -42,7 +42,7 @@ class NextAssociationEngine(context: Context) {
                 nextOptions(history).take(MAX_BRANCHES).forEach { option ->
                     if (option.token.isBlank()) return@forEach
                     val tokens = hypothesis.tokens + option.token
-                    val score = hypothesis.score + option.weight * ln(1.0 + option.count) + (step + 1) * 0.10
+                    val score = hypothesis.score + option.weight * ln(1.0 + option.count) + (step + 1) * 0.08
                     val next = Hypothesis(tokens, score)
                     nextBeam += next
                     val text = joinTokens(tokens)
@@ -63,7 +63,7 @@ class NextAssociationEngine(context: Context) {
         return (fast + curated + ngram)
             .distinct()
             .filterNot { rawContext.trimEnd().endsWith(it) }
-            .take(limit)
+            .take(safeLimit)
     }
 
     private fun nextOptions(history: List<String>): List<TokenScore> {
@@ -78,7 +78,9 @@ class NextAssociationEngine(context: Context) {
                 if (old == null || score.count * score.weight > old.count * old.weight) merged[score.token] = score
             }
         }
-        if (merged.size < 12) unigramTop.forEach { score -> merged.putIfAbsent(score.token, score) }
+        if (merged.size < MIN_CONTEXTUAL_OPTIONS) {
+            unigramTop.forEach { score -> merged.putIfAbsent(score.token, score) }
+        }
         return merged.values.sortedByDescending { it.weight * ln(1.0 + it.count) }
     }
 
@@ -93,13 +95,13 @@ class NextAssociationEngine(context: Context) {
             bucket[token] = maxOf(bucket[token] ?: 0, count)
         }
         return temp.mapValues { (_, bucket) ->
-            bucket.entries.sortedByDescending { it.value }.take(64)
+            bucket.entries.sortedByDescending { it.value }.take(MAX_NEXT_PER_PREFIX)
                 .map { TokenScore(it.key, it.value, weight) }
         }
     }
 
     private fun extractContextTokens(raw: String): List<String> {
-        val tail = raw.takeLast(128)
+        val tail = raw.takeLast(MAX_CONTEXT_SCAN_CHARS)
         val result = mutableListOf<String>()
         val latin = StringBuilder()
         fun flushLatin() {
@@ -116,7 +118,7 @@ class NextAssociationEngine(context: Context) {
             }
         }
         flushLatin()
-        return result.takeLast(12)
+        return result.takeLast(MAX_CONTEXT_TOKENS)
     }
 
     private fun joinTokens(tokens: List<String>): String {
@@ -159,9 +161,15 @@ class NextAssociationEngine(context: Context) {
 
     companion object {
         private const val SEPARATOR = "\u0001"
-        private const val MAX_CONTINUATION_TOKENS = 4
-        private const val MAX_BRANCHES = 10
-        private const val BEAM_WIDTH = 24
-        private const val MAX_SUGGESTION_CHARS = 28
+        const val DEFAULT_LIMIT = 48
+        const val MAX_LIMIT = 64
+        private const val MAX_CONTINUATION_TOKENS = 6
+        private const val MAX_BRANCHES = 16
+        private const val BEAM_WIDTH = 40
+        private const val MAX_SUGGESTION_CHARS = 48
+        private const val MAX_NEXT_PER_PREFIX = 96
+        private const val MIN_CONTEXTUAL_OPTIONS = 20
+        private const val MAX_CONTEXT_SCAN_CHARS = 220
+        private const val MAX_CONTEXT_TOKENS = 18
     }
 }
