@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build when Orbit v0.26 mature assets, privacy gates or local runtimes regress."""
+"""Fail the build when Orbit v0.27 mature assets, privacy gates or local runtimes regress."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +24,7 @@ def read(path: Path) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate Orbit v0.26 mature IME assets/runtime gates")
+    parser = argparse.ArgumentParser(description="Validate Orbit v0.27 mature IME assets/runtime gates")
     parser.add_argument("--assets", default=str(DEFAULT_ASSETS))
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     args = parser.parse_args()
@@ -131,7 +131,7 @@ def main() -> int:
     settings = read(ROOT / "settings.gradle.kts")
     require('https://jitpack.io' in settings, "sherpa JitPack build repository missing")
     gradle = read(ROOT / "app/build.gradle.kts")
-    require('versionCode = 26' in gradle and 'versionName = "0.26.0"' in gradle, "Gradle is not v0.26.0")
+    require('versionCode = 27' in gradle and 'versionName = "0.27.0"' in gradle, "Gradle is not v0.27.0")
     require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 dependency missing")
     for token in ("test_ime_data_pipeline_v023.py", "augment_v023_data.py", "test_model_pack_pipeline.py"):
         require(token in gradle, f"preBuild stage missing: {token}")
