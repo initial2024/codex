@@ -44,6 +44,9 @@ class UserDictionaryStore(private val context: Context) {
     private val imeEngine: PinyinImeEngine by lazy(LazyThreadSafetyMode.NONE) {
         PinyinImeEngine(context.applicationContext, this)
     }
+    private val associationEngine: NextAssociationEngine by lazy(LazyThreadSafetyMode.NONE) {
+        NextAssociationEngine(context.applicationContext)
+    }
 
     fun candidatesFor(
         rawInput: String,
@@ -90,6 +93,12 @@ class UserDictionaryStore(private val context: Context) {
         ensureLoaded()
         return entriesByPinyin[query].orEmpty().values
             .sortedWith(ENTRY_ORDER).map { it.text }.distinct().take(MAX_CANDIDATES)
+    }
+
+    fun nextSuggestions(contextBeforeCursor: String?, limit: Int = 24): List<String> {
+        val context = contextBeforeCursor.orEmpty().trimEnd()
+        if (context.isBlank()) return emptyList()
+        return associationEngine.suggestions(context, limit)
     }
 
     @Synchronized
@@ -305,7 +314,7 @@ class UserDictionaryStore(private val context: Context) {
         private const val JOURNAL_FILE = "journal.tsv"
         private const val JOURNAL_COMPACT_WRITES = 512
         private const val JOURNAL_COMPACT_BYTES = 1_048_576L
-        private const val MAX_CANDIDATES = 12
+        private const val MAX_CANDIDATES = 32
         private const val MAX_FREQUENCY = 999_999
         private const val MAX_PINYIN_LENGTH = 192
         private const val MAX_TEXT_LENGTH = 128
