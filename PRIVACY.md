@@ -4,70 +4,104 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.23.0`.
+This policy applies to Orbit IME `0.26.0`.
 
 ## Network
 
-The installed Orbit IME does not request `INTERNET`. Input text, clipboard text, composing buffers, translation text, ranking state, personal dictionary entries, pet data, custom phrases, appearance settings, generated stickers and imported model packs are not uploaded.
+The installed Orbit IME does **not** request `INTERNET`. Input text, clipboard text, composing buffers, translation text, ranking state, personal dictionary entries, pet data, custom phrases, generated stickers, imported model packs, ASR audio, TTS text/audio and authorized voice references are not uploaded by Orbit.
 
-Dictionary/frequency/Emoji sources are downloaded only by the build machine, hash-verified and converted to packaged offline assets. v0.23 adds pinned THUOCL domain data and HermitDave/FrequencyWords usage-frequency data to the existing AOSP/Jieba/CC-CEDICT/ESDB/Unicode pipeline. Their notices are packaged with the generated assets.
-
-The model-pack manager does not download models. Source buttons open an external browser; Orbit receives a pack only after the user explicitly selects a local file through Android Storage Access Framework.
+Build-time dictionary/frequency/Emoji sources are pinned/hash-verified and converted to packaged offline assets. The model-pack manager itself does not download models: source buttons open an external browser, and Orbit only receives files explicitly selected by the user through Android Storage Access Framework.
 
 ## Advertising and analytics
 
-No ad SDK, analytics, tracking, remote configuration or cloud prediction is included.
+No ad SDK, analytics, tracking, remote configuration, cloud prediction or cloud translation is included.
 
-## Selection, composing and input ranking
+## Mature input/ranking
 
-Orbit keeps selection-aware replace/delete behavior and composing replacement. Local candidate ranking uses static frequency, packaged N-grams, bounded cursor context and local user selection frequency.
+Orbit keeps selection-aware editing, composing replacement, local frequency/N-gram/context ranking, 48-candidate Chinese/English pools, adaptive long-Pinyin Beam search, three-level fuzzy correction and the local association asset. Bounded cursor context used for ranking/association is not persisted by those engines.
 
-v0.23 packages a 32-shard association index. After a candidate is committed, Orbit reads only a bounded text tail before the cursor, queries local indexed associations first, then adds bounded N-gram continuation. The runtime can display up to 48 post-commit suggestions. Association context is never persisted by the association engine.
+## Persistent settings and personal learning
 
-Chinese and English candidate pools can display up to 48 candidates. Larger prefix/fuzzy search pools are bounded and cached; long Pinyin Beam search narrows adaptively as input grows so expanding the dictionaries does not make long-sentence search unbounded.
+Input mode, quick-phrase settings, association/fuzzy settings, translation context, appearance, skins, pet/outfit and Pro state are local preferences.
 
-Fuzzy correction can be Off, Standard or Enhanced. The selected level is stored locally. Exact input is ranked before fuzzy alternatives. Fuzzy generation does not upload misspellings or create a persistent record of raw typing.
-
-## Persistent settings and appearance
-
-Local preferences include input mode, quick-phrase visibility, built-in phrase visibility, association toggle, fuzzy level, translation context toggle, appearance mode, selected skin, pet/outfit state and Pro state.
-
-Appearance supports Follow system, Light, Dark, AMOLED black and Custom skin. Follow system reads only Android's local `UI_MODE_NIGHT` configuration and requires no account, network or location data.
-
-## Personal learning
-
-Free supports 20,000 local entries; Pro supports 100,000. The app-private store uses `dictionary.tsv + journal.tsv` and compaction. Persistent learning records remain limited to Pinyin, committed candidate text, frequency and updatedAt. Full conversations, target-app identity and complete typed streams are not stored.
+Free personal learning supports 20,000 entries and Pro 100,000. The app-private `dictionary.tsv + journal.tsv` store persists only Pinyin, committed candidate text, frequency and updatedAt. Full conversations, target-app identity and a complete raw typed stream are not stored.
 
 ## Clipboard
 
-Recent/Pinned clipboard listening exists only while the IME window is visible. There is no background clipboard service. Suspicious OTP/password/API-key/session-like text is rejected before persistence.
+Recent/Pinned clipboard listening exists only while the IME is visible. There is no background clipboard service. Suspicious OTP/password/API-key/session-like text is rejected before persistence.
 
 ## Translation
 
-Free single-sentence translation stays fully local. v0.23 uses exact bilingual data first, then a bounded dynamic-programming translator that prefers longer phrases and preserves unknown source instead of fabricating coverage. Output is locally normalized for punctuation and spacing.
+Free single-sentence translation and Pro context/long-form translation remain local. Context translation reads at most a bounded previous-text window (up to four previous sentences) for the current operation; selected long-form translation is capped and preserves uncovered source rather than inventing a translation.
 
-Pro may enable local context translation and selected long-form translation up to 8,000 characters. Context translation reads at most the previous four sentences from a bounded in-memory text tail and keeps sentence/paragraph boundaries. Long-form translation keeps line breaks and splits unusually long sentences into bounded clauses for local processing. If a work budget is reached or a fragment is not covered, the original fragment is retained rather than dropped.
+Third-party neural translation packs may be installed/audited, but v0.26 does not claim generic Marian/OPUS-MT neural output because that Android decoder is not bundled.
 
-Translation source/context exists only for the current operation and is not added to the personal dictionary.
+## Pro local model packs
 
-Imported neural translation packs remain non-executable until a separately validated Android neural runtime is bundled. v0.23 does not claim neural output when that runtime is absent.
+`.orbitpack` files require manifest/LICENSE/NOTICE/checksums/model payloads. Orbit validates paths, duplicate entries, archive limits, offline-only declaration and SHA-256 coverage before app-private installation. Packs declaring `android.permission.INTERNET` are rejected.
 
-## Local model packs
+Users see source, license, commercial/redistribution declarations, resource requirements and disclaimers before installation. Integrity validation is not legal advice; third-party license obligations remain tied to the actual model/checkpoint/voice.
 
-Pro `.orbitpack` management from v0.22 remains. Packs require `manifest.json`, `LICENSE.txt`, `NOTICE.txt`, `checksums.sha256` and model files. Orbit checks paths, duplicate entries, size limits, offline-only privacy declaration and SHA-256 before app-private installation. Packs declaring `android.permission.INTERNET` are rejected.
+## Local ASR — v0.24+
 
-The user explicitly accepts source/license/performance/privacy disclaimers before installation. Integrity validation is not legal advice; third-party model terms remain the user's responsibility.
+Orbit v0.24+ declares `RECORD_AUDIO` solely for explicit local voice input.
+
+- Orbit does not start microphone capture in the background.
+- The user explicitly taps the keyboard Voice action to start capture and taps again to stop/recognize.
+- Capture is mono PCM16 at 16 kHz, kept in RAM only, capped at 60 seconds and not written to an ASR-history file.
+- Hiding the IME cancels an active capture.
+- Sensitive/password-like fields hide speech tools and cancel capture.
+- Importing an ASR model pack does not itself start recording.
+
+The enabled ASR model is user-installed in app-private storage. Recognition runs locally through the supported sherpa-onnx adapter.
+
+## Local TTS — v0.25+
+
+Local TTS runs only after a user action. From the keyboard, Orbit reads the current selected text first; if there is no selection, it reads only the previous sentence for the requested playback. Settings preview uses only text typed into the preview field.
+
+Generated PCM is played locally and is not uploaded or automatically persisted as an audio history.
+
+## Authorized voice clone — v0.26+
+
+Voice cloning is Pro-only and user-triggered. Orbit currently executes only the supported sherpa ZipVoice adapter.
+
+A reference voice is saved only after the user explicitly confirms that it is their own voice or a voice for which they have explicit authorization. The reference must be a 2–30 second mono PCM16 WAV with the matching reference transcript. The WAV and metadata are copied to app-private storage and can be deleted from settings.
+
+Orbit does not record a reference voice silently. Voice cloning must not be used for impersonation, fraud, harassment, deceptive content or unauthorized commercial voice use. Generated speech may contain errors or distortions.
+
+## Audio8 / other experimental models
+
+Curated source entries do not mean every model is executable or commercially safe. Audio8 0.6B and 0.1B, NLLB and other candidates keep their distinct upstream licenses. If no audited Android adapter exists, Orbit marks the installed pack non-executable instead of faking model output.
 
 ## Emoji, stickers and pets
 
-Unicode Emoji, project kaomoji and 128 local pet sticker definitions remain local. Sticker PNGs are generated in app-private cache. `OrbitStickerProvider` remains non-exported with temporary URI grants. Pet state and small feedback event codes stay local; no overlay or cloud pet service is used.
+Unicode Emoji, project kaomoji and local pet stickers remain local. Sticker PNGs are generated in app-private cache. `OrbitStickerProvider` remains non-exported with temporary URI grants. Pet state and feedback codes stay local; no overlay/cloud pet service is used.
 
 ## Sensitive fields
 
-Password-like/no-personalized-learning fields hide extra tools, detach clipboard listening, clear composing/translation state, disable pet growth and block personal learning.
+Password-like/no-personalized-learning fields hide extra tools, detach clipboard listening, cancel active microphone capture, clear composing/translation state, disable pet growth and block personal learning.
 
-## Permissions intentionally not requested
+## Permissions
 
-Orbit v0.23 does not request Internet, microphone, Accessibility, overlay/floating-window, contacts, SMS, location, camera, external storage or notifications.
+Orbit v0.26 intentionally requests:
 
-Future ASR can request `RECORD_AUDIO` only in a later version with a separate explicit user-controlled voice-input flow. Importing an ASR model pack alone must not request microphone access.
+```text
+android.permission.BIND_INPUT_METHOD
+android.permission.RECORD_AUDIO
+```
+
+`RECORD_AUDIO` is only for explicit local ASR as described above.
+
+Orbit intentionally does **not** request:
+
+```text
+INTERNET
+Accessibility Service
+SYSTEM_ALERT_WINDOW / overlay
+external storage
+contacts
+SMS
+location
+camera
+POST_NOTIFICATIONS
+```
