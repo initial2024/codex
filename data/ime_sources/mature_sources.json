@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "sources": {
     "aosp_pinyin": {
       "name": "AOSP PinyinIME raw dictionary",
@@ -14,6 +14,21 @@
       "url": "https://raw.githubusercontent.com/LineageOS/android_packages_inputmethods_PinyinIME/a08d08cdea4319fb74b55289e1b4e1b1a5249bc2/NOTICE",
       "git_blob_sha1": "64aaa8dbd68e6917b35c02655ba2f8d763165368",
       "license": "Apache-2.0",
+      "redistribution_allowed": true
+    },
+    "jieba_dict": {
+      "name": "Jieba default Chinese frequency dictionary",
+      "url": "https://raw.githubusercontent.com/fxsjy/jieba/67fa2e36e72f69d9134b8a1037b83fbb070b9775/jieba/dict.txt",
+      "git_blob_sha1": "fc6075f64943e1861c420db4da38063de9d8afc5",
+      "license": "MIT",
+      "attribution": "Jieba contributors; default frequency dictionary from fxsjy/jieba",
+      "redistribution_allowed": true
+    },
+    "jieba_license": {
+      "name": "Jieba MIT license",
+      "url": "https://raw.githubusercontent.com/fxsjy/jieba/67fa2e36e72f69d9134b8a1037b83fbb070b9775/LICENSE",
+      "git_blob_sha1": "9d7e66bf3bf39ea039e2d943f1e9de28f216b049",
+      "license": "MIT",
       "redistribution_allowed": true
     },
     "esdb_en_us": {
@@ -36,14 +51,20 @@
     "aosp_frequency_scale": 100,
     "aosp_max_phrase_chars": 12,
     "minimum_aosp_entries": 40000,
+    "jieba_frequency_scale": 18,
+    "jieba_min_phrase_chars": 2,
+    "jieba_max_phrase_chars": 12,
+    "jieba_polyphone_ratio": 2.5,
+    "minimum_jieba_generated_entries": 40000,
+    "minimum_runtime_lexicon_entries": 90000,
     "english_min_key_length": 2,
     "english_max_key_length": 28,
     "english_base_frequency": 40000,
     "minimum_english_entries": 50000,
     "ngram_limits": {
-      "1": 8000,
-      "2": 25000,
-      "3": 25000
+      "1": 12000,
+      "2": 40000,
+      "3": 40000
     }
   }
 }
