@@ -1,14 +1,10 @@
-# Codex handoff task: validate and build Orbit IME v0.15 later
+# Codex handoff: build Orbit IME v0.15.0 APK only
 
-## Status
+## Scope
 
-Orbit IME `0.15.0` Local IME Engine has been prepared.
+All product design, data-source audit, dictionary preparation, importer work, local data-pipeline tests, engine architecture, documentation, privacy boundaries, and build wiring are already prepared in the repository.
 
-Do not build until the user explicitly asks to start the APK build.
-
-## Goal
-
-When build is requested, first perform a static/compile review of the six v0.15 engine layers, make only the minimum compilation fixes, then build the debug APK.
+**Codex's task is only to build the APK and make minimum compilation repairs if required. Do not redesign or expand the product.**
 
 Repository:
 
@@ -20,250 +16,145 @@ https://github.com/initial2024/codex
 
 ```text
 JDK 17
+Python 3.12 recommended
 Android SDK platform 35
 Android build-tools 35.0.0
 Gradle 8.10.2 or compatible
-Python 3.10+ for importer validation
 ```
 
-## v0.15 Chinese architecture that must remain intact
+## What Gradle already does automatically
+
+The app module `preBuild` chain runs:
 
 ```text
-raw Pinyin
--> PinyinSegmenter
--> CompactLexiconAsset
--> PinyinImeEngine beam search
--> NGramLanguageModel
--> CandidateRanker
--> UserDictionaryStore personalization
--> top candidates
+tools/test_ime_data_pipeline.py
+        ↓
+tools/prepare_mature_ime_data.py
+        ↓
+tools/ime_importer.py
+        ↓
+generated mature offline assets under app/src/main/assets/ime
+        ↓
+Android build
 ```
 
-English imported-data path:
+Do not manually replace this process with copied dictionary files.
 
-```text
-English composing buffer
--> CompactEnglishAsset
--> EnglishImeEngine
--> EnglishDictionary phrase/typo fallback
--> top candidates
-```
+The mature build uses pinned and hash-verified sources documented in `DATA_SOURCES.md` and `data/ime_sources/mature_sources.json`:
 
-Do not replace these paths with another hardcoded giant Kotlin map.
+- AOSP PinyinIME dictionary for Chinese Pinyin/frequency data.
+- ESDB/SCOWL generated US English word list for English vocabulary completion.
 
-## Stage A — importer validation
+Required notices are copied into the packaged asset directory automatically.
 
-Run from repository root:
+## Build command
 
-```bash
-python tools/ime_importer.py \
-  --manifest data/ime_sources/manifest.example.json \
-  --output build/ime-import-test
-```
-
-Confirm the importer:
-
-1. exits successfully with the project-authored seed manifest;
-2. creates `manifest.json`;
-3. creates sharded `lexicon/*.odict` files;
-4. creates `english.odict` when English data is present;
-5. creates `ngram1.odict`, `ngram2.odict`, and `ngram3.odict` when those counts are present;
-6. writes frequencies/counts in base36;
-7. fails closed for a source marked `redistribution_allowed=false`;
-8. fails closed in strict mode for a license not on the allow-list;
-9. preserves source/license/attribution metadata in the generated manifest.
-
-Do not copy any third-party dictionary into the repo merely to make this test larger.
-
-## Stage B — static Kotlin review
-
-Inspect:
-
-```text
-app/src/main/java/com/ccwu/orbitime/CompactLexiconAsset.kt
-app/src/main/java/com/ccwu/orbitime/CompactEnglishAsset.kt
-app/src/main/java/com/ccwu/orbitime/EnglishImeEngine.kt
-app/src/main/java/com/ccwu/orbitime/PinyinSegmenter.kt
-app/src/main/java/com/ccwu/orbitime/NGramLanguageModel.kt
-app/src/main/java/com/ccwu/orbitime/CandidateRanker.kt
-app/src/main/java/com/ccwu/orbitime/PinyinImeEngine.kt
-app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt
-app/src/main/java/com/ccwu/orbitime/PinyinSentenceDictionary.kt
-app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt
-```
-
-Confirm:
-
-1. `CompactLexiconAsset` reads `ORBIT_ODICT` and falls back safely when a shard is absent.
-2. Lexicon shards are cached with a bounded LRU, not loaded all at once.
-3. `CompactEnglishAsset` reads `ime/english.odict` once and caches parsed entries.
-4. `EnglishImeEngine` ranks packaged-frequency candidates and merges the existing phrase/typo fallback.
-5. `OrbitInputMethodService` initializes `EnglishImeEngine` and uses it for the English candidate bar.
-6. `PinyinSegmenter` uses dynamic programming and does not prefer pathological over-segmentation such as `hao -> ha + o`.
-7. `nihaoma` can produce segmentation `ni / hao / ma`.
-8. `nishishei` can produce `ni / shi / shei`.
-9. `shurufa` can produce `shu / ru / fa`.
-10. `PinyinImeEngine` uses bounded phrase spans and bounded beam width.
-11. `NGramLanguageModel` supports local 1/2/3-gram files and has a safe fallback.
-12. Exact multi-character Chinese candidates receive both phrase-token and character-sequence N-gram evaluation; character N-gram scoring must not replace stronger phrase-token evidence.
-13. `CandidateRanker` combines static frequency, N-gram, segmentation, user frequency, source priority, and correction penalty.
-14. Fuzzy/typo candidates are penalized rather than treated as exact spellings.
-15. `UserDictionaryStore` routes through the new engine but retains the legacy fallback path.
-16. `UserDictionaryStore` does not recursively call its own candidate API from the engine.
-17. User-dictionary records remain limited to pinyin/text/frequency/updatedAt.
-18. User-dictionary JSON is cached in memory instead of reparsed for every candidate score.
-
-## Stage C — asset/version/privacy checks
-
-Confirm committed development fallback assets include:
-
-```text
-app/src/main/assets/ime/manifest.json
-app/src/main/assets/ime/lexicon.odict
-app/src/main/assets/ime/english.odict
-app/src/main/assets/ime/ngram1.odict
-app/src/main/assets/ime/ngram2.odict
-app/src/main/assets/ime/ngram3.odict
-```
-
-Confirm:
-
-```text
-versionCode = 15
-versionName = 0.15.0
-Settings footer = About · v0.15.0
-Actions artifact = orbit-ime-v0.15-debug-apk
-Actions trigger = workflow_dispatch only
-```
-
-Manifest must not add:
-
-```text
-INTERNET
-Accessibility
-SYSTEM_ALERT_WINDOW / overlay
-background-service permissions
-advertising identifiers
-```
-
-## Stage D — build
-
-Only after the user explicitly asks to build, run:
+From repository root, run exactly:
 
 ```bash
 gradle assembleDebug --no-daemon
 ```
 
-Expected APK:
+Do **not** add:
+
+```text
+-PorbitSkipMatureImeData=true
+```
+
+for the APK intended for user testing. That switch is only for deliberately offline development.
+
+## Expected APK
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Stage E — on-device functional acceptance
-
-### Continuous Pinyin / segmentation
+Expected version:
 
 ```text
-nihaoma -> 你好吗 near the top
-nishishei -> 你是谁 near the top
-shurufa -> 输入法 near the top
-haishiyouwenti -> 还是有问题 near the top
+versionCode = 15
+versionName = 0.15.0
 ```
 
-### Existing shortcut / correction behavior
+## If build fails
+
+Only make the minimum necessary repair for:
+
+- Kotlin compilation;
+- imports or method signatures;
+- Android resources/XML;
+- Gradle task wiring;
+- Python invocation portability;
+- IME metadata;
+- an obvious deterministic data-pipeline bug.
+
+After the minimum repair, rerun:
+
+```bash
+gradle assembleDebug --no-daemon
+```
+
+Do not delete or bypass the mature-data preparation merely to make the build pass.
+
+## Architecture that must remain intact
+
+Chinese:
 
 ```text
-nh -> 你好 / 你好吗
-hsywt -> 还是有问题
-myfyjg -> 没有翻译结果
-bscgfy -> 不是成功翻译
-sjkb -> 数据库不够
-xhfnivh -> includes 喜欢你
+PinyinSegmenter
+-> CompactLexiconAsset
+-> PinyinImeEngine beam search
+-> NGramLanguageModel
+-> CandidateRanker
+-> UserDictionaryStore local personalization
 ```
 
-### English imported/fallback data
+English:
 
 ```text
-build -> build / build failed / build succeeded
-translate -> translate / translation
-trasnlate -> translate
-permision -> permission
+English composing buffer
+-> CompactEnglishAsset (sharded mature asset when present)
+-> EnglishImeEngine
+-> EnglishDictionary fallback
 ```
 
-Confirm letters still stay in the composing buffer until candidate selection/space instead of immediately committing each key.
-
-### Personal ranking
-
-1. Pick a non-first valid Chinese candidate repeatedly.
-2. Re-enter the same Pinyin.
-3. Confirm its local user-frequency boost can move it upward.
-4. Clear the local user dictionary.
-5. Confirm packaged default ordering is restored.
-
-### Regression
-
-Retest:
-
-- English composing/candidates.
-- Pinyin correction.
-- Clips.
-- local translation and prompt fallback.
-- keyboard pet panel.
-- skin selection.
-- privacy mode.
-- Android input-method switch button.
+Do not replace these with a giant hardcoded Kotlin map.
 
 ## Non-negotiable constraints
 
-Do not add:
+Do not add or enable:
 
-- INTERNET permission
-- cloud prediction
-- cloud dictionary sync
-- cloud translation
-- external translation API
-- ad SDK
-- analytics SDK
-- Accessibility permission
-- overlay / floating-window permission
-- background service
-- notification spam
-- full typed-key-stream persistence
-- surrounding-sentence persistence
-- app/package-name learning history
-- clipboard background harvesting
-- AI pet chat
-- paid gacha
-- Pinyin 9-key
-- Wubi
-- handwriting recognition
-- Canvas keyboard rewrite
-- Compose migration
-- Room/Realm migration
-- billing implementation
-- skin marketplace
+- `INTERNET` permission;
+- cloud prediction;
+- cloud dictionary sync;
+- cloud translation or an external translation API;
+- ad/analytics/tracking SDKs;
+- Accessibility permission;
+- overlay/floating-window permission;
+- background input/clipboard harvesting;
+- full typed-key-stream persistence;
+- surrounding-sentence or app/package learning history;
+- AI pet chat;
+- paid gacha;
+- Pinyin 9-key, Wubi, handwriting;
+- Canvas keyboard rewrite;
+- Compose migration;
+- Room/Realm migration;
+- billing or skin marketplace.
 
-## Fix policy
+## Final report
 
-If compilation fails, make the minimum necessary Kotlin, resource, Gradle, or IME-metadata repair.
-
-Do not remove the six v0.15 engine layers to make the build pass.
-Do not replace the importer with copied unlicensed dictionary data.
-Do not expand product scope during build repair.
-
-## Final build report format
-
-Return:
+Return only the build-relevant result:
 
 ```text
-1. git status
-2. files changed by Codex
-3. importer validation result
-4. Kotlin/static review result
-5. gradle assembleDebug command executed or not
-6. build success/failure
-7. APK path if successful
-8. key error + minimal fix if failed
-9. confirmation that prohibited permissions/features were not added
+1. git status before build
+2. exact build command
+3. whether preBuild data tests passed
+4. whether mature-data preparation passed
+5. generated mature-report.json counts (Chinese / English / 1-2-3 gram)
+6. any files changed by the minimum compilation repair
+7. build success/failure
+8. APK path and APK size if successful
+9. key error and exact minimum repair if failed
+10. confirmation that prohibited permissions/features were not added
 ```
