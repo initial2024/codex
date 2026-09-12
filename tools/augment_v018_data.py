@@ -23,6 +23,8 @@ import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
+import ime_importer
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "data/ime_sources/mature_sources.json"
 DEFAULT_OUTPUT = ROOT / "app/src/main/assets/ime"
@@ -110,6 +112,21 @@ def parse_cedict(raw: bytes):
             yield traditional, simplified, pinyin, glosses
 
 
+def count_cedict_runtime_entries(raw: bytes) -> int:
+    """Count rows accepted by the runtime CEDICT importer, independent of translation gloss filtering."""
+    count = 0
+    for line in raw.decode("utf-8-sig").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        match = ime_importer.CEDICT_RE.match(line.strip())
+        if not match:
+            continue
+        _traditional, simplified, pinyin, _gloss = match.groups()
+        if simplified and ime_importer.normalize_pinyin(pinyin):
+            count += 1
+    return count
+
+
 def write_broader_english_asset(raw: bytes, output_tsv: Path, policy: dict) -> int:
     """Repack the pinned SCOWL large list without discarding all proper nouns/acronyms.
 
@@ -184,9 +201,10 @@ def add_sources_to_import_manifest(staging: Path, sources: dict, default_frequen
 def write_translation_assets(raw: bytes, output: Path) -> dict[str, int]:
     zh_records: dict[str, str] = {}
     en_records: dict[str, str] = {}
-    cedict_entries = 0
+    # This gate measures CEDICT rows accepted into the runtime lexicon. Translation
+    # coverage is intentionally measured separately by translation_zh/en_entries.
+    cedict_entries = count_cedict_runtime_entries(raw)
     for _traditional, simplified, _pinyin, glosses in parse_cedict(raw):
-        cedict_entries += 1
         if simplified not in zh_records:
             zh_records[simplified] = glosses[0]
         for gloss in glosses[:5]:

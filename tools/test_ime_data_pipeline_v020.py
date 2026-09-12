@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import augment_v018_data as v018
 import augment_v020_data as v020
 import test_ime_data_pipeline as base
 
@@ -61,6 +62,17 @@ def main() -> int:
         assert '"name": "base"' in manifest_text
         assert '"name": "orbit-project-software-vocabulary"' in manifest_text
         assert '"name": "cc-cedict-four-char-boost"' in manifest_text
+
+        # Runtime CEDICT coverage and translation coverage are deliberately separate.
+        # The second row is structurally valid and importable, but its "see ..." gloss
+        # is rejected by the translation-quality filter. Both must still count toward
+        # the runtime CEDICT source gate.
+        cedict_raw = (
+            "数据库 数据库 [shu4 ju4 ku4] /database/\n"
+            "資料庫 数据库 [zi1 liao4 ku4] /see 数据库/\n"
+        ).encode("utf-8")
+        assert v018.count_cedict_runtime_entries(cedict_raw) == 2
+        assert sum(1 for _ in v018.parse_cedict(cedict_raw)) == 1
 
     software = Path(__file__).resolve().parents[1] / "data/ime_sources/seed_software.tsv"
     assert v020.count_project_software(software) >= 100
