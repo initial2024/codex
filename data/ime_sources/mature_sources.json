@@ -27,7 +27,7 @@
     "jieba_license": {
       "name": "Jieba MIT license",
       "url": "https://raw.githubusercontent.com/fxsjy/jieba/67fa2e36e72f69d9134b8a1037b83fbb070b9775/LICENSE",
-      "git_blob_sha1": "9d7e66bf3bf39ea039e2d943f1e9de28f216b049",
+      "git_blob_sha1": "9d7e66b431461c785329a1b52199d4207daefacc",
       "license": "MIT",
       "redistribution_allowed": true
     },
