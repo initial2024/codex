@@ -107,9 +107,11 @@ Do not lower these gates merely to obtain a green build. If a gate fails, report
 ### Emoji / kaomoji / stickers
 
 - `UnicodeEmojiAsset` loads build-generated Unicode Emoji 17.0 data;
-- project-authored Emoji/kaomoji categories remain;
+- project-authored Emoji/kaomoji categories remain, including the expanded generated kaomoji variants;
 - Recent expressions and long-press copy remain;
-- 24 local graphical pet stickers remain with PNG commit + Emoji fallback;
+- 64 local graphical pet stickers remain: 8 pets × 8 states (happy/love/angry/sad/surprised/sleepy/OK/confused);
+- `StickerOverlayRenderer` keeps the extra five states visually distinct rather than duplicating the original three images;
+- compatible editors receive PNG content; unsupported editors fall back to Emoji text;
 - `OrbitStickerProvider` stays `exported=false`, `grantUriPermissions=true`.
 
 ### Translation
