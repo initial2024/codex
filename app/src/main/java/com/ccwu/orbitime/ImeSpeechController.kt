@@ -138,7 +138,18 @@ class ImeSpeechController(private val context: Context) {
     }
 
     private fun executablePack(type: OrbitModelPackType): ModelPackManager.InstalledPack? {
-        val pack = modelPacks.enabledPack(type) ?: return null
-        return pack.takeIf { it.enabled && it.runtimeStatus.executable }
+        modelPacks.enabledPack(type)?.let { pack ->
+            if (pack.enabled && pack.runtimeStatus.executable) return pack
+        }
+        // v0.27 migration: older builds could install a valid pack without setting a
+        // preferred pack. Recover only when the choice is unambiguous.
+        val executable = modelPacks.listInstalled().filter {
+            it.manifest.type == type && it.runtimeStatus.executable
+        }
+        if (executable.size != 1) return null
+        val candidate = executable.single()
+        val enabled = modelPacks.setEnabled(candidate.manifest.packId, true)
+        if (!enabled.success) return null
+        return modelPacks.enabledPack(type)?.takeIf { it.enabled && it.runtimeStatus.executable }
     }
 }

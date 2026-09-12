@@ -132,7 +132,11 @@ def main() -> int:
     require('https://jitpack.io' in settings, "sherpa JitPack build repository missing")
     gradle = read(ROOT / "app/build.gradle.kts")
     require('versionCode = 27' in gradle and 'versionName = "0.27.0"' in gradle, "Gradle is not v0.27.0")
-    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 dependency missing")
+    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 aggregate dependency missing")
+    require('com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8' in gradle, "official sherpa Android AAR dependency missing")
+    require('create("bundledModelsDebug")' in gradle, "bundledModelsDebug build type missing")
+    require('applicationIdSuffix = ".bundledmodels"' in gradle, "bundled test applicationId suffix missing")
+    require('versionNameSuffix = "-bundled-models-test"' in gradle, "bundled test version suffix missing")
     for token in ("test_ime_data_pipeline_v023.py", "augment_v023_data.py", "test_model_pack_pipeline.py"):
         require(token in gradle, f"preBuild stage missing: {token}")
 
@@ -224,6 +228,7 @@ def main() -> int:
     workflow = read(ROOT / ".github/workflows/build-apk.yml")
     require("workflow_dispatch:" in workflow, "GitHub Actions must remain manually triggered")
     require("orbit-ime-v0.27-debug-apk" in workflow, "v0.27 Actions artifact name missing")
+    require("orbit-ime-v0.27-bundled-models-test-apk" in workflow, "v0.27 bundled test artifact name missing")
 
     summary = {
         "status": "PASS",

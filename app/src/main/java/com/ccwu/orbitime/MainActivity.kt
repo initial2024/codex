@@ -478,7 +478,7 @@ class MainActivity : Activity() {
         this.text = text; setTextColor(skin.accentColor); textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setPadding(0, dp(22), 0, dp(8))
     }
     private fun paragraph(text: String, skin: OrbitSkin): TextView = TextView(this).apply {
-        this.text = text; setTextColor(skin.mutedTextColor); textSize = 15f; lineSpacing = dp(2).toFloat(); setPadding(0, 0, 0, dp(8))
+        this.text = text; setTextColor(skin.mutedTextColor); textSize = 15f; setLineSpacing(dp(2).toFloat(), 1f); setPadding(0, 0, 0, dp(8))
     }
     private fun editField(hint: String, skin: OrbitSkin, multiline: Boolean = false): EditText = EditText(this).apply {
         this.hint = hint

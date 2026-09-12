@@ -17,6 +17,17 @@ android {
 
     buildFeatures { buildConfig = true }
 
+    buildTypes {
+        getByName("debug")
+        create("bundledModelsDebug") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".bundledmodels"
+            versionNameSuffix = "-bundled-models-test"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -30,6 +41,9 @@ dependencies {
     // JitPack's aggregate module also exposes JVM/desktop artifacts; keeping those
     // transitives on Android duplicates the same API classes and native variants.
     implementation("com.github.k2-fsa:sherpa-onnx:1.13.8") {
+        isTransitive = false
+    }
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8") {
         isTransitive = false
     }
 }
