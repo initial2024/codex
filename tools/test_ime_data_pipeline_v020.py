@@ -17,7 +17,7 @@ def main() -> int:
         raw = (
             "# CC-CEDICT\n"
             "一心一意 一心一意 [yi1 xin1 yi1 yi4] /wholeheartedly/\n"
-            "画蛇添足 畫蛇添足 [hua4 she2 tian1 zu2] /to ruin the effect by adding something superfluous/\n"
+            "畫蛇添足 画蛇添足 [hua4 she2 tian1 zu2] /to ruin the effect by adding something superfluous/\n"
             "数据库 数据库 [shu4 ju4 ku4] /database/\n"
         ).encode("utf-8")
         target = root / "idiom.tsv"
@@ -25,8 +25,29 @@ def main() -> int:
         text = target.read_text(encoding="utf-8")
         assert count == 2
         assert "yixinyiyi\t一心一意\t180000" in text
-        assert "huashetianzu\t畫蛇添足" in text or "huashetianzu\t画蛇添足" in text
+        assert "huashetianzu\t画蛇添足\t180000" in text
         assert "数据库" not in text
+
+        english_raw = (
+            "hello\n"
+            "OpenAI\n"
+            "GitHub\n"
+            "NASA\n"
+            "don't\n"
+            "co-op\n"
+            "A\n"
+        ).encode("utf-8")
+        english_target = root / "english.tsv"
+        english_count = v020.build_expanded_english_tsv(english_raw, english_target, 2, 32, 35000)
+        english_text = english_target.read_text(encoding="utf-8")
+        assert english_count == 6
+        assert "hello\t" in english_text
+        assert "openai\t" in english_text and "OpenAI" in english_text
+        assert "github\t" in english_text and "GitHub" in english_text
+        assert "nasa\t" in english_text and "NASA" in english_text
+        assert "dont\t" in english_text and "don't" in english_text
+        assert "coop\t" in english_text and "co-op" in english_text
+        assert "\na\t" not in english_text
 
     software = Path(__file__).resolve().parents[1] / "data/ime_sources/seed_software.tsv"
     assert v020.count_project_software(software) >= 100
