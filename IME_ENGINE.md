@@ -1,234 +1,172 @@
-# Orbit IME v0.15 Local IME Engine
+# Orbit IME v0.16 Local IME Engine
 
-This document defines the offline engine and mature-data path used by Orbit IME `0.15.0`.
+This document defines the offline input engine used by Orbit IME `0.16.0`.
 
-## Six completed engine layers
-
-1. Large dictionary importer.
-2. Static frequency ranking.
-3. Continuous Pinyin segmentation.
-4. Sentence-level candidate generation/ranking.
-5. Local 1/2/3-gram language model.
-6. Compact sharded asset format.
-
-## Build-time data path
-
-A normal Gradle build runs:
+## Core runtime pipeline
 
 ```text
-tools/test_ime_data_pipeline.py
--> tools/prepare_mature_ime_data.py
--> tools/ime_importer.py
--> app/src/main/assets/ime
-```
-
-The mature preparation uses pinned/hash-verified AOSP PinyinIME Chinese data and ESDB/SCOWL US-English vocabulary. See `DATA_SOURCES.md`.
-
-This is build-time networking only. Runtime IME remains offline and has no `INTERNET` permission.
-
-## Chinese runtime pipeline
-
-```text
-raw Pinyin
+continuous Pinyin
 -> normalize
--> exact user/asset/sentence candidates
--> PinyinSegmenter (DP)
+-> exact asset/user candidates
+-> PinyinSegmenter (dynamic programming)
 -> CompactLexiconAsset
 -> bounded phrase beam search
 -> NGramLanguageModel
 -> CandidateRanker
 -> UserDictionaryStore local boost
--> top 12
-```
-
-If a mature shard is missing/malformed, legacy packaged data remains a fail-safe candidate path.
-
-## English runtime pipeline
-
-```text
-English composing buffer
--> EnglishImeEngine
--> CompactEnglishAsset
--> EnglishDictionary phrase/typo fallback
 -> top candidates
 ```
 
-When the imported English pack exceeds 10k entries, the importer writes:
+English uses `EnglishImeEngine -> CompactEnglishAsset -> EnglishDictionary fallback`.
+
+## Mature Chinese data
+
+The default build merges:
+
+- AOSP PinyinIME phrase/Pinyin/frequency data;
+- conservative Pinyin derivations for additional Jieba MIT frequency-dictionary words;
+- project-authored fallback/product vocabulary.
+
+Jieba readings are not guessed indiscriminately. Exact AOSP phrase readings are preferred. New words are generated only from AOSP single-character readings whose dominant pronunciation is sufficiently clear; ambiguous/missing readings are skipped.
+
+## Continuous long-sentence input
+
+A full sentence does not need to exist as one dictionary key. `PinyinSegmenter` creates syllable paths, and `PinyinImeEngine` composes multiple lexical edges into sentence candidates.
+
+v0.16 bounds:
 
 ```text
-ime/english/a.odict ... z.odict
+Pinyin buffer: 192 letters
+segmentation paths: 6
+max lexical phrase span: 8 syllables
+entries per span: 6
+beam width: 56
+complete internal results: 20
+visible candidates: 12
+candidate-query LRU: 24
 ```
 
-`CompactEnglishAsset` loads only the query's first-letter shard and keeps at most four shards in LRU memory. Small development packs may still use `ime/english.odict`.
+A sentence may exceed eight syllables because a beam hypothesis chains multiple lexical edges.
 
-## Frequency ranking
+## Ranking
 
 `CandidateRanker` combines:
 
 ```text
 static frequency
-+ N-gram score
++ phrase/character N-gram score
 + segmentation score
-+ local user frequency
++ local explicit user frequency
 + source priority
-+ small length bonus
-- correction penalty
+- fuzzy/typo penalty
 ```
 
-Exact spelling stays higher confidence than fuzzy/typo paths. Explicit repeated user selections receive a strong local boost without rewriting packaged assets.
+Exact spelling remains higher confidence than fuzzy correction. Raw-fallback commits do not substitute a prefix/fuzzy guess when no exact candidate exists.
 
-## Continuous Pinyin segmentation
+## Temporary context
 
-`PinyinSegmenter` uses dynamic programming and keeps several best paths.
+The IME may read a short tail of text before the cursor during the current input session and pass it to the N-gram scorer. The current Pinyin composing suffix is removed first. This context is held only in memory and is never written into user learning records.
 
-Examples:
+## UI latency strategy
+
+The keyboard has two layers:
 
 ```text
-nihaoma -> ni / hao / ma
-nishishei -> ni / shi / shei
-shurufa -> shu / ru / fa
+static key rows / top-level layout
+dynamic candidate/tool host
 ```
 
-A per-syllable cost prevents pathological over-segmentation such as preferring `ha + o` over `hao`. Apostrophes/spaces act as hard boundaries; keyboard `v` represents `ü`.
+During normal letter input and backspace, v0.16 refreshes only the dynamic host rather than removing/recreating every keyboard key. Full rebuilds remain for layout/mode changes such as symbols, language mode, or opening/closing top-level tools.
 
-## Sentence-level beam search
-
-`PinyinImeEngine` considers phrase spans up to four syllables and keeps a bounded beam.
-
-Current limits:
-
-```text
-segmentation paths: 5
-max phrase span: 4 syllables
-entries per span: 5
-beam width: 36
-internal beam results: 16
-visible candidates: 12
-```
-
-The lexical lookup merges mature asset entries and legacy/project fallback entries before frequency ranking rather than discarding one source merely because another source matched.
+`PinyinImeEngine` also caches recent query/context candidate lists with a bounded LRU, and `OrbitInputMethodService` caches the current visible Pinyin result.
 
 ## Local N-gram model
 
-`NGramLanguageModel` reads:
+`NGramLanguageModel` reads packaged 1/2/3-gram files. Build preparation derives bounded character N-grams from accepted AOSP and Jieba-derived entries and merges them with project-authored counts. This is a deterministic count model, not a neural/cloud model.
+
+## Compact assets
 
 ```text
+ime/lexicon/a.odict ... z.odict
+ime/english/a.odict ... z.odict
 ime/ngram1.odict
 ime/ngram2.odict
 ime/ngram3.odict
 ```
 
-The mature preparation derives bounded character N-grams from accepted AOSP phrases and merges them with project-authored word/phrase N-grams.
+Integer frequencies/counts are stored in base36. Chinese and English readers keep only a bounded number of shards in memory.
 
-Ranking evaluates both phrase-token evidence and Chinese-character sequence evidence, using the stronger signal rather than forcing an exact multi-character phrase to behave as one unscored token.
+## Local personalization
 
-This is deterministic local count scoring, not a neural/cloud model.
-
-## Compact asset format
-
-`ORBIT_ODICT` uses tab-separated records with base36 integer frequency/counts.
-
-Chinese:
-
-```text
-ime/lexicon/a.odict ... z.odict
-normalized_pinyin<TAB>text<TAB>base36_frequency
-```
-
-English:
-
-```text
-ime/english/a.odict ... z.odict
-normalized_key<TAB>base36_frequency<TAB>optional display candidates...
-```
-
-N-gram:
-
-```text
-token<TAB>count
-token1<TAB>token2<TAB>count
-token1<TAB>token2<TAB>token3<TAB>count
-```
-
-`CompactLexiconAsset` keeps at most six Chinese shards; `CompactEnglishAsset` keeps at most four English shards.
-
-## Mature source policy
-
-`data/ime_sources/mature_sources.json` pins:
-
-- source URL;
-- Git blob SHA-1;
-- license identifier;
-- attribution;
-- conversion policy.
-
-The preparation script refuses changed upstream bytes. The importer also fails closed for non-redistributable/unknown sources.
-
-Third-party notices are copied into:
-
-```text
-ime/third_party_notices/
-```
-
-## Personalization
-
-`UserDictionaryStore` persists only:
+Persistent user-learning records contain only:
 
 ```text
 pinyin
-committed candidate text
+candidate text
 frequency
 updatedAt
 ```
 
-It does not persist surrounding sentence, app/package name, field identity, or a full typed stream. Parsed records are cached in memory to avoid repeatedly decoding JSON during ranking.
+v0.16 accepts up to 192 normalized Pinyin letters and 96 text characters per learned mapping. Learned records are cached in process memory for ranking; a learn/clear operation invalidates the candidate cache.
 
 ## Fuzzy correction
 
-`PinyinCorrectionEngine` is separate from exact segmentation and its candidates receive an explicit penalty.
+`PinyinCorrectionEngine` remains a lower-confidence compatibility path. It is not treated as an exact spelling source.
 
-Compatibility examples include:
+## Clipboard runtime design
 
-```text
-xhfnivh -> includes 喜欢你
-xihvanni -> 喜欢你
-nishis -> 你是谁
-```
+Clipboard history is separate from the language model. `ClipboardStore` supports recent/pinned entries, one-hour expiration for unpinned history, use/copy counters, pin/unpin, removal, clear-recent, and clear-all. The system clipboard listener exists only while the IME window is shown.
 
-## Performance rules
+## Translation runtime design
 
-- Never parse dictionaries in `onDraw`.
-- Keep lexicon/English shard caches bounded.
-- Keep beam width and candidate count bounded.
-- Keep N-gram asset sizes bounded.
-- Cache local-user records.
-- Do not persist ranking context.
-- Do not perform runtime network I/O.
+Translation mode reuses the normal Chinese/English composing engines instead of creating a second keyboard implementation.
 
-## Device acceptance after build
-
-At minimum test:
+Chinese -> English:
 
 ```text
-nihaoma -> 你好吗 near top
-nishishei -> 你是谁 near top
-shurufa -> 输入法 near top
-haishiyouwenti -> 还是有问题 near top
-xhfnivh -> useful corrected Chinese candidates
+Pinyin composing
+-> Chinese candidate commit into temporary translation source
+-> exact local translation table
+-> conservative longest-phrase LocalTranslationComposer
+-> visible translation preview
+-> explicit translation commit to target app
 ```
 
-Also test English composing/candidates, local-learning reorder/clear, translation result insertion, Clips, Pet, privacy mode, skins, and input-method switching.
+English -> Chinese follows the analogous path. If local coverage is too low, the composer returns `null`; the UI reports that the offline pack does not cover the sentence rather than presenting a prompt as a translation result.
 
-## Post-build tuning order
+## Build-time pipeline
 
-After the first v0.15 mature-pack APK is tested on-device, tune only from measurements:
+```text
+tools/test_ime_data_pipeline.py
+-> tools/prepare_mature_ime_data.py
+-> tools/ime_importer.py
+-> tools/validate_mature_ime_assets.py
+-> Android compilation
+```
 
-1. candidate latency;
-2. top-1/top-3 accuracy on a fixed sentence set;
-3. segmentation ambiguity;
-4. static-frequency scale;
-5. N-gram weights/limits;
-6. user-frequency weight;
-7. memory use.
+See `DATA_SOURCES.md` for pinned source/license rules.
 
-Do not add a neural model before these deterministic layers are measured.
+## Performance and privacy rules
+
+- no runtime network I/O;
+- no full typed-stream persistence;
+- no persisted surrounding sentence/app identity;
+- bounded shard caches, beam width, and query caches;
+- no dictionary parsing inside drawing callbacks;
+- exact paths rank ahead of fuzzy paths;
+- sensitive fields disable learning/tools/clipboard capture.
+
+## v0.16 device acceptance priorities
+
+After build, measure rather than assume:
+
+1. latency while a Pinyin buffer grows from a short phrase to a long sentence;
+2. top-1/top-3 candidate quality on a fixed sentence set;
+3. space/tap commit behavior for an uninterrupted long sentence;
+4. English composing/candidate quality;
+5. local personalization reorder/reset;
+6. Clipboard Recent/pin/expiry/paste;
+7. translation source/preview/commit behavior;
+8. memory use and IME stability.
+
+A later neural model should only be considered after these deterministic layers are measured.
