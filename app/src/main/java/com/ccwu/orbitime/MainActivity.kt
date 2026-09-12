@@ -71,7 +71,7 @@ class MainActivity : Activity() {
         })
 
         container.addView(section("候选、长句、联想与模糊纠错", skin))
-        container.addView(paragraph("最多 32 个中文/英文候选；连续拼音继续使用自适应 Beam + 1/2/3-gram。v0.23 加入 THUOCL 领域词、FrequencyWords 中英文真实频率层和 32 分片预计算联想资产，上屏后优先快速查下一词/短语，再由 N-gram 补充。", skin))
+        container.addView(paragraph("最多 48 个中文/英文候选；连续拼音继续使用自适应 Beam + 1/2/3-gram。v0.23 加入 THUOCL 领域词、FrequencyWords 中英文真实频率层和 32 分片预计算联想资产，上屏后默认可给出最多 48 个下一词/短语候选，再由 N-gram 补充。", skin))
         container.addView(button("上屏后联想：${if (ImePreferences.associationsEnabled(this)) "开" else "关"}", skin) {
             ImePreferences.setAssociationsEnabled(this, !ImePreferences.associationsEnabled(this))
             render("联想设置已保存")
@@ -85,7 +85,7 @@ class MainActivity : Activity() {
             ImePreferences.setFuzzyLevel(this, next)
             render("模糊纠错已切换为 ${fuzzyLabel()}")
         })
-        container.addView(paragraph("标准：高置信模糊音、转置、邻键和多按键；增强：再加入漏键补全、重复键折叠和第二层模糊变体。英文也使用同一强度设置。", skin))
+        container.addView(paragraph("标准：高置信模糊音、转置、邻键和多按键；增强：再加入漏键补全、重复键折叠、第二层模糊变体和更大的词库查询范围。英文也使用同一强度设置。", skin))
 
         container.addView(section("固定短语 / 自定义短语", skin))
         container.addView(paragraph("快捷短语可以整体关闭；也可以只关闭 Orbit 内置短语，仅保留自己的中文/英文短语。", skin))
@@ -113,14 +113,14 @@ class MainActivity : Activity() {
         container.addView(paragraph("有选区时退格删除整段；空格、字母、候选、粘贴、Emoji、短语和译文直接替换选中内容；没有选区时才删除光标前一个 Unicode code point。", skin))
 
         container.addView(section("翻译键盘 · v0.23", skin))
-        container.addView(paragraph("Free 仍提供单句本地翻译。v0.23 在精确词典之外新增动态规划长片段翻译和覆盖率判断；Pro 上下文/全文翻译会保留段落与换行，未覆盖片段保留原文而不是伪造。全文最长 ${LongFormTranslationEngine.MAX_SOURCE_CHARS} 字。", skin))
+        container.addView(paragraph("Free 仍提供单句本地翻译。v0.23 在精确词典之外使用动态规划长片段翻译、覆盖率判断和标点/空格清理；Pro 上下文最多参考前 4 句，全文翻译保留段落与换行，超长句会按子句继续切分，未覆盖片段保留原文。全文最长 ${LongFormTranslationEngine.MAX_SOURCE_CHARS} 字。", skin))
         if (contextTranslationAvailable) {
             container.addView(button("上下文翻译：${if (contextTranslationEnabled) "开" else "关"}", skin) {
                 TranslationSettings.setContextTranslationEnabled(this, !contextTranslationEnabled)
                 render("上下文翻译设置已保存")
             })
         } else {
-            container.addView(paragraph("Free：单句翻译；Pro：上下文 + 选区全文/长文翻译。", skin))
+            container.addView(paragraph("Free：单句翻译；Pro：最多前 4 句上下文 + 选区全文/长文翻译。", skin))
         }
         container.addView(paragraph("第三方神经翻译包仍由 v0.22 模型包管理器安全安装。当前 APK 未捆绑 Bergamot/Marian 运行时，因此不会把模型包伪装成已可执行；本地神经 runtime 将在完成可重复 Android AAR/许可证验收后启用。", skin))
 
