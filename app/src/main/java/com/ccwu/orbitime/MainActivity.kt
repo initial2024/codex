@@ -1,8 +1,10 @@
 package com.ccwu.orbitime
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -15,9 +17,23 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 class MainActivity : Activity() {
+    private lateinit var modelPackManager: ModelPackManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        modelPackManager = ModelPackManager(this)
         render()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_MODEL_PACK || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        runCatching {
+            val flags = data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+            if (flags != 0) contentResolver.takePersistableUriPermission(uri, flags)
+        }
+        stageModelPack(uri)
     }
 
     private fun render(statusMessage: String? = null) {
@@ -30,6 +46,7 @@ class MainActivity : Activity() {
         val contextTranslationAvailable = TranslationSettings.isContextTranslationAvailable(this)
         val contextTranslationEnabled = TranslationSettings.isContextTranslationEnabled(this)
         val isPro = ProGate.isProUnlocked(this)
+        val installedPacks = if (isPro) modelPackManager.listInstalled() else emptyList()
         val scroll = ScrollView(this).apply { setBackgroundColor(skin.backgroundColor) }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -38,7 +55,7 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("v0.21 重点修复选中文本的替换/删除，增加可记忆设置、自定义快捷短语、Pro 长文翻译入口，并重新整理宠物装扮视觉。当前：${ProLicenseManager.licenseLabel(this)} · ${skin.name}。", skin))
+        container.addView(paragraph("v0.22 在 v0.21 输入体验基础上增加 Pro 本地模型包管理器：用户可通过系统文件选择器导入、校验、启用/停用和卸载第三方离线模型包。神经推理运行时从后续版本逐步接入。当前：${ProLicenseManager.licenseLabel(this)} · ${skin.name}。", skin))
         statusMessage?.let { container.addView(statusBox(it, skin)) }
 
         container.addView(section("输入法设置", skin))
@@ -82,13 +99,13 @@ class MainActivity : Activity() {
         container.addView(button("清空自定义短语", skin) { phraseStore.clearCustom(); render("自定义短语已清空，内置短语不受影响") })
 
         container.addView(section("选区编辑", skin))
-        container.addView(paragraph("v0.21 按 Android InputConnection 语义处理选区：有选区时退格删除整段；空格、字母、候选、粘贴、Emoji、短语和译文使用 commit/setComposing 直接替换选中内容；没有选区时才删除光标前一个 Unicode code point。", skin))
+        container.addView(paragraph("按 Android InputConnection 语义处理选区：有选区时退格删除整段；空格、字母、候选、粘贴、Emoji、短语和译文直接替换选中内容；没有选区时才删除光标前一个 Unicode code point。", skin))
 
         container.addView(section("候选、长句与联想", skin))
         container.addView(paragraph("保留最多 32 个中文/英文候选、连续长句拼音、自适应 Beam、1/2/3-gram、模糊纠错、软件/平台词和四字词增强。候选上屏后的本地下一词联想可以单独关闭。", skin))
 
         container.addView(section("翻译键盘", skin))
-        container.addView(paragraph("普通用户只提供单句本地翻译。Pro 可开启前两句上下文参考，并增加“全文/长文翻译”：先在目标 App 全选或选择一段文本，再点全文翻译，Orbit 在本机按句切分翻译，最长 ${LongFormTranslationEngine.MAX_SOURCE_CHARS} 字；未覆盖句会保留原文，不假装成功。", skin))
+        container.addView(paragraph("普通用户只提供单句本地翻译。Pro 可开启前两句上下文参考，并增加选区全文/长文翻译，最长 ${LongFormTranslationEngine.MAX_SOURCE_CHARS} 字；未覆盖句会保留原文，不假装成功。v0.22 额外准备本地神经翻译模型包基础设施，但本版本不执行神经模型。", skin))
         if (contextTranslationAvailable) {
             container.addView(button("上下文翻译：${if (contextTranslationEnabled) "开" else "关"}", skin) {
                 TranslationSettings.setContextTranslationEnabled(this, !contextTranslationEnabled)
@@ -99,7 +116,7 @@ class MainActivity : Activity() {
         }
 
         container.addView(section("Orbit Pro", skin))
-        container.addView(paragraph("当前方案不采用可随意转发的明文邀请码作为正式授权。Debug 版先保留本地测试激活码，方便你验证 Pro 功能；Release 正式版应切换为“签名许可证码”，APK 只放公钥，私钥永远不进仓库/安装包。", skin))
+        container.addView(paragraph("正式授权不使用一个可无限转发的明文邀请码。Debug 版保留测试激活码；Release 方向仍是签名许可证 token，APK 只放公钥，私钥不进入仓库或安装包。", skin))
         val proCode = editField("输入 Pro 激活码", skin)
         container.addView(proCode)
         container.addView(button(if (isPro) "Pro 已解锁" else "激活 Pro", skin) {
@@ -107,7 +124,43 @@ class MainActivity : Activity() {
             render(result.message)
         })
         if (isPro) container.addView(button("退出 Pro 测试状态", skin) { ProLicenseManager.deactivate(this); render("已恢复 Free") })
-        container.addView(paragraph("Pro 当前解锁：100,000 条个人学习上限、更高短语/剪贴板容量、Pro 宠物/装扮、上下文翻译和选区长文翻译。基础输入质量、核心词库和单句翻译不做人为降级。", skin))
+        container.addView(paragraph("Pro 当前解锁：100,000 条个人学习上限、更高短语/剪贴板容量、Pro 宠物/装扮、上下文/长文翻译和本地模型包管理器。基础输入质量、核心词库和单句翻译不做人为降级。", skin))
+
+        container.addView(section("Pro 本地模型包 · v0.22", skin))
+        container.addView(paragraph("`.orbitpack` 通过系统文件选择器导入，不需要 Orbit 申请外部存储权限。安装前强制检查 manifest、LICENSE、NOTICE、SHA-256、路径安全、体积上限和免责声明；模型文件进入 app 私有目录。v0.22 只负责安全安装/选择，尚不执行神经推理。", skin))
+        if (!isPro) {
+            container.addView(paragraph("模型包管理器需要 Pro。你仍可使用现有词典单句翻译和全部基础输入功能。", skin))
+        } else {
+            container.addView(button("导入本地 .orbitpack", skin) { launchModelPackPicker() })
+            if (installedPacks.isEmpty()) {
+                container.addView(paragraph("尚未安装模型包。先在浏览器/电脑获取并制作合法的 .orbitpack，再从这里导入。", skin))
+            } else {
+                installedPacks.forEach { pack ->
+                    val manifest = pack.manifest
+                    container.addView(paragraph(
+                        "${if (pack.enabled) "✓ " else ""}${manifest.displayName} · ${manifest.type.wireValue}/${manifest.runtime.wireValue} · ${manifest.license} · ${formatBytes(pack.installedBytes)}\n" +
+                            "来源：${manifest.sourceUrl}\n" +
+                            "${pack.runtimeStatus.label}",
+                        skin,
+                    ))
+                    container.addView(button(if (pack.enabled) "停用 ${manifest.displayName}" else "设为首选 ${manifest.displayName}", skin) {
+                        val result = modelPackManager.setEnabled(manifest.packId, !pack.enabled)
+                        render(result.message)
+                    })
+                    container.addView(button("卸载 ${manifest.displayName}", skin) { confirmUninstallPack(pack) })
+                }
+            }
+        }
+
+        container.addView(section("模型来源参考", skin))
+        container.addView(paragraph("这些只是上游来源参考，不代表 Orbit 自动下载或自动获得商用权。模型/音色包的 LICENSE 与 NOTICE 仍必须逐包核验。", skin))
+        CuratedModelCatalog.entries.forEach { item ->
+            container.addView(paragraph("${item.title} · ${item.category} · ${item.license}\n${item.commercialNote}\n${item.recommendation}", skin))
+            container.addView(button("浏览器查看来源", skin) {
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.sourceUrl))) }
+                    .onFailure { render("无法打开浏览器：${item.sourceUrl}") }
+            })
+        }
 
         container.addView(section("表情 / 颜文字 / 贴图", skin))
         container.addView(paragraph("保留 Unicode Emoji 17.0、项目颜文字、128 个本地宠物贴图，以及 image/png 直发 → 图片剪贴板 → Emoji 的兼容链。", skin))
@@ -115,11 +168,11 @@ class MainActivity : Activity() {
         container.addView(section("剪贴板", skin))
         container.addView(paragraph("Recent + Pinned 仍只在键盘窗口可见时监听系统剪贴板；IME 隐藏即移除监听。", skin))
 
-        container.addView(section("可视化宠物 v0.21", skin))
+        container.addView(section("可视化宠物", skin))
         val petPreview = PetAvatarV21View(this).apply { bind(petProfile, skin) }
         container.addView(petPreview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180)).apply { setMargins(0, dp(4), 0, dp(10)) })
         container.addView(paragraph("当前宠物：${petProfile.petName}（${petProfile.species}） · ${petProfile.stageName} · Lv.${petProfile.level} · ${petProfile.moodLabel} · ${petProfile.equippedOutfitName ?: "无装扮"}。", skin))
-        container.addView(paragraph("v0.21 参考桌宠的“角色主体 + 行为状态 + 少量可辨识装扮”思路：保留稳定宠物轮廓，移除旧的叠加式装扮绘制，改成统一比例的星环、轻量护目镜、学者帽、披肩、丝带、轨道、微光和尾迹，并加低频呼吸/漂浮动画。", skin))
+        container.addView(paragraph("保留 v0.21 的统一装扮比例与低频呼吸/漂浮动画，不恢复旧的粗糙叠加式装扮。", skin))
         container.addView(button("今日签到", skin) { render(petRepository.checkIn().message) })
         container.addView(button("开蛋 / 随机领养", skin) { render(petRepository.adoptRandom().message) })
         container.addView(button("切换已有宠物", skin) { render(petRepository.switchToNextOwned().message) })
@@ -137,10 +190,90 @@ class MainActivity : Activity() {
         OrbitSkins.all.forEach { option -> container.addView(skinButton(option, SkinManager.selectedSkinId(this) == option.id, skin)) }
 
         container.addView(section("隐私", skin))
-        container.addView(paragraph("不申请 INTERNET、Accessibility、悬浮窗或外部存储权限；不上传输入内容。上下文和长文翻译文本只在当前操作内存中处理，不进入个人词库。", skin))
+        container.addView(paragraph("仍不申请 INTERNET、Accessibility、悬浮窗或外部存储权限；模型包导入走系统文件选择器。v0.22 不申请 RECORD_AUDIO，也不会因为安装语音包而录音。上下文/长文翻译文本只在当前操作内存中处理。", skin))
 
-        container.addView(paragraph("About · v0.21.0", skin))
+        container.addView(paragraph("About · v0.22.0", skin))
         setContentView(scroll)
+    }
+
+    private fun launchModelPackPicker() {
+        if (!ProGate.isLocalModelPackManagerUnlocked(this)) {
+            render("需要 Pro 才能导入本地模型包")
+            return
+        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/zip"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed"))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(intent, REQUEST_MODEL_PACK)
+    }
+
+    private fun stageModelPack(uri: Uri) {
+        render("正在校验模型包 SHA-256、许可证和压缩包安全性…")
+        Thread {
+            val result = runCatching { modelPackManager.stage(uri) }
+            runOnUiThread {
+                result.onSuccess { showModelPackDisclaimer(it) }
+                    .onFailure { render("模型包校验失败：${it.message ?: it.javaClass.simpleName}") }
+            }
+        }.start()
+    }
+
+    private fun showModelPackDisclaimer(staged: ModelPackManager.StagedPack) {
+        val m = staged.manifest
+        val warningText = staged.warnings.joinToString("\n") { "• $it" }.ifBlank { "• 无额外警告" }
+        val message = buildString {
+            append("模型：${m.displayName}\n")
+            append("类型：${m.type.wireValue} / ${m.runtime.wireValue}\n")
+            append("上游：${m.modelName}\n")
+            append("来源：${m.sourceUrl}\n")
+            append("许可证：${m.license}\n")
+            append("商用声明：${m.commercialSummary}\n")
+            append("再分发：${m.redistribution}\n")
+            append("语言：${m.languages.joinToString()}\n")
+            append("包体：${formatBytes(staged.packedBytes)}；解包约 ${formatBytes(staged.unpackedBytes)}；${staged.fileCount} 个校验文件\n")
+            append("最低/建议内存：${m.minRamMb}/${m.recommendedRamMb} MB\n")
+            append("权限声明：${m.permissionSummary}\n\n")
+            append("警告：\n$warningText\n\n")
+            append("LICENSE 摘要：\n${staged.licensePreview}\n\n")
+            append("NOTICE 摘要：\n${staged.noticePreview}\n\n")
+            append("免责声明：第三方模型可能错误、偏见、耗电、发热或不适合高风险用途。许可证/商用/再分发义务由模型来源和权利人决定，Orbit 的完整性校验不构成法律意见。音色克隆只能用于本人声音或已获明确授权的声音，不得用于冒充、诈骗、骚扰或侵权。v0.22 只安装模型文件，不执行神经推理。")
+        }
+        var handled = false
+        AlertDialog.Builder(this)
+            .setTitle("安装第三方模型包？")
+            .setMessage(message)
+            .setNegativeButton("取消") { _, _ ->
+                handled = true
+                modelPackManager.discard(staged)
+            }
+            .setPositiveButton("我已了解并安装") { _, _ ->
+                handled = true
+                installStagedModelPack(staged)
+            }
+            .setOnCancelListener {
+                if (!handled) modelPackManager.discard(staged)
+            }
+            .show()
+    }
+
+    private fun installStagedModelPack(staged: ModelPackManager.StagedPack) {
+        render("正在安装 ${staged.manifest.displayName} 到 App 私有目录…")
+        Thread {
+            val result = modelPackManager.install(staged)
+            runOnUiThread { render(result.message) }
+        }.start()
+    }
+
+    private fun confirmUninstallPack(pack: ModelPackManager.InstalledPack) {
+        AlertDialog.Builder(this)
+            .setTitle("卸载模型包？")
+            .setMessage("将删除 App 私有目录中的 ${pack.manifest.displayName}（约 ${formatBytes(pack.installedBytes)}）。不会影响 Orbit 基础输入法和词典翻译。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("卸载") { _, _ -> render(modelPackManager.uninstall(pack.manifest.packId).message) }
+            .show()
     }
 
     private fun title(text: String, skin: OrbitSkin): TextView = TextView(this).apply {
@@ -191,5 +324,16 @@ class MainActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(6)) }
     }
 
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1024L * 1024L * 1024L -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+        bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+        bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+        else -> "$bytes B"
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        private const val REQUEST_MODEL_PACK = 2201
+    }
 }
