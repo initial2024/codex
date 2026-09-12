@@ -27,10 +27,12 @@ continuous Pinyin
 v0.16 changes:
 
 - Pinyin composing buffer: up to 192 normalized letters.
-- Segmentation paths: up to 6.
-- Phrase span: up to 8 syllables per beam edge; longer sentences are built from multiple edges.
-- Beam width: 56; internal complete results: 20; visible candidates: 12.
-- Candidate query LRU added.
+- Segmentation paths: up to 6 for short input; progressively fewer paths for long input.
+- Phrase span: up to 8 syllables per beam edge; long sentences are built from multiple edges.
+- Beam width: up to 56 for short input and automatically reduced as the syllable count grows.
+- Visible candidates: 12.
+- Candidate-query LRU plus phrase-lookup LRU reduce repeated work as one sentence grows letter by letter.
+- Very long queries skip whole-sentence fuzzy expansion and use tighter beam/entry limits so latency does not grow as aggressively as search space.
 - While letters/backspace are typed, Orbit refreshes the dynamic candidate/tool region instead of recreating every key row.
 - Temporary text-before-cursor context can improve local N-gram ranking but is not persisted.
 
@@ -57,7 +59,10 @@ Jieba does not provide Pinyin. Orbit derives extra word readings conservatively:
 
 1. prefer exact AOSP phrase readings;
 2. otherwise use only AOSP single-character readings whose dominant pronunciation is sufficiently clear;
-3. skip ambiguous/missing readings instead of guessing.
+3. skip ambiguous/missing readings instead of guessing;
+4. give these derived entries lower confidence than native AOSP phrase rows;
+5. derive additional bounded character N-grams from accepted Jieba words;
+6. package the pinned Jieba MIT license.
 
 The mature validator requires at least:
 
@@ -68,7 +73,7 @@ combined runtime Chinese lexicon: 90,000
 English vocabulary: 50,000
 ```
 
-The exact counts are produced in `app/src/main/assets/ime/mature-report.json` during a normal build. See `DATA_SOURCES.md`.
+The exact counts are produced in `app/src/main/assets/ime/mature-report.json` during a normal build. These minimums are sanity gates, not a claim that Orbit already matches proprietary commercial IME corpora. See `DATA_SOURCES.md`.
 
 ## English input
 
@@ -89,7 +94,7 @@ v0.16 allows longer learned phrases/sentences (up to 192 Pinyin letters / 96 tex
 
 ## Clipboard
 
-The keyboard clipboard is now split into:
+The keyboard clipboard is split into:
 
 ```text
 Pinned
@@ -99,26 +104,28 @@ Recent
 Behavior:
 
 - while the IME window is visible, newly copied non-sensitive text can enter Orbit's local Recent history;
+- the clipboard listener is detached when the IME window hides;
 - unpinned entries expire after about one hour;
 - long-press an entry to pin/unpin it;
 - pinned entries do not expire automatically;
 - tap an entry to paste;
 - Clear recent preserves pinned items; Clear all removes everything.
 
-The clipboard listener is attached only while the IME window is shown and is removed when the window hides. Orbit does not run a background clipboard-harvesting service and cannot replace Android/host-app long-press menus.
+Orbit does not run a background clipboard-harvesting service and cannot replace Android/host-app long-press menus.
 
 ## Translation keyboard
 
-Translate is now an input mode rather than only a prompt/source panel.
+Translate is an input mode rather than only a prompt/source panel.
 
 Chinese -> English:
 
 ```text
 enter Translate while in Pinyin mode
 -> keep typing continuous Pinyin
--> choose/space-commit Chinese candidates into the translation source buffer
+-> the current best Chinese candidate participates in the source preview
+-> space/candidate commits Chinese chunks into the temporary translation source buffer
 -> panel shows 原文 and 译文
--> press 译文上屏 / Enter after the source candidate is committed
+-> tap 译文上屏 (or use the translation action once the source is complete)
 -> translation is inserted into the current app
 ```
 
@@ -131,6 +138,8 @@ exact packaged phrase tables
 -> conservative local longest-phrase sentence composer
 -> explicit "offline dictionary does not cover this sentence" state
 ```
+
+English lookup keys are normalized before local composition, so case differences such as `Pinyin`, `English`, and `Chinese` do not create false misses.
 
 If local coverage is insufficient, Orbit may offer a translation prompt for copying, but that prompt is never displayed as if it were a translation result. Runtime translation remains offline and deterministic; it is not equivalent to a cloud MT system such as Google Translate or DeepL.
 
