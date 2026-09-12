@@ -11,10 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Explicit foreground microphone capture for local ASR.
- *
- * Audio is kept only in RAM, capped at [MAX_SECONDS], and never persisted. The
- * controller does nothing until the user explicitly taps the voice action and
- * RECORD_AUDIO has already been granted by Android.
+ * Audio is kept only in RAM, capped at [MAX_SECONDS], and never persisted.
  */
 class LocalSpeechInputController(private val context: Context) {
     data class Capture(val samples: ShortArray, val sampleRate: Int)
@@ -36,7 +33,6 @@ class LocalSpeechInputController(private val context: Context) {
 
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
         if (minBuffer <= 0) return ActionResult(false, "设备不支持 16kHz 单声道 PCM16 录音")
-
         val audioRecord = runCatching {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -46,7 +42,6 @@ class LocalSpeechInputController(private val context: Context) {
                 maxOf(minBuffer, READ_CHUNK_BYTES * 2),
             )
         }.getOrElse { return ActionResult(false, "无法初始化麦克风：${it.message ?: it.javaClass.simpleName}") }
-
         if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
             audioRecord.release()
             return ActionResult(false, "麦克风初始化失败")
@@ -62,7 +57,7 @@ class LocalSpeechInputController(private val context: Context) {
 
     @Synchronized
     fun stop(): Result<Capture> {
-        if (!recording.get()) return Result.failure(IllegalStateException("当前没有录音"))
+        if (!recording.get() && captured == null) return Result.failure(IllegalStateException("当前没有录音"))
         recording.set(false)
         runCatching { recorder?.stop() }
         val thread = worker
@@ -105,12 +100,12 @@ class LocalSpeechInputController(private val context: Context) {
                     break
                 }
             }
-            if (count >= maxSamples) recording.set(false)
             captured = sink.copyOf(count)
+            // When MAX_SECONDS is reached, retain recording=true until the user taps
+            // Stop so the full in-memory capture can still flow into ASR.
         } catch (t: Throwable) {
             failure = "录音失败：${t.message ?: t.javaClass.simpleName}"
         } finally {
-            recording.set(false)
             runCatching { audioRecord.stop() }
         }
     }
