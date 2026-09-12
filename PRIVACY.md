@@ -12,7 +12,7 @@ The installed Orbit IME does not request `INTERNET`. Input text, clipboard text,
 
 Dictionary/frequency/Emoji sources are downloaded only by the build machine, hash-verified and converted to packaged offline assets. v0.23 adds pinned THUOCL domain data and HermitDave/FrequencyWords usage-frequency data to the existing AOSP/Jieba/CC-CEDICT/ESDB/Unicode pipeline. Their notices are packaged with the generated assets.
 
-The model-pack manager still does not download models. Source buttons open an external browser; Orbit receives a pack only after the user explicitly selects a local file through Android Storage Access Framework.
+The model-pack manager does not download models. Source buttons open an external browser; Orbit receives a pack only after the user explicitly selects a local file through Android Storage Access Framework.
 
 ## Advertising and analytics
 
@@ -22,15 +22,17 @@ No ad SDK, analytics, tracking, remote configuration or cloud prediction is incl
 
 Orbit keeps selection-aware replace/delete behavior and composing replacement. Local candidate ranking uses static frequency, packaged N-grams, bounded cursor context and local user selection frequency.
 
-v0.23 adds a packaged 32-shard association index. After a candidate is committed, Orbit reads only a bounded text tail before the cursor, looks up the last 1–4 Chinese characters and combines those local suggestions with bounded N-gram continuation. The context is not persisted by the association engine.
+v0.23 packages a 32-shard association index. After a candidate is committed, Orbit reads only a bounded text tail before the cursor, queries local indexed associations first, then adds bounded N-gram continuation. The runtime can display up to 48 post-commit suggestions. Association context is never persisted by the association engine.
 
-Fuzzy correction can be Off, Standard or Enhanced. The selected level is stored locally. Fuzzy candidate generation does not upload misspellings or create a persistent record of raw typing.
+Chinese and English candidate pools can display up to 48 candidates. Larger prefix/fuzzy search pools are bounded and cached; long Pinyin Beam search narrows adaptively as input grows so expanding the dictionaries does not make long-sentence search unbounded.
+
+Fuzzy correction can be Off, Standard or Enhanced. The selected level is stored locally. Exact input is ranked before fuzzy alternatives. Fuzzy generation does not upload misspellings or create a persistent record of raw typing.
 
 ## Persistent settings and appearance
 
 Local preferences include input mode, quick-phrase visibility, built-in phrase visibility, association toggle, fuzzy level, translation context toggle, appearance mode, selected skin, pet/outfit state and Pro state.
 
-Appearance supports Follow system, Light, Dark, AMOLED black and Custom skin. Following the Android night flag requires no network or account information.
+Appearance supports Follow system, Light, Dark, AMOLED black and Custom skin. Follow system reads only Android's local `UI_MODE_NIGHT` configuration and requires no account, network or location data.
 
 ## Personal learning
 
@@ -42,9 +44,11 @@ Recent/Pinned clipboard listening exists only while the IME window is visible. T
 
 ## Translation
 
-Free single-sentence translation stays fully local. v0.23 adds a bounded dynamic-programming local fallback that prefers longer exact bilingual fragments and reports/uses coverage rather than pretending every fragment was translated.
+Free single-sentence translation stays fully local. v0.23 uses exact bilingual data first, then a bounded dynamic-programming translator that prefers longer phrases and preserves unknown source instead of fabricating coverage. Output is locally normalized for punctuation and spacing.
 
-Pro may enable previous-context translation and selected long-form translation up to 8,000 characters. Long-form processing preserves paragraph/line structure; uncovered segments remain source text. Translation context exists only for the current operation and is not added to the personal dictionary.
+Pro may enable local context translation and selected long-form translation up to 8,000 characters. Context translation reads at most the previous four sentences from a bounded in-memory text tail and keeps sentence/paragraph boundaries. Long-form translation keeps line breaks and splits unusually long sentences into bounded clauses for local processing. If a work budget is reached or a fragment is not covered, the original fragment is retained rather than dropped.
+
+Translation source/context exists only for the current operation and is not added to the personal dictionary.
 
 Imported neural translation packs remain non-executable until a separately validated Android neural runtime is bundled. v0.23 does not claim neural output when that runtime is absent.
 
