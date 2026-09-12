@@ -1,0 +1,32 @@
+{
+  "pack_format": 1,
+  "pack_id": "example-sherpa-vits-tts",
+  "display_name": "Example sherpa VITS TTS",
+  "version": "1",
+  "type": "tts",
+  "runtime": "sherpa_onnx",
+  "model_family": "sherpa_vits",
+  "model_name": "Replace with exact upstream TTS checkpoint/voice name",
+  "source_url": "https://github.com/k2-fsa/sherpa-onnx",
+  "license": "VERIFY-MODEL-AND-VOICE-LICENSE",
+  "commercial_use": false,
+  "redistribution": "unknown",
+  "languages": ["zh", "en"],
+  "size_mb": 0,
+  "min_ram_mb": 0,
+  "recommended_ram_mb": 0,
+  "requires_permissions": [],
+  "privacy": "offline_only",
+  "disclaimer_required": true,
+  "experimental": false,
+  "description": "Schema example only. Voice/model licenses are independent from the sherpa runtime license.",
+  "runtime_config": {
+    "model": "model/model.onnx",
+    "tokens": "model/tokens.txt",
+    "lexicon": "model/lexicon.txt",
+    "data_dir": "model/espeak-ng-data",
+    "speaker_id": "0",
+    "speed": "1.0",
+    "num_threads": "2"
+  }
+}
