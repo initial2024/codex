@@ -5,6 +5,7 @@ import android.net.Uri
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -38,13 +39,8 @@ class ModelPackManager(private val context: Context) {
     private val stageDir = File(context.cacheDir, PACK_STAGE_ROOT).apply { mkdirs() }
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /**
-     * Copies a user-selected .orbitpack into app-private cache and performs a full
-     * checksum/security inspection. The pack is not installed until the user accepts
-     * the disclaimer in the settings UI.
-     */
     fun stage(uri: Uri): StagedPack {
-        require(ProGate.isProUnlocked(context)) { "Pro is required for local model packs" }
+        require(ProGate.isLocalModelPackManagerUnlocked(context)) { "Pro is required for local model packs" }
         val temp = File(stageDir, "stage-${UUID.randomUUID()}.orbitpack")
         try {
             copyUriToFile(uri, temp)
@@ -70,19 +66,17 @@ class ModelPackManager(private val context: Context) {
     }
 
     fun install(staged: StagedPack): OperationResult {
-        if (!ProGate.isProUnlocked(context)) return OperationResult(false, "需要 Pro 才能安装模型包")
+        if (!ProGate.isLocalModelPackManagerUnlocked(context)) return OperationResult(false, "需要 Pro 才能安装模型包")
         if (!staged.tempFile.isFile) return OperationResult(false, "暂存模型包已不存在，请重新选择")
 
         return runCatching {
-            // Re-inspect immediately before extraction. This avoids trusting a stale
-            // staged object if the cache file was externally corrupted.
             val inspected = inspectZip(staged.tempFile)
             require(inspected.manifest.packId == staged.manifest.packId) { "staged manifest changed" }
 
             val target = File(rootDir, inspected.manifest.packId)
             val installTemp = File(rootDir, ".install-${inspected.manifest.packId}-${UUID.randomUUID()}")
             require(!installTemp.exists()) { "temporary install path collision" }
-            installTemp.mkdirs()
+            require(installTemp.mkdirs()) { "cannot create private model-pack install directory" }
             try {
                 extractVerified(staged.tempFile, installTemp)
                 File(installTemp, INSTALL_META).writeText(
@@ -95,9 +89,7 @@ class ModelPackManager(private val context: Context) {
                 )
 
                 val backup = if (target.exists()) File(rootDir, ".backup-${target.name}-${UUID.randomUUID()}") else null
-                if (backup != null) {
-                    require(target.renameTo(backup)) { "failed to move existing pack to backup" }
-                }
+                if (backup != null) require(target.renameTo(backup)) { "failed to move existing pack to backup" }
                 val moved = installTemp.renameTo(target)
                 if (!moved) {
                     if (backup != null && !target.exists()) backup.renameTo(target)
@@ -140,7 +132,7 @@ class ModelPackManager(private val context: Context) {
     }
 
     fun setEnabled(packId: String, enabled: Boolean): OperationResult {
-        if (!ProGate.isProUnlocked(context)) return OperationResult(false, "需要 Pro")
+        if (!ProGate.isLocalModelPackManagerUnlocked(context)) return OperationResult(false, "需要 Pro")
         val pack = listInstalled().firstOrNull { it.manifest.packId == packId }
             ?: return OperationResult(false, "模型包不存在")
         val key = enabledKey(pack.manifest.type)
@@ -178,7 +170,7 @@ class ModelPackManager(private val context: Context) {
     private fun inspectZip(file: File): Inspection {
         require(file.length() in 1..MAX_PACK_BYTES) { "模型包体积不合法或超过 ${MAX_PACK_BYTES / MB} MB" }
         ZipFile(file).use { zip ->
-            val entries = zip.entries().toList()
+            val entries = zip.entries().asSequence().toList()
             require(entries.size <= MAX_ENTRIES) { "模型包文件数超过上限 $MAX_ENTRIES" }
             val fileEntries = entries.filterNot { it.isDirectory }
             val byName = linkedMapOf<String, ZipEntry>()
@@ -234,8 +226,8 @@ class ModelPackManager(private val context: Context) {
 
     private fun extractVerified(packFile: File, destination: File) {
         ZipFile(packFile).use { zip ->
-            val entries = zip.entries().toList()
-            val checksumEntry = entries.firstOrNull { normalizedEntryName(it.name) == CHECKSUMS }
+            val entries = zip.entries().asSequence().toList()
+            val checksumEntry = entries.firstOrNull { !it.isDirectory && normalizedEntryName(it.name) == CHECKSUMS }
                 ?: error("missing checksums.sha256")
             val expected = parseChecksums(readEntryLimited(zip, checksumEntry, MAX_CHECKSUM_BYTES))
             var total = 0L
@@ -315,7 +307,7 @@ class ModelPackManager(private val context: Context) {
     }
 
     private fun readEntryLimited(zip: ZipFile, entry: ZipEntry, limit: Long): String {
-        val bytes = ArrayList<Byte>()
+        val output = ByteArrayOutputStream()
         var count = 0L
         zip.getInputStream(entry).use { input ->
             val buffer = ByteArray(8192)
@@ -324,10 +316,10 @@ class ModelPackManager(private val context: Context) {
                 if (read < 0) break
                 count += read
                 require(count <= limit) { "metadata entry too large: ${entry.name}" }
-                for (index in 0 until read) bytes.add(buffer[index])
+                output.write(buffer, 0, read)
             }
         }
-        return ByteArray(bytes.size) { bytes[it] }.toString(Charsets.UTF_8)
+        return output.toByteArray().toString(Charsets.UTF_8)
     }
 
     private fun parseChecksums(raw: String): Map<String, String> {
@@ -345,12 +337,12 @@ class ModelPackManager(private val context: Context) {
     }
 
     private fun normalizedEntryName(raw: String): String {
-        val normalized = raw.replace('\\', '/').trimStart('/')
-        require(normalized.isNotBlank()) { "empty zip path" }
         require(!raw.startsWith('/') && !raw.startsWith('\\')) { "absolute zip path is not allowed" }
+        val normalized = raw.replace('\\', '/').trimStart('/').trimEnd('/')
+        require(normalized.isNotBlank()) { "empty zip path" }
         require(!normalized.contains(':')) { "zip path with drive/scheme is not allowed" }
         val parts = normalized.split('/')
-        require(parts.none { it == ".." || it.isBlank() }) { "unsafe zip path: $raw" }
+        require(parts.none { it == ".." || it == "." || it.isBlank() }) { "unsafe zip path: $raw" }
         require(normalized.length <= 400) { "zip path too long" }
         return normalized
     }
