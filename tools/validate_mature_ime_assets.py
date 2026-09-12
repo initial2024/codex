@@ -129,6 +129,11 @@ def main() -> int:
     require("MAX_CANDIDATES = 32" in user_store, "expanded Chinese candidate pool missing")
     require("nextSuggestions" in user_store and "NextAssociationEngine" in user_store, "next-phrase association wiring missing")
 
+    pinyin_engine = (ROOT / "app/src/main/java/com/ccwu/orbitime/PinyinImeEngine.kt").read_text(encoding="utf-8")
+    require("MAX_RESULTS = 32" in pinyin_engine, "Pinyin internal candidate pool regressed")
+    require("MAX_BEAM_RESULTS = 32" in pinyin_engine, "Pinyin Beam result pool regressed")
+    require("PREFIX_POOL_LIMIT = 64" in pinyin_engine, "Pinyin prefix pool regressed")
+
     english_engine = (ROOT / "app/src/main/java/com/ccwu/orbitime/EnglishImeEngine.kt").read_text(encoding="utf-8")
     require("limit: Int = 32" in english_engine, "expanded English candidate pool missing")
 
