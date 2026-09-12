@@ -49,6 +49,19 @@ def main() -> int:
         assert "coop\t" in english_text and "co-op" in english_text
         assert "\na\t" not in english_text
 
+        source_manifest = root / "mature_import_manifest_v019.json"
+        source_manifest.write_text('{"sources":[{"name":"base","path":"seed.tsv","format":"orbit-tsv"}]}\n', encoding="utf-8")
+        manifest = v020.build_manifest(
+            root,
+            {"sources": {"cedict": {"url": "https://example.invalid/cedict", "attribution": "test attribution"}}},
+            180000,
+        )
+        assert manifest.name == "mature_import_manifest_v020.json"
+        manifest_text = manifest.read_text(encoding="utf-8")
+        assert '"name": "base"' in manifest_text
+        assert '"name": "orbit-project-software-vocabulary"' in manifest_text
+        assert '"name": "cc-cedict-four-char-boost"' in manifest_text
+
     software = Path(__file__).resolve().parents[1] / "data/ime_sources/seed_software.tsv"
     assert v020.count_project_software(software) >= 100
     print("Orbit IME v0.20 augmentation tests: PASS")

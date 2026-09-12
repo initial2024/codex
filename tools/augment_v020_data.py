@@ -98,9 +98,12 @@ def build_expanded_english_tsv(
 
 
 def build_manifest(staging: Path, config: dict, idiom_frequency: int) -> Path:
-    source_manifest = staging / "mature_import_manifest_v018.json"
+    # augment_v018_data.py is the retained v0.19 augmentation stage and writes
+    # mature_import_manifest_v019.json. Keep the stage contract aligned with
+    # the actual producer instead of referring to the obsolete v018 filename.
+    source_manifest = staging / "mature_import_manifest_v019.json"
     if not source_manifest.is_file():
-        raise RuntimeError("mature_import_manifest_v018.json missing; run augment_v018_data.py first")
+        raise RuntimeError("mature_import_manifest_v019.json missing; run augment_v018_data.py first")
     payload = json.loads(source_manifest.read_text(encoding="utf-8"))
     sources = [item for item in payload.get("sources", []) if item.get("name") not in {"orbit-project-software-vocabulary", "cc-cedict-four-char-boost"}]
     sources.append({
