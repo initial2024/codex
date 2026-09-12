@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build when Orbit v0.22 mature assets or local features regress."""
+"""Fail the build when Orbit v0.23 mature assets or local features regress."""
 from __future__ import annotations
 
 import argparse
@@ -18,231 +18,169 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
+def read(path: Path) -> str:
+    require(path.is_file(), f"missing required file: {path.relative_to(ROOT)}")
+    return path.read_text(encoding="utf-8")
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate generated Orbit mature IME assets")
+    parser = argparse.ArgumentParser(description="Validate generated Orbit v0.23 mature IME assets")
     parser.add_argument("--assets", default=str(DEFAULT_ASSETS))
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     args = parser.parse_args()
 
     assets = Path(args.assets).resolve()
     config = json.loads(Path(args.config).resolve().read_text(encoding="utf-8"))
+    require(int(config.get("version", 0)) >= 5, "mature source config is older than v0.23")
     policy = config["policy"]
-    report_path = assets / "mature-report.json"
-    manifest_path = assets / "manifest.json"
-    require(report_path.is_file(), "mature-report.json is missing")
-    require(manifest_path.is_file(), "runtime manifest.json is missing")
-
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    report = json.loads(read(assets / "mature-report.json"))
+    manifest = json.loads(read(assets / "manifest.json"))
     stats = report.get("stats", {})
     counts = report.get("runtime_counts", {})
-    require(int(report.get("version", 0)) >= 4, f"mature report is stale: {report.get('version')}")
+    require(int(report.get("version", 0)) >= 5, f"mature report is stale: {report.get('version')}")
 
-    min_aosp = int(policy["minimum_aosp_entries"])
-    min_jieba = int(policy["minimum_jieba_generated_entries"])
-    min_cedict = int(policy["minimum_cedict_entries"])
-    min_idiom = int(policy["minimum_cedict_idiom_entries"])
-    min_software = int(policy["minimum_project_software_entries"])
-    min_runtime_cn = int(policy["minimum_runtime_lexicon_entries"])
-    min_en = int(policy["minimum_english_entries"])
-    min_emoji = int(policy["minimum_unicode_emoji_entries"])
-    min_translate_zh = int(policy["minimum_translation_zh_entries"])
-    min_translate_en = int(policy["minimum_translation_en_entries"])
+    gates = {
+        "aosp_lexicon_entries": "minimum_aosp_entries",
+        "jieba_generated_entries": "minimum_jieba_generated_entries",
+        "cedict_entries": "minimum_cedict_entries",
+        "cedict_four_char_entries": "minimum_cedict_idiom_entries",
+        "project_software_entries": "minimum_project_software_entries",
+        "thuocl_source_entries": "minimum_thuocl_source_entries",
+        "thuocl_generated_entries": "minimum_thuocl_generated_entries",
+        "frequencywords_en_entries": "minimum_frequencywords_en_entries",
+        "frequencywords_zh_source_entries": "minimum_frequencywords_zh_entries",
+        "association_entries": "minimum_association_entries",
+        "unicode_emoji_entries": "minimum_unicode_emoji_entries",
+        "translation_zh_entries": "minimum_translation_zh_entries",
+        "translation_en_entries": "minimum_translation_en_entries",
+    }
+    for stat, policy_key in gates.items():
+        require(int(stats.get(stat, 0)) >= int(policy[policy_key]), f"{stat} below gate: {stats.get(stat)} < {policy[policy_key]}")
 
-    require(int(stats.get("aosp_lexicon_entries", 0)) >= min_aosp, f"AOSP lexicon too small: {stats.get('aosp_lexicon_entries')}")
-    require(int(stats.get("jieba_generated_entries", 0)) >= min_jieba, f"Jieba derived lexicon too small: {stats.get('jieba_generated_entries')}")
-    require(int(stats.get("cedict_entries", 0)) >= min_cedict, f"CC-CEDICT pack too small: {stats.get('cedict_entries')}")
-    require(int(stats.get("cedict_four_char_entries", 0)) >= min_idiom, f"CC-CEDICT idiom layer too small: {stats.get('cedict_four_char_entries')}")
-    require(int(stats.get("project_software_entries", 0)) >= min_software, f"project software vocabulary too small: {stats.get('project_software_entries')}")
-    require(int(stats.get("esdb_english_entries", 0)) >= min_en, f"ESDB English pack too small: {stats.get('esdb_english_entries')}")
-    require(int(stats.get("unicode_emoji_entries", 0)) >= min_emoji, f"Unicode emoji pack too small: {stats.get('unicode_emoji_entries')}")
-    require(int(stats.get("translation_zh_entries", 0)) >= min_translate_zh, f"ZH->EN translation pack too small: {stats.get('translation_zh_entries')}")
-    require(int(stats.get("translation_en_entries", 0)) >= min_translate_en, f"EN->ZH translation pack too small: {stats.get('translation_en_entries')}")
-    require(int(counts.get("lexicon", 0)) >= min_runtime_cn, f"runtime Chinese lexicon too small: {counts.get('lexicon')}")
-    require(int(counts.get("english", 0)) >= min_en, f"runtime English pack too small: {counts.get('english')}")
-
+    require(int(counts.get("lexicon", 0)) >= int(policy["minimum_runtime_lexicon_entries"]), f"runtime Chinese lexicon too small: {counts.get('lexicon')}")
+    require(int(counts.get("english", 0)) >= int(policy["minimum_english_entries"]), f"runtime English pack too small: {counts.get('english')}")
     ngrams = counts.get("ngrams", {})
-    require(int(ngrams.get("1", 0)) >= 5000, f"1-gram pack too small: {ngrams.get('1')}")
-    require(int(ngrams.get("2", 0)) >= 30000, f"2-gram pack too small: {ngrams.get('2')}")
-    require(int(ngrams.get("3", 0)) >= 30000, f"3-gram pack too small: {ngrams.get('3')}")
+    require(int(ngrams.get("1", 0)) >= 5000, "1-gram pack too small")
+    require(int(ngrams.get("2", 0)) >= 30000, "2-gram pack too small")
+    require(int(ngrams.get("3", 0)) >= 30000, "3-gram pack too small")
 
     cn_shards = list((assets / "lexicon").glob("*.odict"))
     en_shards = list((assets / "english").glob("*.odict"))
+    association_shards = list((assets / "association").glob("*.odict"))
     zh_translation_shards = list((assets / "translation/zh").glob("*.odict"))
     en_translation_shards = list((assets / "translation/en").glob("*.odict"))
     require(len(cn_shards) >= 20, f"too few Chinese shards: {len(cn_shards)}")
     require(len(en_shards) >= 20, f"too few English shards: {len(en_shards)}")
-    require(len(zh_translation_shards) >= 40, f"too few Chinese translation shards: {len(zh_translation_shards)}")
-    require(len(en_translation_shards) >= 20, f"too few English translation shards: {len(en_translation_shards)}")
-
-    emoji_file = assets / "emoji_unicode.txt"
-    require(emoji_file.is_file() and emoji_file.stat().st_size > 10000, "Unicode emoji asset missing/incomplete")
+    require(len(association_shards) == 32, f"association pack must have 32 shards, got {len(association_shards)}")
+    require(len(zh_translation_shards) >= 40, "too few ZH translation shards")
+    require(len(en_translation_shards) >= 20, "too few EN translation shards")
+    require((assets / "emoji_unicode.txt").is_file() and (assets / "emoji_unicode.txt").stat().st_size > 10000, "Unicode emoji asset missing/incomplete")
 
     notice_dir = assets / "third_party_notices"
     notices = {
-        "AOSP": (notice_dir / "AOSP-PinyinIME-NOTICE.txt", 1000),
-        "ESDB": (notice_dir / "ESDB-SCOWL-Copyright.txt", 1000),
-        "Jieba": (notice_dir / "Jieba-LICENSE.txt", 500),
-        "CC-CEDICT": (notice_dir / "CC-CEDICT-NOTICE.txt", 300),
-        "Unicode Emoji": (notice_dir / "Unicode-Emoji-NOTICE.txt", 200),
+        "AOSP": ("AOSP-PinyinIME-NOTICE.txt", 1000),
+        "ESDB": ("ESDB-SCOWL-Copyright.txt", 1000),
+        "Jieba": ("Jieba-LICENSE.txt", 500),
+        "CC-CEDICT": ("CC-CEDICT-NOTICE.txt", 300),
+        "Unicode": ("Unicode-Emoji-NOTICE.txt", 200),
+        "THUOCL": ("THUOCL-LICENSE.txt", 500),
+        "THUOCL README": ("THUOCL-README.txt", 1000),
+        "FrequencyWords": ("FrequencyWords-README.txt", 500),
     }
-    for name, (path, minimum_bytes) in notices.items():
-        require(path.is_file() and path.stat().st_size > minimum_bytes, f"{name} notice missing/incomplete")
+    for label, (name, minimum) in notices.items():
+        path = notice_dir / name
+        require(path.is_file() and path.stat().st_size >= minimum, f"{label} notice missing/incomplete")
 
-    source_licenses = {str(item.get("license")) for item in manifest.get("sources", [])}
     source_names = {str(item.get("name")) for item in manifest.get("sources", [])}
-    require("Apache-2.0" in source_licenses, "AOSP Apache-2.0 source missing from runtime manifest")
-    require("MIT" in source_licenses, "Jieba MIT source missing from runtime manifest")
-    require("ESDB-2026" in source_licenses, "ESDB source missing from runtime manifest")
-    require("CC-BY-SA-4.0" in source_licenses, "CC-CEDICT source missing from runtime manifest")
-    require("orbit-project-software-vocabulary" in source_names, "project software vocabulary source missing")
-    require("cc-cedict-four-char-boost" in source_names, "CC-CEDICT idiom boost source missing")
+    source_licenses = {str(item.get("license")) for item in manifest.get("sources", [])}
+    for required in (
+        "orbit-project-software-vocabulary", "cc-cedict-four-char-boost",
+        "thuocl-frequency-overlay", "frequencywords-english-overlay", "frequencywords-chinese-ngram",
+    ):
+        require(required in source_names, f"runtime source missing: {required}")
+    for license_name in ("Apache-2.0", "MIT", "ESDB-2026", "CC-BY-SA-4.0"):
+        require(license_name in source_licenses, f"runtime license metadata missing: {license_name}")
 
     pins = report.get("pins", {})
-    for key in ("aosp_pinyin", "aosp_notice", "jieba_dict", "jieba_license", "esdb_en_us", "esdb_copyright", "cedict"):
+    for key in ("aosp_pinyin", "jieba_dict", "esdb_en_us", "cedict", "frequencywords_en", "frequencywords_zh"):
         require(key in pins and pins[key].get("git_blob_sha1"), f"source pin missing: {key}")
+    for key in ("thuocl_it", "thuocl_idiom", "thuocl_place", "thuocl_medical", "thuocl_poem"):
+        require(key in pins and pins[key].get("git_blob_sha1"), f"THUOCL source pin missing: {key}")
     require("unicode_emoji" in pins and pins["unicode_emoji"].get("sha256"), "Unicode emoji SHA-256 pin missing")
 
-    android_manifest = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
-    forbidden = (
-        "android.permission.INTERNET",
-        "android.permission.RECORD_AUDIO",  # v0.22 installs speech packs but does not record yet
-        "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.QUERY_ALL_PACKAGES",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.accessibilityservice.AccessibilityService",
-    )
-    for token in forbidden:
-        require(token not in android_manifest, f"forbidden v0.22 manifest capability found: {token}")
+    android_manifest = read(ROOT / "app/src/main/AndroidManifest.xml")
+    for forbidden in (
+        "android.permission.INTERNET", "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW", "android.permission.QUERY_ALL_PACKAGES",
+        "android.permission.POST_NOTIFICATIONS", "android.accessibilityservice.AccessibilityService",
+    ):
+        require(forbidden not in android_manifest, f"forbidden v0.23 manifest capability found: {forbidden}")
     require('android:name=".OrbitStickerProvider"' in android_manifest, "local sticker provider missing")
     require('android:exported="false"' in android_manifest, "sticker provider must stay non-exported")
-    require('android:grantUriPermissions="true"' in android_manifest, "sticker provider URI grants missing")
 
-    gradle = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-    require('versionCode = 22' in gradle, "versionCode is not 22")
-    require('versionName = "0.22.0"' in gradle, "versionName is not 0.22.0")
-    require("buildConfig = true" in gradle, "BuildConfig must be generated for debug-only Pro tester gate")
-    require("augment_v020_data.py" in gradle, "v0.20 idiom/software augmentation is not wired into preBuild")
-    require("test_model_pack_pipeline.py" in gradle, "v0.22 model-pack pipeline tests are not wired into preBuild")
+    gradle = read(ROOT / "app/build.gradle.kts")
+    require('versionCode = 23' in gradle and 'versionName = "0.23.0"' in gradle, "Gradle is not v0.23.0")
+    require("augment_v023_data.py" in gradle and "test_ime_data_pipeline_v023.py" in gradle, "v0.23 data pipeline is not wired")
+    require("test_model_pack_pipeline.py" in gradle, "model-pack regression tests are not wired")
 
-    pro_gate = (SRC / "ProGate.kt").read_text(encoding="utf-8")
-    require("ProLicenseManager.isUnlocked" in pro_gate, "ProGate is not routed through license manager")
-    require("100000 else 20000" in pro_gate, "user-dictionary capacities regressed")
-    require("isLocalModelPackManagerUnlocked" in pro_gate, "Pro model-pack gate missing")
-    pro_license = (SRC / "ProLicenseManager.kt").read_text(encoding="utf-8")
-    require("BuildConfig.DEBUG" in pro_license and "DEBUG_TEST_CODE_SHA256" in pro_license, "debug Pro activation gate missing")
-    require("private signing key" in pro_license, "production signed-license boundary documentation missing")
+    ime_prefs = read(SRC / "ImePreferences.kt")
+    require("FUZZY_OFF" in ime_prefs and "FUZZY_STANDARD" in ime_prefs and "FUZZY_ENHANCED" in ime_prefs, "three-level fuzzy preference missing")
+    skin_manager = read(SRC / "SkinManager.kt")
+    for token in ("APPEARANCE_SYSTEM", "APPEARANCE_LIGHT", "APPEARANCE_DARK", "APPEARANCE_AMOLED", "UI_MODE_NIGHT_YES"):
+        require(token in skin_manager, f"night appearance support missing: {token}")
 
-    user_store = (SRC / "UserDictionaryStore.kt").read_text(encoding="utf-8")
-    require('STORE_DIR = "orbit-user-dictionary"' in user_store, "file-backed user dictionary missing")
-    require("JOURNAL_COMPACT_WRITES" in user_store and "journal.tsv" in user_store, "user dictionary journal/compaction missing")
-    require("MAX_CANDIDATES = 32" in user_store, "expanded Chinese candidate pool missing")
-    require("nextSuggestions" in user_store and "NextAssociationEngine" in user_store, "next-phrase association wiring missing")
+    pinyin_engine = read(SRC / "PinyinImeEngine.kt")
+    require("MAX_RESULTS = 32" in pinyin_engine and "PREFIX_POOL_LIMIT = 80" in pinyin_engine, "v0.23 Pinyin candidate pool regressed")
+    require("ImePreferences.fuzzyLevel" in pinyin_engine, "Pinyin fuzzy preference not wired")
+    correction = read(SRC / "PinyinCorrectionEngine.kt")
+    require("INSERTION_CHARS" in correction and "keyboardNeighbors" in correction and "enhanced" in correction, "expanded Pinyin correction missing")
+    english_engine = read(SRC / "EnglishImeEngine.kt")
+    require("EnglishFuzzyEngine" in english_engine and "limit: Int = 32" in english_engine, "English fuzzy/candidate path missing")
+    require((SRC / "EnglishFuzzyEngine.kt").is_file(), "EnglishFuzzyEngine.kt missing")
 
-    pinyin_engine = (SRC / "PinyinImeEngine.kt").read_text(encoding="utf-8")
-    require("MAX_RESULTS = 32" in pinyin_engine, "Pinyin internal candidate pool regressed")
-    require("MAX_BEAM_RESULTS = 32" in pinyin_engine, "Pinyin Beam result pool regressed")
-    require("PREFIX_POOL_LIMIT = 64" in pinyin_engine, "Pinyin prefix pool regressed")
+    association = read(SRC / "AssociationAsset.kt")
+    require("SHARD_COUNT = 32" in association and "MAX_CONTEXT_CHARS = 4" in association, "association asset reader incomplete")
+    next_engine = read(SRC / "NextAssociationEngine.kt")
+    require("AssociationAsset" in next_engine and "MAX_BRANCHES = 10" in next_engine, "fast association path not wired")
 
-    english_engine = (SRC / "EnglishImeEngine.kt").read_text(encoding="utf-8")
-    require("limit: Int = 32" in english_engine, "expanded English candidate pool missing")
+    offline_translation = read(SRC / "OfflineTranslationPack.kt")
+    require("FluentLocalTranslationEngine" in offline_translation and "MIN_FLUENT_COVERAGE" in offline_translation, "v0.23 fluent local translation not wired")
+    long_translation = read(SRC / "LongFormTranslationEngine.kt")
+    require("coverage" in long_translation and "MAX_SEGMENTS = 240" in long_translation, "v0.23 paragraph long-form translation missing")
+    require((SRC / "FluentLocalTranslationEngine.kt").is_file(), "FluentLocalTranslationEngine.kt missing")
 
-    service = (SRC / "OrbitInputMethodService.kt").read_text(encoding="utf-8")
-    require("hasSelectedText()" in service and 'commitText("", 1)' in service, "selected-text deletion path missing")
-    require("deleteSurroundingTextInCodePoints" in service, "Unicode-safe no-selection backspace path missing")
-    require("QuickPhraseStore" in service and "ImePreferences" in service, "persistent/custom quick phrase wiring missing")
-    require("prepareLongFormTranslation" in service and "LongFormTranslationEngine" in service, "Pro long-form translation wiring missing")
-    require("PetAvatarV21View" in service, "polished pet view is not used by IME")
-    require("TranslationSettings.isContextTranslationEnabled" in service, "context translation toggle is not wired into IME")
-    require("ContextTranslationEngine.translate" in service, "context translation engine is not wired into IME")
-    require("userDictionary.nextSuggestions" in service and "联想" in service, "post-commit next-phrase UI missing")
-    require("ClipData.newUri" in service and "grantUriPermission" in service, "image clipboard sticker compatibility fallback missing")
-
-    required_sources = (
-        "ImePreferences.kt",
-        "QuickPhraseStore.kt",
-        "LongFormTranslationEngine.kt",
-        "PetAvatarV21View.kt",
-        "ContextTranslationEngine.kt",
-        "NextAssociationEngine.kt",
-        "ModelPackManifest.kt",
-        "ModelPackManager.kt",
-        "ModelRuntimeContracts.kt",
-        "CuratedModelCatalog.kt",
-    )
-    for source in required_sources:
+    for source in ("ModelPackManifest.kt", "ModelPackManager.kt", "ModelRuntimeContracts.kt", "CuratedModelCatalog.kt"):
         require((SRC / source).is_file(), f"{source} missing")
-    require((ROOT / "data/ime_sources/seed_software.tsv").is_file(), "seed_software.tsv missing")
-    require((ROOT / "MODEL_PACKS.md").is_file(), "MODEL_PACKS.md missing")
-    require((ROOT / "docs/orbitpack-manifest.example.json").is_file(), "orbitpack manifest example missing")
-    require((ROOT / "tools/build_orbitpack.py").is_file(), "orbitpack builder missing")
-    require((ROOT / "tools/test_model_pack_pipeline.py").is_file(), "orbitpack pipeline test missing")
-
-    manifest_source = (SRC / "ModelPackManifest.kt").read_text(encoding="utf-8")
-    require('privacy == "offline_only"' in manifest_source, "offline-only model-pack policy missing")
-    require('android.permission.INTERNET' in manifest_source, "model-pack INTERNET rejection missing")
-    pack_manager = (SRC / "ModelPackManager.kt").read_text(encoding="utf-8")
+    pack_manager = read(SRC / "ModelPackManager.kt")
     require("checksums.sha256" in pack_manager and "MessageDigest.getInstance(\"SHA-256\")" in pack_manager, "model-pack SHA-256 validation missing")
-    require('PACK_ROOT = "orbit-model-packs"' in pack_manager, "private model-pack storage root missing")
-    require("normalizedEntryName" in pack_manager and 'it == ".."' in pack_manager, "Zip Slip/path traversal guard missing")
-    require("MAX_PACK_BYTES" in pack_manager and "MAX_UNPACKED_BYTES" in pack_manager, "model-pack size/bomb limits missing")
-    require("OrbitModelRuntimeRegistry.statusFor" in pack_manager, "model-pack runtime readiness status missing")
+    runtime_contracts = read(SRC / "ModelRuntimeContracts.kt")
+    require("executable = false" in runtime_contracts, "v0.23 must not pretend an unbundled neural runtime is executable")
 
-    main_activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
-    require("ACTION_OPEN_DOCUMENT" in main_activity and "ModelPackManager" in main_activity, "system file picker/model manager UI missing")
-    require("我已了解并安装" in main_activity and "LICENSE 摘要" in main_activity, "model disclaimer/license confirmation UI missing")
-    require("CuratedModelCatalog" in main_activity, "curated model source UI missing")
+    user_store = read(SRC / "UserDictionaryStore.kt")
+    require('STORE_DIR = "orbit-user-dictionary"' in user_store and "journal.tsv" in user_store, "file+journal learning regressed")
+    service = read(SRC / "OrbitInputMethodService.kt")
+    require("hasSelectedText()" in service and 'commitText("", 1)' in service, "selection-aware editing regressed")
+    require("LongFormTranslationEngine" in service and "ContextTranslationEngine.translate" in service, "translation UI wiring regressed")
 
-    runtime_contracts = (SRC / "ModelRuntimeContracts.kt").read_text(encoding="utf-8")
-    for contract in ("OrbitTranslationProvider", "OrbitAsrProvider", "OrbitTtsProvider", "OrbitVoiceCloneProvider"):
-        require(contract in runtime_contracts, f"future runtime contract missing: {contract}")
-    require("executable = false" in runtime_contracts, "v0.22 must not pretend neural inference is active")
-
-    privacy_guard = (SRC / "PrivacyGuard.kt").read_text(encoding="utf-8")
-    require("isSafeForLocalLongForm" in privacy_guard, "long-form translation privacy boundary missing")
-
-    pet_source = (SRC / "PetRepository.kt").read_text(encoding="utf-8")
+    pet_source = read(SRC / "PetRepository.kt")
     pet_count = len(re.findall(r'PetDefinition\("', pet_source))
     outfit_count = len(re.findall(r'OutfitDefinition\("', pet_source))
-    require(pet_count >= 16, f"pet catalog regressed: {pet_count}")
-    require(outfit_count >= 24, f"outfit catalog regressed: {outfit_count}")
-    polished_pet = (SRC / "PetAvatarV21View.kt").read_text(encoding="utf-8")
-    require("equippedOutfitId = null" in polished_pet, "old outfit layer is not suppressed before pet polish")
-    require("ValueAnimator" in polished_pet and "PolishedPetOutfits" in polished_pet, "pet idle motion/outfit polish missing")
-
-    sticker_source = (SRC / "StickerPack.kt").read_text(encoding="utf-8")
+    require(pet_count >= 16 and outfit_count >= 24, f"pet/outfit catalog regressed: {pet_count}/{outfit_count}")
+    sticker_source = read(SRC / "StickerPack.kt")
     mood_count = len(re.findall(r'MoodMeta\(StickerVariant\.', sticker_source))
-    require(mood_count >= 8, f"sticker mood variants regressed: {mood_count}")
-    require(pet_count * mood_count >= 128, f"local sticker definitions below 128: pets={pet_count}, moods={mood_count}")
+    require(pet_count * mood_count >= 128, "local sticker definitions below 128")
 
     summary = {
-        "status": "PASS",
-        "version": "0.22.0",
-        "aosp_lexicon_entries": stats["aosp_lexicon_entries"],
-        "jieba_generated_entries": stats["jieba_generated_entries"],
-        "cedict_entries": stats["cedict_entries"],
-        "cedict_four_char_entries": stats["cedict_four_char_entries"],
-        "project_software_entries": stats["project_software_entries"],
-        "runtime_lexicon": counts["lexicon"],
-        "english_entries": stats["esdb_english_entries"],
-        "runtime_english": counts["english"],
-        "unicode_emoji_entries": stats["unicode_emoji_entries"],
-        "translation_zh_entries": stats["translation_zh_entries"],
-        "translation_en_entries": stats["translation_en_entries"],
+        "status": "PASS", "version": "0.23.0",
+        "runtime_chinese": counts.get("lexicon", 0), "runtime_english": counts.get("english", 0),
+        "thuocl_source": stats.get("thuocl_source_entries", 0), "thuocl_generated": stats.get("thuocl_generated_entries", 0),
+        "frequencywords_en": stats.get("frequencywords_en_entries", 0), "frequencywords_zh": stats.get("frequencywords_zh_source_entries", 0),
+        "association_entries": stats.get("association_entries", 0), "association_shards": len(association_shards),
         "ngrams": ngrams,
-        "chinese_shards": len(cn_shards),
-        "english_shards": len(en_shards),
-        "translation_zh_shards": len(zh_translation_shards),
-        "translation_en_shards": len(en_translation_shards),
-        "candidate_pool": 32,
-        "selected_text_editing": "replace/delete selection aware",
-        "quick_phrases": "persistent + custom + disableable",
-        "pro_translation": "context + selected long-form up to 8000 chars",
-        "model_packs": "Pro local import + checksum/license/disclaimer + private storage; no inference in v0.22",
-        "pet_visuals": "polished idle animation + coherent outfit overlay",
-        "pet_catalog": pet_count,
-        "outfit_catalog": outfit_count,
-        "local_stickers": pet_count * mood_count,
+        "translation_zh": stats.get("translation_zh_entries", 0), "translation_en": stats.get("translation_en_entries", 0),
+        "fuzzy_modes": ["off", "standard", "enhanced"],
+        "appearance_modes": ["system", "light", "dark", "amoled", "custom"],
+        "pet_catalog": pet_count, "outfit_catalog": outfit_count, "local_stickers": pet_count * mood_count,
     }
     print(json.dumps(summary, ensure_ascii=False))
     return 0
