@@ -3,7 +3,9 @@
 
 Runs after augment_v018_data.py and adds:
 - a higher-priority CC-CEDICT-derived four-character idiom layer;
-- project-authored common software/platform/product vocabulary.
+- project-authored common software/platform/product vocabulary;
+- a broader normalized pass over the already-pinned ESDB/SCOWL en_US-large list
+  so valid proper names/acronyms are not discarded solely for capitalization.
 
 No new runtime network capability is introduced.
 """
@@ -26,6 +28,8 @@ DEFAULT_STAGING = ROOT / "build/ime-mature/staging"
 DEFAULT_CACHE = ROOT / "build/ime-mature/vendor"
 NON_PINYIN_RE = re.compile(r"[^a-zv]+")
 TONE_RE = re.compile(r"[1-5]")
+ASCII_ENGLISH_CASE_RE = re.compile(r"^[A-Za-z]+(?:'[A-Za-z]+)?(?:-[A-Za-z]+)*$")
+NON_ENGLISH_KEY_RE = re.compile(r"[^a-z]+")
 
 
 def is_cjk_text(text: str) -> bool:
@@ -55,6 +59,41 @@ def build_idiom_tsv(cedict_raw: bytes, target: Path, frequency: int) -> int:
         handle.write("# pinyin<TAB>text<TAB>frequency\n")
         for (pinyin, text), freq in sorted(records.items(), key=lambda item: (item[0][0], item[0][1])):
             handle.write(f"{pinyin}\t{text}\t{freq}\n")
+    return len(records)
+
+
+def build_expanded_english_tsv(
+    raw: bytes,
+    target: Path,
+    min_key_length: int,
+    max_key_length: int,
+    base_frequency: int,
+) -> int:
+    records: dict[str, tuple[int, set[str]]] = {}
+    for raw_line in raw.decode("utf-8-sig").splitlines():
+        word = raw_line.strip()
+        if not word or not ASCII_ENGLISH_CASE_RE.fullmatch(word):
+            continue
+        normalized = word.lower()
+        key = NON_ENGLISH_KEY_RE.sub("", normalized)
+        if not (min_key_length <= len(key) <= max_key_length):
+            continue
+        # SCOWL is a coverage list, not a usage-frequency corpus. Keep a modest
+        # length-based weight so curated project vocabulary stays much stronger.
+        frequency = max(3_000, base_frequency - max(0, len(key) - 4) * 850)
+        candidates: set[str] = set()
+        if word != key:
+            candidates.add(word)
+        old_frequency, old_candidates = records.get(key, (0, set()))
+        records[key] = (max(old_frequency, frequency), old_candidates | candidates)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("# v0.20 broad pass over pinned ESDB/SCOWL en_US-large.\n")
+        handle.write("# key<TAB>frequency<TAB>optional display candidates\n")
+        for key, (frequency, candidates) in sorted(records.items()):
+            extra = "\t".join(sorted(candidates))
+            handle.write(f"{key}\t{frequency}" + (f"\t{extra}" if extra else "") + "\n")
     return len(records)
 
 
@@ -101,7 +140,7 @@ def count_project_software(path: Path) -> int:
     return count
 
 
-def update_report(output: Path, idiom_entries: int, software_entries: int) -> None:
+def update_report(output: Path, idiom_entries: int, software_entries: int, expanded_english_entries: int) -> None:
     report_path = output / "mature-report.json"
     manifest_path = output / "manifest.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -109,12 +148,14 @@ def update_report(output: Path, idiom_entries: int, software_entries: int) -> No
     report["version"] = 4
     report.setdefault("stats", {})["cedict_four_char_entries"] = idiom_entries
     report.setdefault("stats", {})["project_software_entries"] = software_entries
+    report.setdefault("stats", {})["esdb_english_entries"] = expanded_english_entries
+    report.setdefault("stats", {})["v020_expanded_english_entries"] = expanded_english_entries
     report["runtime_counts"] = runtime.get("counts", {})
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Augment Orbit IME v0.20 idiom/software data")
+    parser = argparse.ArgumentParser(description="Augment Orbit IME v0.20 idiom/software/English data")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--staging-dir", default=str(DEFAULT_STAGING))
@@ -132,6 +173,17 @@ def main() -> int:
     if not cedict_path.is_file():
         raise RuntimeError("verified CC-CEDICT cache missing; run augment_v018_data.py first")
     cedict_raw = cedict_path.read_bytes()
+
+    esdb_path = cache / "esdb_en_US_large.txt"
+    if not esdb_path.is_file():
+        raise RuntimeError("verified ESDB/SCOWL en_US-large cache missing; run prepare_mature_ime_data.py first")
+    expanded_english_entries = build_expanded_english_tsv(
+        esdb_path.read_bytes(),
+        staging / "esdb_en_us.tsv",
+        int(policy["english_min_key_length"]),
+        int(policy["english_max_key_length"]),
+        int(policy["english_base_frequency"]),
+    )
 
     software_source = ROOT / "data/ime_sources/seed_software.tsv"
     if not software_source.is_file():
@@ -155,11 +207,12 @@ def main() -> int:
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
-    update_report(output, idiom_entries, software_entries)
+    update_report(output, idiom_entries, software_entries, expanded_english_entries)
     print(json.dumps({
         "status": "PASS",
         "cedict_four_char_entries": idiom_entries,
         "project_software_entries": software_entries,
+        "v020_expanded_english_entries": expanded_english_entries,
     }, ensure_ascii=False))
     return 0
 
