@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot repair for the generated patcher; safe to run repeatedly.
 path = Path(__file__).with_name("apply_v027_usability_patch.py")
 text = path.read_text(encoding="utf-8")
 marker = 'if "caps" in text:\n'
