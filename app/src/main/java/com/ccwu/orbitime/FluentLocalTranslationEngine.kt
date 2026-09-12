@@ -1,7 +1,5 @@
 package com.ccwu.orbitime
 
-import kotlin.math.max
-
 /**
  * A bounded dynamic-programming translator built on Orbit's audited local bilingual data.
  * It prefers longer exact phrases, preserves uncovered source instead of fabricating text,
@@ -46,7 +44,7 @@ object FluentLocalTranslationEngine {
                 if (!translated.isNullOrBlank()) {
                     val clean = stripEnding(translated)
                     val next = State(
-                        score = state.score + span * 11.0 + span * span * 1.8 + if (span >= 2) 5.0 else 0.0,
+                        score = state.score + span * 11.0 + span * span * 1.9 + if (span >= 2) 5.5 else 0.0,
                         output = joinEnglish(state.output, clean),
                         translated = state.translated + span,
                     )
@@ -65,7 +63,10 @@ object FluentLocalTranslationEngine {
 
         val best = dp[core.length] ?: return null
         if (best.translated == 0) return null
-        val translatedText = best.output.trim() + targetEnding(terminal, TranslatePromptBuilder.Direction.ZH_TO_EN)
+        val translatedText = TranslationOutputNormalizer.normalize(
+            best.output.trim() + targetEnding(terminal, TranslatePromptBuilder.Direction.ZH_TO_EN),
+            TranslatePromptBuilder.Direction.ZH_TO_EN,
+        )
         return Result(translatedText, best.translated.toDouble() / core.length.coerceAtLeast(1), best.translated, core.length)
     }
 
@@ -86,7 +87,7 @@ object FluentLocalTranslationEngine {
                 if (!translated.isNullOrBlank()) {
                     val clean = stripEnding(translated)
                     val next = State(
-                        score = state.score + span * 11.0 + span * span * 1.8 + if (span >= 2) 5.0 else 0.0,
+                        score = state.score + span * 11.0 + span * span * 1.9 + if (span >= 2) 5.5 else 0.0,
                         output = joinChinese(state.output, clean),
                         translated = state.translated + span,
                     )
@@ -102,7 +103,10 @@ object FluentLocalTranslationEngine {
 
         val best = dp[words.size] ?: return null
         if (best.translated == 0) return null
-        val translatedText = best.output.trim() + targetEnding(terminal, TranslatePromptBuilder.Direction.EN_TO_ZH)
+        val translatedText = TranslationOutputNormalizer.normalize(
+            best.output.trim() + targetEnding(terminal, TranslatePromptBuilder.Direction.EN_TO_ZH),
+            TranslatePromptBuilder.Direction.EN_TO_ZH,
+        )
         return Result(translatedText, best.translated.toDouble() / words.size.coerceAtLeast(1), best.translated, words.size)
     }
 
@@ -133,12 +137,14 @@ object FluentLocalTranslationEngine {
 
     private fun targetEnding(sourceEnd: Char?, direction: TranslatePromptBuilder.Direction): String = when (direction) {
         TranslatePromptBuilder.Direction.ZH_TO_EN -> when (sourceEnd) {
+            null -> ""
             '？', '?' -> "?"
             '！', '!' -> "!"
             '；', ';' -> ";"
             else -> "."
         }
         TranslatePromptBuilder.Direction.EN_TO_ZH -> when (sourceEnd) {
+            null -> ""
             '？', '?' -> "？"
             '！', '!' -> "！"
             '；', ';' -> "；"
@@ -148,6 +154,6 @@ object FluentLocalTranslationEngine {
 
     private val WORD_REGEX = Regex("[A-Za-z0-9]+(?:'[A-Za-z]+)?")
     private val TERMINALS = setOf('。', '！', '？', '.', '!', '?', '；', ';')
-    private const val MAX_ZH_SPAN = 12
-    private const val MAX_EN_SPAN = 8
+    private const val MAX_ZH_SPAN = 18
+    private const val MAX_EN_SPAN = 12
 }
