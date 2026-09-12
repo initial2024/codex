@@ -1,10 +1,10 @@
-# Codex handoff: build Orbit IME v0.15.0 APK only
+# Codex handoff: build Orbit IME v0.16.0 APK only
 
 ## Scope
 
-All product design, data-source audit, dictionary preparation, importer work, data-pipeline tests, mature-asset validation, engine architecture, documentation, privacy boundaries, and build wiring are already prepared in the repository.
+All product design, feature work, data-source audit, dictionary preparation, importer work, local data tests, mature-asset validation, engine changes, documentation, privacy boundaries, and Gradle wiring are already prepared in the repository.
 
-**Codex's task is only to build the APK and make minimum compilation repairs if required. Do not redesign or expand the product.**
+**Codex's task is only to build the APK and make minimum compilation/portability repairs if the build itself exposes an error. Do not redesign, expand, or replace features.**
 
 Repository:
 
@@ -12,7 +12,7 @@ Repository:
 https://github.com/initial2024/codex
 ```
 
-## Required environment
+## Environment
 
 ```text
 JDK 17
@@ -22,104 +22,116 @@ Android build-tools 35.0.0
 Gradle 8.10.2 or compatible
 ```
 
-## What Gradle already does automatically
+## Automatic preBuild chain
 
-The app module `preBuild` chain runs:
+A normal build already runs:
 
 ```text
 tools/test_ime_data_pipeline.py
-        ↓
-tools/prepare_mature_ime_data.py
-        ↓
-tools/ime_importer.py
-        ↓
-generated mature offline assets
-        ↓
-tools/validate_mature_ime_assets.py
-        ↓
-Android build
+-> tools/prepare_mature_ime_data.py
+-> tools/ime_importer.py
+-> generated mature offline assets
+-> tools/validate_mature_ime_assets.py
+-> Android compilation
 ```
 
-The final validator fails the build if the mature pack is suspiciously small, required N-grams/shards/notices are missing, source pins/licenses are absent, the version is wrong, or forbidden manifest capabilities appear.
+The data pipeline uses pinned/hash-verified sources documented in `DATA_SOURCES.md` and `data/ime_sources/mature_sources.json`:
 
-Do not manually replace this process with copied dictionary files.
+- AOSP PinyinIME Chinese Pinyin/frequency data (Apache-2.0).
+- Jieba default Chinese frequency dictionary (MIT), converted only with conservative AOSP-backed pronunciation derivation.
+- ESDB/SCOWL US-English vocabulary (ESDB permission notice).
 
-The mature build uses pinned and hash-verified sources documented in `DATA_SOURCES.md` and `data/ime_sources/mature_sources.json`:
-
-- AOSP PinyinIME dictionary for Chinese Pinyin/frequency data.
-- ESDB/SCOWL generated US English word list for English vocabulary completion.
-
-Required notices are copied into the packaged asset directory automatically.
+Required third-party notices are packaged automatically. The validator rejects changed pins, suspiciously small packs, missing N-grams/shards/notices, wrong version metadata, or forbidden manifest capabilities.
 
 ## Build command
 
-From repository root, run exactly:
+Run exactly from repository root:
 
 ```bash
 gradle assembleDebug --no-daemon
 ```
 
-Do **not** add `-PorbitSkipMatureImeData=true` for the APK intended for user testing.
-
-## Expected APK
+Do **not** add:
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+-PorbitSkipMatureImeData=true
 ```
 
-Expected version:
+for the APK intended for user testing.
+
+## Expected
 
 ```text
-versionCode = 15
-versionName = 0.15.0
+versionCode = 16
+versionName = 0.16.0
+APK = app/build/outputs/apk/debug/app-debug.apk
+Actions artifact = orbit-ime-v0.16-debug-apk
 ```
+
+## v0.16 architecture/features that must remain intact
+
+Do not remove or bypass:
+
+- continuous long-sentence Pinyin buffer and DP segmentation;
+- `CompactLexiconAsset` + sentence beam search + 1/2/3-gram + local personalization;
+- AOSP + conservative Jieba mature Chinese data path;
+- English composing + sharded ESDB/SCOWL asset path;
+- dynamic candidate/tool host refresh instead of rebuilding all keyboard keys for every letter;
+- Recent/Pinned clipboard with IME-window-only listener and one-hour Recent expiry;
+- live translation keyboard showing source and actual local translation preview;
+- exact phrase translation -> conservative local sentence composer -> explicit unavailable state;
+- local pet, skins, privacy mode, and system input-method picker.
 
 ## If build fails
 
-Only make the minimum necessary repair for Kotlin compilation, imports/method signatures, Android resources/XML, Gradle task wiring, Python invocation portability, IME metadata, or an obvious deterministic data-pipeline bug. Then rerun the same Gradle command.
+Only repair the smallest build blocker, such as:
 
-Do not delete or bypass mature-data testing/preparation/validation merely to make the build pass.
+- Kotlin syntax/import/method signature;
+- Android SDK API signature;
+- resource/XML issue;
+- Gradle task wiring;
+- Python portability;
+- deterministic data-pipeline bug;
+- IME metadata.
 
-## Architecture that must remain intact
+Then rerun the same Gradle command.
 
-Chinese:
+Do not bypass mature-data testing/preparation/validation to get a green build. Do not substitute a different word list or redesign the input engine.
 
-```text
-PinyinSegmenter
--> CompactLexiconAsset
--> PinyinImeEngine beam search
--> NGramLanguageModel
--> CandidateRanker
--> UserDictionaryStore local personalization
-```
+## Forbidden changes
 
-English:
+Do not add or enable:
 
-```text
-English composing buffer
--> CompactEnglishAsset (sharded mature asset when present)
--> EnglishImeEngine
--> EnglishDictionary fallback
-```
+- `INTERNET` permission;
+- cloud prediction/dictionary sync/translation;
+- external translation APIs;
+- ads/analytics/tracking;
+- Accessibility;
+- overlay/floating-window permission;
+- background clipboard/input harvesting;
+- full typed-stream persistence;
+- surrounding-sentence/app-package persistence;
+- AI pet chat;
+- paid gacha;
+- 9-key/Wubi/handwriting;
+- Compose/Canvas keyboard rewrite;
+- Room/Realm migration;
+- billing or skin marketplace.
 
-## Non-negotiable constraints
+## Build report
 
-Do not add or enable `INTERNET`, cloud prediction/dictionary sync/translation, external translation APIs, ads/analytics/tracking, Accessibility, overlay/floating-window capabilities, background input/clipboard harvesting, full typed-stream persistence, surrounding-sentence/app-package learning history, AI pet chat, paid gacha, 9-key, Wubi, handwriting, Canvas/Compose rewrites, Room/Realm, billing, or a skin marketplace.
-
-## Final report
-
-Return only the build-relevant result:
+Return only build-relevant facts:
 
 ```text
 1. git status before build
 2. exact build command
-3. preBuild data-pipeline test result
+3. data-pipeline test result
 4. mature-data preparation result
-5. mature asset validation result
-6. mature-report.json counts (Chinese / English / 1-2-3 gram / shard counts)
-7. any files changed by minimum compilation repair
+5. mature-asset validation result
+6. mature-report.json counts: AOSP Chinese / Jieba-derived / combined runtime Chinese / English / 1-2-3 gram / shard counts
+7. minimum repair files, if any
 8. build success/failure
 9. APK path and size if successful
 10. key error + exact minimum repair if failed
-11. confirmation prohibited permissions/features were not added
+11. confirmation that prohibited permissions/features were not added
 ```
