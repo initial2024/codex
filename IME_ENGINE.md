@@ -1,97 +1,67 @@
 # Orbit IME v0.15 Local IME Engine
 
-This document defines the offline input-engine architecture introduced in v0.15.0.
+This document defines the offline engine and mature-data path used by Orbit IME `0.15.0`.
 
-## Goals
-
-The six v0.15 engineering goals are:
+## Six completed engine layers
 
 1. Large dictionary importer.
 2. Static frequency ranking.
 3. Continuous Pinyin segmentation.
-4. Sentence-level candidate generation and ranking.
-5. Local N-gram language model.
-6. Compact asset format.
+4. Sentence-level candidate generation/ranking.
+5. Local 1/2/3-gram language model.
+6. Compact sharded asset format.
 
-The engine must remain offline and must not persist a full typed stream.
+## Build-time data path
 
-## Runtime pipeline
+A normal Gradle build runs:
 
-Chinese:
+```text
+tools/test_ime_data_pipeline.py
+-> tools/prepare_mature_ime_data.py
+-> tools/ime_importer.py
+-> app/src/main/assets/ime
+```
+
+The mature preparation uses pinned/hash-verified AOSP PinyinIME Chinese data and ESDB/SCOWL US-English vocabulary. See `DATA_SOURCES.md`.
+
+This is build-time networking only. Runtime IME remains offline and has no `INTERNET` permission.
+
+## Chinese runtime pipeline
 
 ```text
 raw Pinyin
-  -> normalize
-  -> exact user/asset/sentence candidates
-  -> PinyinSegmenter
-  -> CompactLexiconAsset
-  -> bounded phrase beam search
-  -> NGramLanguageModel
-  -> CandidateRanker
-  -> UserDictionaryStore personalization
-  -> top 12 candidates
+-> normalize
+-> exact user/asset/sentence candidates
+-> PinyinSegmenter (DP)
+-> CompactLexiconAsset
+-> bounded phrase beam search
+-> NGramLanguageModel
+-> CandidateRanker
+-> UserDictionaryStore local boost
+-> top 12
 ```
 
-English:
+If a mature shard is missing/malformed, legacy packaged data remains a fail-safe candidate path.
+
+## English runtime pipeline
 
 ```text
-raw English composing buffer
-  -> CompactEnglishAsset
-  -> packaged frequency candidates
-  -> EnglishDictionary phrase/typo fallback
-  -> EnglishImeEngine ranking
-  -> top candidates
+English composing buffer
+-> EnglishImeEngine
+-> CompactEnglishAsset
+-> EnglishDictionary phrase/typo fallback
+-> top candidates
 ```
 
-If the new Chinese engine fails or an asset is malformed, `UserDictionaryStore` retains the previous static candidate fallback path.
-
-## 1. Large dictionary importer
-
-Tool:
+When the imported English pack exceeds 10k entries, the importer writes:
 
 ```text
-tools/ime_importer.py
+ime/english/a.odict ... z.odict
 ```
 
-Example:
+`CompactEnglishAsset` loads only the query's first-letter shard and keeps at most four shards in LRU memory. Small development packs may still use `ime/english.odict`.
 
-```text
-python tools/ime_importer.py \
-  --manifest data/ime_sources/manifest.example.json \
-  --output app/src/main/assets/ime
-```
-
-Supported source formats:
-
-- `orbit-tsv`: `pinyin<TAB>text<TAB>frequency`
-- `cedict`: standard CC-CEDICT text records
-- `english-tsv`: `word<TAB>frequency[<TAB>candidate...]`
-- `ngram-tsv`: 1-gram, 2-gram, or 3-gram token counts
-
-The importer fails closed when:
-
-- a source file is missing;
-- `redistribution_allowed` is false;
-- a strict-mode license is not on the allow-list;
-- attribution-required data has no attribution metadata.
-
-Current strict allow-list:
-
-```text
-PROJECT
-Apache-2.0
-MIT
-BSD-2-Clause
-BSD-3-Clause
-CC-BY-4.0
-CC-BY-SA-4.0
-```
-
-This is an engineering guardrail, not a legal conclusion.
-
-## 2. Frequency ranking
-
-Every imported lexicon/English row has a positive integer frequency. Runtime `.odict` stores counts in base36.
+## Frequency ranking
 
 `CandidateRanker` combines:
 
@@ -105,17 +75,11 @@ static frequency
 - correction penalty
 ```
 
-Local user frequency has stronger weight than static frequency so repeated choices can move upward without rewriting packaged assets.
+Exact spelling stays higher confidence than fuzzy/typo paths. Explicit repeated user selections receive a strong local boost without rewriting packaged assets.
 
-## 3. Pinyin segmentation
+## Continuous Pinyin segmentation
 
-Class:
-
-```text
-PinyinSegmenter.kt
-```
-
-The segmenter uses dynamic programming and keeps several best paths.
+`PinyinSegmenter` uses dynamic programming and keeps several best paths.
 
 Examples:
 
@@ -125,60 +89,28 @@ nishishei -> ni / shi / shei
 shurufa -> shu / ru / fa
 ```
 
-The scoring includes a per-syllable cost to avoid over-segmentation such as `hao -> ha + o`.
+A per-syllable cost prevents pathological over-segmentation such as preferring `ha + o` over `hao`. Apostrophes/spaces act as hard boundaries; keyboard `v` represents `ü`.
 
-Apostrophes/spaces are hard boundaries when supplied to the engine. Keyboard `v` represents `ü`.
+## Sentence-level beam search
 
-## 4. Sentence-level candidate ranking
+`PinyinImeEngine` considers phrase spans up to four syllables and keeps a bounded beam.
 
-Class:
-
-```text
-PinyinImeEngine.kt
-```
-
-For every segmentation, the engine performs bounded phrase-level beam search. At each syllable position it checks spans up to four syllables.
-
-Example:
+Current limits:
 
 ```text
-ni / hao / ma
-
-span 1: ni -> 你
-span 2: nihao -> 你好
-span 3: nihaoma -> 你好吗
-```
-
-Beam hypotheses retain:
-
-```text
-current syllable position
-composed text
-candidate tokens
-aggregate static frequency
-partial language-model score
-```
-
-Current bounds:
-
-```text
-max segmentation paths: 5
+segmentation paths: 5
 max phrase span: 4 syllables
-max entries per span: 5
+entries per span: 5
 beam width: 36
-max internal beam results: 16
+internal beam results: 16
 visible candidates: 12
 ```
 
-## 5. Local N-gram language model
+The lexical lookup merges mature asset entries and legacy/project fallback entries before frequency ranking rather than discarding one source merely because another source matched.
 
-Class:
+## Local N-gram model
 
-```text
-NGramLanguageModel.kt
-```
-
-Supported assets:
+`NGramLanguageModel` reads:
 
 ```text
 ime/ngram1.odict
@@ -186,82 +118,61 @@ ime/ngram2.odict
 ime/ngram3.odict
 ```
 
-The model uses weighted log-count features, not a neural runtime.
+The mature preparation derives bounded character N-grams from accepted AOSP phrases and merges them with project-authored word/phrase N-grams.
 
-Current relative weighting favors:
+Ranking evaluates both phrase-token evidence and Chinese-character sequence evidence, using the stronger signal rather than forcing an exact multi-character phrase to behave as one unscored token.
 
-```text
-trigram > bigram > unigram
-```
+This is deterministic local count scoring, not a neural/cloud model.
 
-If an N-gram asset is missing, small project-authored fallback tables keep the engine functional.
+## Compact asset format
 
-## 6. Compact asset format
+`ORBIT_ODICT` uses tab-separated records with base36 integer frequency/counts.
 
-Readers:
+Chinese:
 
 ```text
-CompactLexiconAsset.kt
-CompactEnglishAsset.kt
-```
-
-Preferred large-pack layout:
-
-```text
-app/src/main/assets/ime/
-  manifest.json
-  lexicon/
-    a.odict
-    b.odict
-    ...
-    z.odict
-  english.odict
-  ngram1.odict
-  ngram2.odict
-  ngram3.odict
-```
-
-Lexicon record:
-
-```text
+ime/lexicon/a.odict ... z.odict
 normalized_pinyin<TAB>text<TAB>base36_frequency
 ```
 
-English record:
+English:
 
 ```text
-normalized_key<TAB>base36_frequency<TAB>optional candidates...
+ime/english/a.odict ... z.odict
+normalized_key<TAB>base36_frequency<TAB>optional display candidates...
 ```
 
-N-gram records:
+N-gram:
 
 ```text
-token<TAB>base36_count
+token<TAB>count
+token1<TAB>token2<TAB>count
+token1<TAB>token2<TAB>token3<TAB>count
 ```
+
+`CompactLexiconAsset` keeps at most six Chinese shards; `CompactEnglishAsset` keeps at most four English shards.
+
+## Mature source policy
+
+`data/ime_sources/mature_sources.json` pins:
+
+- source URL;
+- Git blob SHA-1;
+- license identifier;
+- attribution;
+- conversion policy.
+
+The preparation script refuses changed upstream bytes. The importer also fails closed for non-redistributable/unknown sources.
+
+Third-party notices are copied into:
 
 ```text
-token1<TAB>token2<TAB>base36_count
+ime/third_party_notices/
 ```
 
-```text
-token1<TAB>token2<TAB>token3<TAB>base36_count
-```
+## Personalization
 
-Why `.odict` instead of JSON:
-
-- no repeated field names;
-- line-streamable;
-- easy to validate and regenerate;
-- Android `AssetManager` can read it directly;
-- dictionaries remain outside Kotlin bytecode.
-
-The Pinyin lexicon is sharded by first normalized Pinyin letter. `CompactLexiconAsset` keeps at most six shards in an access-order LRU cache.
-
-A small unsharded `ime/lexicon.odict` plus `english.odict` and N-gram assets are committed as project-authored development fallbacks. A real large pack should be produced by the importer.
-
-## Local personalization
-
-`UserDictionaryStore` stores only:
+`UserDictionaryStore` persists only:
 
 ```text
 pinyin
@@ -270,73 +181,54 @@ frequency
 updatedAt
 ```
 
-It does not persist surrounding sentence, app/package name, field identity, or full typed stream.
+It does not persist surrounding sentence, app/package name, field identity, or a full typed stream. Parsed records are cached in memory to avoid repeatedly decoding JSON during ranking.
 
-Parsed entries are cached in memory so candidate ranking does not repeatedly parse JSON.
+## Fuzzy correction
 
-## Fuzzy and typo path
+`PinyinCorrectionEngine` is separate from exact segmentation and its candidates receive an explicit penalty.
 
-`PinyinCorrectionEngine` remains separate from exact segmentation. Fuzzy candidates receive an explicit penalty so valid exact Pinyin is preferred.
-
-Examples:
+Compatibility examples include:
 
 ```text
-xhfnivh -> 喜欢你 / 想和你说 / 需要优化
+xhfnivh -> includes 喜欢你
 xihvanni -> 喜欢你
 nishis -> 你是谁
 ```
 
-English typo data remains available through `EnglishDictionary`, while imported English frequencies are read through `CompactEnglishAsset` and ranked by `EnglishImeEngine`.
-
-## Data licensing rule
-
-Do not paste arbitrary GitHub dictionaries into the APK.
-
-Use `DATA_SOURCES.md` and a source manifest for every imported dataset. Keep source URL, license, redistribution flag, and required attribution.
-
 ## Performance rules
 
-- Never parse dictionary assets in `onDraw`.
-- Use lexicon sharding and bounded caches.
-- Keep candidate count bounded.
-- Keep beam width bounded.
-- Cache parsed local-user records.
-- Do not persist ranking context strings.
-- Do not do network I/O.
+- Never parse dictionaries in `onDraw`.
+- Keep lexicon/English shard caches bounded.
+- Keep beam width and candidate count bounded.
+- Keep N-gram asset sizes bounded.
+- Cache local-user records.
+- Do not persist ranking context.
+- Do not perform runtime network I/O.
 
-## v0.15 acceptance targets
+## Device acceptance after build
 
-At minimum:
+At minimum test:
 
 ```text
 nihaoma -> 你好吗 near top
 nishishei -> 你是谁 near top
 shurufa -> 输入法 near top
 haishiyouwenti -> 还是有问题 near top
-xhfnivh -> corrected Chinese candidates available
+xhfnivh -> useful corrected Chinese candidates
 ```
 
-English imported/fallback tests:
+Also test English composing/candidates, local-learning reorder/clear, translation result insertion, Clips, Pet, privacy mode, skins, and input-method switching.
 
-```text
-build -> build / build failed / build succeeded
-translate -> translate / translation
-trasnlate -> translate
-permision -> permission
-```
+## Post-build tuning order
 
-Repeatedly selecting a valid Chinese candidate should raise it through local user-frequency weighting.
-
-## Next tuning after build
-
-After v0.15 compiles and runs on-device, tune in this order:
+After the first v0.15 mature-pack APK is tested on-device, tune only from measurements:
 
 1. candidate latency;
-2. fixed top-1 accuracy test set;
+2. top-1/top-3 accuracy on a fixed sentence set;
 3. segmentation ambiguity;
-4. static-frequency calibration;
-5. N-gram weight calibration;
-6. larger licensed lexicon import;
-7. larger licensed N-gram pack.
+4. static-frequency scale;
+5. N-gram weights/limits;
+6. user-frequency weight;
+7. memory use.
 
-Do not add a neural model until these deterministic layers are measured first.
+Do not add a neural model before these deterministic layers are measured.
