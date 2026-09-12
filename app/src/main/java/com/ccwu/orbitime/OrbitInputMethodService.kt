@@ -66,6 +66,7 @@ class OrbitInputMethodService : InputMethodService() {
     private lateinit var petRepository: PetRepository
     private lateinit var englishImeEngine: EnglishImeEngine
     private lateinit var quickPhraseStore: QuickPhraseStore
+    private lateinit var speechController: ImeSpeechController
     private lateinit var clipboardManager: ClipboardManager
     private var clipboardListenerAttached = false
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
@@ -81,12 +82,14 @@ class OrbitInputMethodService : InputMethodService() {
         petRepository = PetRepository(this)
         englishImeEngine = EnglishImeEngine(this)
         quickPhraseStore = QuickPhraseStore(this)
+        speechController = ImeSpeechController(this)
         CedictTranslationAsset.initialize(this)
         clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
     }
 
     override fun onDestroy() {
         detachClipboardListener()
+        if (this::speechController.isInitialized) speechController.shutdown()
         super.onDestroy()
     }
 
@@ -100,6 +103,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     override fun onWindowHidden() {
         detachClipboardListener()
+        if (this::speechController.isInitialized) speechController.cancelCapture()
         super.onWindowHidden()
     }
 
@@ -109,6 +113,7 @@ class OrbitInputMethodService : InputMethodService() {
         invalidatePinyinUiCache()
         if (sensitiveMode) {
             detachClipboardListener()
+            if (this::speechController.isInitialized) speechController.cancelCapture()
             showClips = false
             showPet = false
             showExpressions = false
@@ -130,8 +135,6 @@ class OrbitInputMethodService : InputMethodService() {
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         if (newSelStart != newSelEnd && (pinyinBuffer.isNotEmpty() || englishBuffer.isNotEmpty())) {
-            // External selection and IME composition are independent. Drop only our
-            // in-memory buffers so the next key replaces the selected editor text.
             resetInternalCompositionState()
             refreshDynamicHost()
         }
@@ -233,6 +236,13 @@ class OrbitInputMethodService : InputMethodService() {
             }
             root?.let { rebuild(it) }
         })
+        if (ProGate.isLocalAsrUnlocked(this)) {
+            row.addView(chip(if (speechController.isRecording()) label("停止语音", "Stop voice") else label("语音", "Voice"), emphasized = speechController.isRecording()) {
+                handleLocalVoiceInput()
+            })
+            row.addView(chip(label("朗读", "Read")) { speakCurrentText(cloned = false) })
+            row.addView(chip(label("音色", "Clone")) { speakCurrentText(cloned = true) })
+        }
         scroller.setBackgroundColor(skin.backgroundColor)
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
@@ -1118,6 +1128,47 @@ class OrbitInputMethodService : InputMethodService() {
         offlineTranslationPreview = null
         contextTranslationBundle = null
         longFormTranslationPreview = null
+    }
+
+    private fun handleLocalVoiceInput() {
+        if (sensitiveMode) { toast("隐私模式不启用语音输入"); return }
+        if (pinyinBuffer.isNotEmpty()) clearPinyinComposition()
+        if (englishBuffer.isNotEmpty()) clearEnglishComposition()
+        speechController.toggleAsr(
+            language = if (inputMode == InputMode.PINYIN) "zh" else "en",
+            onPermissionRequired = {
+                toast("需要麦克风授权；正在打开 Orbit 设置")
+                runCatching {
+                    startActivity(
+                        Intent(this, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            .putExtra(MainActivity.EXTRA_REQUEST_AUDIO, true),
+                    )
+                }
+            },
+            onState = { message -> toast(message); root?.let { rebuild(it) } },
+            onText = { text ->
+                resetInternalCompositionState()
+                currentInputConnection?.commitText(text, 1)
+                if (!sensitiveMode) {
+                    petRepository.recordTypedChars(text.length)
+                    petRepository.recordCandidateCommit()
+                }
+                refreshDynamicHost()
+            },
+        )
+        root?.let { rebuild(it) }
+    }
+
+    private fun speakCurrentText(cloned: Boolean) {
+        if (sensitiveMode) { toast("隐私模式不读取文本进行朗读"); return }
+        val selected = readSelectedText()?.trim().orEmpty()
+        val source = if (selected.isNotBlank()) selected else readPreviousSentence().orEmpty()
+        if (source.isBlank()) { toast("请先选择文本，或把光标放在要朗读的句子后面"); return }
+        val language = if (source.any { it.code > 127 }) "zh" else "en"
+        val callback: (String) -> Unit = { toast(it) }
+        if (cloned) speechController.speakWithClonedVoice(source, language, callback)
+        else speechController.speak(source, language, callback)
     }
 
     private fun readSelectedText(): String? = currentInputConnection?.getSelectedText(0)?.toString()
