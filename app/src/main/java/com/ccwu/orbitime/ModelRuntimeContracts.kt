@@ -1,12 +1,6 @@
 package com.ccwu.orbitime
 
-/**
- * Runtime contracts shared by future local model backends.
- *
- * v0.22 intentionally ships only metadata/install management. No neural runtime is
- * linked yet, so these interfaces make the boundary explicit instead of pretending
- * an imported pack can already execute.
- */
+/** Shared runtime contracts for optional, user-installed local model packs. */
 interface OrbitModelProvider {
     val providerId: String
     val packId: String
@@ -23,8 +17,13 @@ interface OrbitAsrProvider : OrbitModelProvider {
     fun transcribePcm16(samples: ShortArray, sampleRate: Int, language: String?): String?
 }
 
+data class OrbitAudioResult(
+    val samples: FloatArray,
+    val sampleRate: Int,
+)
+
 interface OrbitTtsProvider : OrbitModelProvider {
-    fun synthesize(text: String, language: String, voiceId: String?): ByteArray?
+    fun synthesize(text: String, language: String, voiceId: String?): OrbitAudioResult?
 }
 
 interface OrbitVoiceCloneProvider : OrbitModelProvider {
@@ -33,7 +32,8 @@ interface OrbitVoiceCloneProvider : OrbitModelProvider {
         language: String,
         referencePcm16: ShortArray,
         referenceSampleRate: Int,
-    ): ByteArray?
+        referenceText: String,
+    ): OrbitAudioResult?
 }
 
 object OrbitModelRuntimeRegistry {
@@ -46,23 +46,28 @@ object OrbitModelRuntimeRegistry {
     fun statusFor(manifest: OrbitModelPackManifest): RuntimeStatus = when (manifest.type) {
         OrbitModelPackType.TRANSLATION -> RuntimeStatus(
             executable = false,
-            label = "已安装元数据/模型文件；v0.22 暂不执行神经翻译",
-            nextMilestone = "v0.23 TranslationProvider runtime",
+            label = "模型包可安全安装；当前 APK 尚未内置通用 Marian/OPUS-MT Android 解码器，继续使用本地词典/规则翻译",
+            nextMilestone = "future audited neural-translation runtime",
         )
-        OrbitModelPackType.ASR -> RuntimeStatus(
-            executable = false,
-            label = "已安装语音识别包；v0.22 不申请麦克风权限，也不启动 ASR",
-            nextMilestone = "v0.24 sherpa-onnx ASR runtime",
-        )
-        OrbitModelPackType.TTS -> RuntimeStatus(
-            executable = false,
-            label = "已安装 TTS 包；v0.22 暂不执行语音合成",
-            nextMilestone = "v0.25 local TTS runtime",
-        )
-        OrbitModelPackType.VOICE_CLONE -> RuntimeStatus(
-            executable = false,
-            label = "已安装实验音色包；v0.22 不执行音色克隆",
-            nextMilestone = "later experimental voice-clone runtime",
-        )
+        OrbitModelPackType.ASR -> if (manifest.runtime == OrbitModelRuntime.SHERPA_ONNX && manifest.modelFamily == "sherpa_offline_transducer") {
+            RuntimeStatus(true, "可执行：sherpa-onnx 本地离线 ASR", "v0.24 local ASR")
+        } else {
+            RuntimeStatus(false, "已安装 ASR 包，但当前只执行 sherpa_offline_transducer 家族", "convert/package as sherpa_offline_transducer")
+        }
+        OrbitModelPackType.TTS -> if (
+            manifest.runtime == OrbitModelRuntime.SHERPA_ONNX &&
+            manifest.modelFamily in setOf("sherpa_vits", "sherpa_kokoro", "sherpa_supertonic")
+        ) {
+            RuntimeStatus(true, "可执行：sherpa-onnx 本地 TTS", "v0.25 local TTS")
+        } else {
+            RuntimeStatus(false, "已安装 TTS 包，但当前模型家族没有可执行适配器", "use a supported sherpa TTS family")
+        }
+        OrbitModelPackType.VOICE_CLONE -> if (
+            manifest.runtime == OrbitModelRuntime.SHERPA_ONNX && manifest.modelFamily == "sherpa_zipvoice"
+        ) {
+            RuntimeStatus(true, "可执行：ZipVoice 本地零样本音色克隆", "v0.26 local voice clone")
+        } else {
+            RuntimeStatus(false, "已安装实验音色包；当前仅 ZipVoice sherpa 包可执行，Audio8 等保留为来源明确的实验候选", "future audited adapter")
+        }
     }
 }
