@@ -31,5 +31,12 @@ class StickerPreviewView @JvmOverloads constructor(
             mood = current.mood,
             skin = currentSkin,
         )
+        StickerOverlayRenderer.draw(
+            canvas = canvas,
+            width = width.toFloat(),
+            height = height.toFloat(),
+            variant = current.variant,
+            skin = currentSkin,
+        )
     }
 }
