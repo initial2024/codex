@@ -1,10 +1,10 @@
-# Codex handoff: build Orbit IME v0.17.0 APK only
+# Codex handoff: build Orbit IME v0.18.0 APK only
 
 ## Scope
 
-All product design, feature work, data-source audit, dictionary preparation, importer work, local data tests, mature-asset validation, engine changes, visual-pet work, expression/sticker work, documentation, privacy boundaries, and Gradle wiring are already prepared in the repository.
+All non-build work is already prepared in the repository: composing replacement fix, expanded licensed datasets, fuzzy/prefix engine changes, multi-page symbols, long-press mappings, Unicode Emoji, CC-CEDICT translation assets, visual pet, expressions/stickers, clipboard, privacy boundaries and Gradle wiring.
 
-**Codex's task is only to build the APK and make minimum compilation/portability repairs if the build itself exposes an error. Do not redesign, expand, or replace features.**
+**Codex's task is only to build the APK and make the minimum compilation/portability repair exposed by the build. Do not redesign or expand features.**
 
 Repository:
 
@@ -17,166 +17,167 @@ https://github.com/initial2024/codex
 ```text
 JDK 17
 Python 3.12 recommended
-Android SDK platform 35
+Android SDK 35
 Android build-tools 35.0.0
 Gradle 8.10.2 or compatible
 ```
 
-## Automatic preBuild chain
-
-A normal build already runs:
-
-```text
-tools/test_ime_data_pipeline.py
--> tools/prepare_mature_ime_data.py
--> tools/ime_importer.py
--> generated mature offline assets
--> tools/validate_mature_ime_assets.py
--> Android compilation
-```
-
-The mature dictionary path remains pinned/hash-verified:
-
-- AOSP PinyinIME Chinese Pinyin/frequency data (Apache-2.0).
-- Jieba default Chinese frequency dictionary (MIT), with conservative AOSP-backed pronunciation derivation.
-- ESDB/SCOWL US-English vocabulary.
-
 ## Build command
 
-Run exactly from repository root:
+Run exactly:
 
 ```bash
 gradle assembleDebug --no-daemon
 ```
 
-Do **not** pass:
+Do **not** pass `-PorbitSkipMatureImeData=true` for the user-test APK.
+
+## Automatic preBuild chain
 
 ```text
--PorbitSkipMatureImeData=true
+tools/test_ime_data_pipeline.py
+-> tools/prepare_mature_ime_data.py
+-> base AOSP + Jieba + ESDB-large assets
+-> tools/augment_v018_data.py
+-> CC-CEDICT lexicon/translation shards + Unicode Emoji 17.0
+-> tools/validate_mature_ime_assets.py
+-> Android compilation
 ```
-
-for the user-test APK.
 
 ## Expected
 
 ```text
-versionCode = 17
-versionName = 0.17.0
+versionCode = 18
+versionName = 0.18.0
 APK = app/build/outputs/apk/debug/app-debug.apk
-Actions artifact = orbit-ime-v0.17-debug-apk
+Actions artifact = orbit-ime-v0.18-debug-apk
 ```
 
-## Architecture/features that must remain intact
+## Required data gates
 
-Do not remove or bypass:
+```text
+AOSP Chinese >= 40,000
+Jieba-derived additions >= 40,000
+CC-CEDICT parsed entries >= 110,000
+combined runtime Chinese >= 150,000
+English >= 100,000
+Unicode Emoji >= 3,000
+ZH->EN translation index >= 80,000
+EN->ZH translation index >= 50,000
+1-gram >= 5,000
+2-gram >= 30,000
+3-gram >= 30,000
+```
 
-### Input engine
+Do not lower these gates merely to obtain a green build. If a gate fails, report the actual generated counts and fix only a deterministic parser/configuration bug.
 
-- continuous long-sentence Pinyin buffer and DP segmentation;
-- adaptive long-query search limits;
-- candidate-query LRU and phrase-lookup LRU;
-- `CompactLexiconAsset` + sentence beam search + 1/2/3-gram + local personalization;
-- AOSP + conservative Jieba mature Chinese data path;
-- English composing + sharded ESDB/SCOWL asset path;
-- dynamic candidate/tool host refresh instead of rebuilding all keyboard keys for every letter.
+## v0.18 behavior that must remain intact
 
-### Clipboard / translation
+### Composing replacement
 
-- Recent/Pinned clipboard with IME-window-only listener and one-hour Recent expiry;
-- live local translation keyboard with source/result preview and explicit translation commit;
-- exact phrase translation -> conservative sentence composer -> explicit unavailable state.
+- `commitPinyinCandidate()` must commit a candidate directly over the active composing region;
+- it must **not** call `finishComposingText()` before candidate commit;
+- English candidate commit follows the same rule;
+- clearing composition / translation-mode transfer must remove raw composing text rather than leaving it in the target field;
+- do not regress to failures such as `sj数据库不够hy还有问题`.
 
-### Visual pet
+### Chinese / fuzzy prediction
 
-- `PetAvatarView` and `PetAvatarRenderer` must compile and remain active;
-- the pet panel must render an actual graphical pet, not text-only state;
-- all 8 pet ids must have a distinct visual path;
-- 4 stages must affect size/detail;
-- stage 3/4 aura/orbit details must remain;
-- equipped outfit overlays must remain;
-- when the pet is visible, the idle quick-phrase row must show a small clickable pet preview;
-- settings must show the current pet preview.
+- AOSP + conservative Jieba + CC-CEDICT mature Chinese path;
+- DP segmentation + adaptive Beam Search + 1/2/3-gram + local learning;
+- mature lexicon participates in prefix association;
+- mature lexicon participates in fuzzy/typo variants;
+- exact candidates rank ahead of fuzzy guesses;
+- QWERTY-neighbor, transposition and extra-key recovery remain lower-confidence paths.
 
-### Emoji / kaomoji
+### English
 
-- top keyboard toolbar `表情 / Emoji` entry;
-- packaged categories from `ExpressionLibrary`;
-- paging for large categories;
-- one-tap insert;
-- long-press copy;
-- local Recent expressions through `ExpressionStore`;
-- Clear Recent.
+- ESDB/SCOWL `en_US-large` sharded data path;
+- English composing buffer/candidates remain active.
 
-### Local image stickers
+### Symbols / long press
 
-- 24 local pet stickers = 8 pets × 3 moods;
-- graphical sticker thumbnails through `StickerPreviewView`;
-- PNG rendering through `StickerRenderer` into app-private cache;
-- `OrbitStickerProvider` remains `exported=false` with `grantUriPermissions=true`;
-- compatible editors receive `InputContentInfo` image/png content;
-- unsupported editors fall back to Emoji text;
-- no external storage or network dependency for stickers.
+- `SymbolLibrary` remains active;
+- 7 pages: 常用 / 标点 / 括号 / 数学 / 货币 / 箭头 / 标记;
+- `符号` rotates pages;
+- 26-key long-press hints remain visible;
+- q..p long press maps to 1..0;
+- other letter long presses commit common punctuation.
 
-### Privacy / other
+### Emoji / kaomoji / stickers
 
-- privacy mode hides pet, expressions/stickers, clipboard and translation tools;
-- local pet state, skins and Android IME picker remain intact.
+- `UnicodeEmojiAsset` loads build-generated Unicode Emoji 17.0 data;
+- project-authored Emoji/kaomoji categories remain;
+- Recent expressions and long-press copy remain;
+- 24 local graphical pet stickers remain with PNG commit + Emoji fallback;
+- `OrbitStickerProvider` stays `exported=false`, `grantUriPermissions=true`.
+
+### Translation
+
+- project exact phrase tables remain;
+- `CedictTranslationAsset` is initialized by the IME;
+- CC-CEDICT exact lookup and sharded longest-match composition remain;
+- no cloud/external translation API is added;
+- unavailable state remains explicit.
+
+### Other retained modules
+
+- visual pet renderer/stages/outfits;
+- Recent/Pinned clipboard with IME-window-only listener;
+- privacy mode;
+- skins;
+- Android input-method picker.
 
 ## If build fails
 
-Only repair the smallest build blocker, such as:
+Only repair the smallest blocker:
 
 - Kotlin syntax/import/method signature;
-- Android SDK `InputContentInfo` / `ContentProvider` signature;
-- manifest provider declaration;
-- resource/XML issue;
-- Gradle task wiring;
-- Python portability;
-- deterministic data-pipeline bug;
+- Android API/ContentProvider/InputContentInfo signature;
+- resource/XML/manifest issue;
+- Gradle task ordering;
+- Python portability/deterministic parser bug;
 - IME metadata.
 
-Then rerun the same Gradle command.
+Then rerun the same build command.
 
-Do not bypass mature-data validation, remove adaptive caches/search, replace the visual pet with text, delete Emoji/kaomoji data, disable sticker fallback, export the sticker provider, or substitute another dictionary source just to obtain a green build.
+Do not delete v0.18 features, bypass data validation, revert to small hard-coded dictionaries, or add runtime network access to make the build pass.
 
-## Forbidden changes
+## Forbidden
 
-Do not add or enable:
+Do not add:
 
 - `INTERNET` permission;
 - cloud prediction/dictionary sync/translation;
 - external translation APIs;
-- remote sticker downloads;
-- external-storage permission for stickers;
 - ads/analytics/tracking;
-- Accessibility permission;
-- overlay/floating-window permission;
+- Accessibility;
+- overlay/floating window;
 - background clipboard/input harvesting;
-- full typed-key-stream persistence;
-- surrounding-sentence or app/package learning history;
+- full typed-stream persistence;
+- app/package learning history;
+- external-storage permission;
 - AI pet chat;
-- paid gacha;
-- Pinyin 9-key, Wubi, handwriting;
-- Compose migration;
-- full Canvas keyboard rewrite (the small pet/sticker renderer is intentional and must remain);
-- Room/Realm migration;
-- billing or skin marketplace.
+- 9-key/Wubi/handwriting;
+- Compose migration/full keyboard Canvas rewrite;
+- Room/Realm;
+- billing/skin marketplace.
 
 ## Build report
 
-Return only build-relevant facts:
+Return:
 
 ```text
 1. git status before build
 2. exact build command
-3. data-pipeline test result
-4. mature-data preparation result
-5. mature-asset validation result
-6. mature-report.json counts: AOSP Chinese / Jieba-derived / combined runtime Chinese / English / 1-2-3 gram / shard counts
-7. Kotlin/Android compile result for PetAvatarView / StickerPack / OrbitInputMethodService
+3. offline data-test result
+4. base mature-data preparation result
+5. v0.18 augmentation result
+6. mature validation result
+7. mature-report.json counts (AOSP / Jieba / CC-CEDICT / runtime Chinese / English / Emoji / translation / N-grams / shards)
 8. minimum repair files, if any
 9. build success/failure
-10. APK path and size if successful
+10. APK path and size
 11. key error + exact minimum repair if failed
-12. confirmation that prohibited permissions/features were not added
+12. confirmation prohibited permissions/features were not added
 ```
