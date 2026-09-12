@@ -12,6 +12,7 @@ tools/test_ime_data_pipeline_v020.py
 -> CC-CEDICT lexicon + translation shards
 -> Unicode Emoji 17.0
 -> tools/augment_v020_data.py
+-> broad normalized pass over pinned ESDB/SCOWL en_US-large
 -> CC-CEDICT four-character phrase/idiom boost
 -> project-authored software/platform/product vocabulary
 -> tools/validate_mature_ime_assets.py
@@ -57,13 +58,9 @@ Release metadata: 2026-09-10T22:27:42Z
 License: CC BY-SA 4.0
 ```
 
-CC-CEDICT is used for:
+CC-CEDICT is used for lower-confidence Chinese lexical rows, local ZH<->EN translation shards, and the v0.20 higher-priority four-character phrase/idiom layer.
 
-1. lower-confidence Chinese lexical rows;
-2. sharded local Chinese->English / English->Chinese translation assets;
-3. a v0.20 four-character phrase/idiom boost layer with a higher synthetic ranking frequency.
-
-The four-character layer is derived from the already-audited CC-CEDICT source instead of adding a separate internet-scraped idiom repository. It is therefore still CC BY-SA 4.0 data and keeps the same required notice/share-alike boundary.
+The four-character layer is derived from the already-audited CC-CEDICT source instead of adding a separate internet-scraped idiom repository. It remains CC BY-SA 4.0 data.
 
 ## Project-authored software/platform/product vocabulary
 
@@ -73,24 +70,9 @@ File:
 data/ime_sources/seed_software.tsv
 ```
 
-License boundary:
+License boundary: `PROJECT`.
 
-```text
-PROJECT
-```
-
-This is a manually maintained Orbit vocabulary layer for common product/platform names such as Chinese messaging/e-commerce/media apps, AI products, developer tools, operating systems, browsers, cloud/database tools and common international platforms.
-
-Examples include:
-
-```text
-微信 / QQ / 支付宝 / 淘宝 / 京东 / 抖音 / 小红书 / 哔哩哔哩
-ChatGPT / OpenAI / Codex / DeepSeek / Qwen / Gemini / Claude
-GitHub / VS Code / Android Studio / Gradle / Kotlin / Python
-Docker / Vercel / Cloudflare / Supabase / Windows / Android / iOS
-```
-
-The build requires at least 100 project-authored rows. These frequencies are explicit curated product weights, not claims of corpus frequency.
+This manually maintained layer covers common messaging/e-commerce/media apps, AI products, developer tools, operating systems, browsers, cloud/database tools and common international platforms. The build requires at least 100 rows. These are curated product weights, not claims of corpus usage frequency.
 
 ## ESDB / SCOWL en_US-large
 
@@ -103,9 +85,11 @@ License identifier in Orbit: ESDB-2026
 Copyright blob: 562ec7df17753481162f2b993e2dbd47cea77b2f
 ```
 
-SCOWL ordering is not treated as usage frequency. Project-authored high-frequency English remains the ranking overlay.
+The base parser remains conservative. v0.20 performs a second pass over the same verified cached `en_US-large` file and accepts valid case-sensitive forms such as proper names/acronyms under normalized lowercase lookup keys. This fixes the old path that discarded every non-lowercase row and could leave the English pack around 81k entries.
 
-AOSP/Lineage LatinIME's bundled dictionary remains rejected because its NOTICE includes third-party dictionary material marked `Used by permission`.
+SCOWL ordering is still not treated as real usage frequency. Project-authored common English/product entries have much stronger curated weights.
+
+AOSP/Lineage LatinIME's bundled dictionary remains rejected because its NOTICE includes third-party material marked `Used by permission`.
 
 ## Unicode Emoji 17.0
 
@@ -139,11 +123,7 @@ Chinese translation shards >= 40
 English translation shards >= 20
 ```
 
-Exact generated counts are written to:
-
-```text
-app/src/main/assets/ime/mature-report.json
-```
+Exact generated counts are written to `app/src/main/assets/ime/mature-report.json`.
 
 ## Runtime layout
 
@@ -173,13 +153,13 @@ ExpressionLibrary.kt
 SymbolLibrary.kt
 ```
 
-`NextPhraseData.kt` is a high-confidence post-commit association overlay. The longer tail comes from packaged 2/3-gram data through `NextAssociationEngine`.
+`NextPhraseData.kt` provides high-confidence post-commit associations. The longer tail comes from packaged 2/3-gram data through `NextAssociationEngine`.
 
 ## Validation
 
-`tools/test_ime_data_pipeline_v020.py` runs the original mature-data tests and additionally verifies the v0.20 four-character derivation plus software-vocabulary size.
+`tools/test_ime_data_pipeline_v020.py` runs the original mature-data tests and verifies four-character derivation, software-vocabulary size and broad English normalization of proper names/acronyms.
 
-`tools/validate_mature_ime_assets.py` fails closed on stale/small data, missing source metadata, wrong version, forbidden Android capabilities, missing v0.20 idiom/software stages, reduced candidate pools, missing association/context-translation wiring, or regressed local pet/sticker/personalization features.
+`tools/validate_mature_ime_assets.py` fails closed on stale/small data, missing source metadata, wrong version, forbidden Android capabilities, missing v0.20 data stages, reduced candidate pools, missing association/context-translation wiring, or regressed local pet/sticker/personalization features.
 
 ## Runtime privacy boundary
 
