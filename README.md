@@ -10,7 +10,7 @@ Orbit IME is a privacy-first Android input method with local Chinese/English pre
 
 v0.20 focuses on five real-device experience gaps:
 
-1. optional local context translation while ordinary/free users remain single-sentence only;
+1. optional local context/block translation while ordinary/free users remain single-sentence only;
 2. better sticker compatibility when WeChat/QQ do not expose Android IME image-content insertion;
 3. a stronger four-character idiom layer and common software/platform vocabulary;
 4. actual post-commit next-word/next-phrase association;
@@ -23,16 +23,18 @@ A normal user-test build runs:
 ```text
 tools/test_ime_data_pipeline_v020.py
 -> tools/prepare_mature_ime_data.py
--> AOSP PinyinIME + Jieba + ESDB/SCOWL en_US-large
+-> AOSP PinyinIME + Jieba + pinned ESDB/SCOWL en_US-large
 -> tools/augment_v018_data.py
 -> CC-CEDICT lexicon/translation + Unicode Emoji 17.0
 -> tools/augment_v020_data.py
--> CC-CEDICT four-character idiom boost + project software vocabulary
+-> broad ESDB-large normalization
+-> CC-CEDICT four-character phrase/idiom boost
+-> project software vocabulary
 -> tools/validate_mature_ime_assets.py
 -> Android compilation
 ```
 
-The historical `augment_v018_data.py` filename remains intentional; its licensed CC-CEDICT/Unicode stage is still mandatory.
+The historical `augment_v018_data.py` filename remains intentional; that licensed CC-CEDICT/Unicode stage is still mandatory.
 
 Required minimums include:
 
@@ -52,11 +54,7 @@ EN->ZH translation >= 50,000
 3-gram >= 30,000
 ```
 
-Exact generated counts are written to:
-
-```text
-app/src/main/assets/ime/mature-report.json
-```
+Exact generated counts are written to `app/src/main/assets/ime/mature-report.json`.
 
 ## Chinese input and candidate depth
 
@@ -73,7 +71,7 @@ continuous Pinyin
 -> up to 32 visible candidates
 ```
 
-v0.20 expands the short-input internal search pool as well as the UI limit:
+v0.20 expands both the UI and short-input internal search pool:
 
 ```text
 MAX_RESULTS = 32
@@ -83,15 +81,15 @@ prefix pool = 64
 correction entries per variant = 5
 ```
 
-Long input still uses adaptive narrower Beam/segmentation limits so candidate depth does not simply trade away typing latency.
+Long input still uses narrower adaptive Beam/segmentation limits, avoiding a simple candidate-count-for-latency trade.
 
 Candidate commit continues to replace Android's active composing region rather than appending after raw letters.
 
 ## Four-character idioms and software names
 
-v0.20 does not import an additional internet-scraped idiom repository. Instead it derives a higher-priority four-character phrase/idiom layer from the already pinned/audited CC-CEDICT dataset and preserves its CC BY-SA 4.0 data boundary.
+v0.20 does not import a separate internet-scraped idiom repository. It derives a higher-priority four-character phrase/idiom layer from the already pinned CC-CEDICT dataset, preserving its CC BY-SA 4.0 data boundary.
 
-A separate project-authored vocabulary adds common software/platform/product names, including categories such as:
+A project-authored vocabulary adds common software/platform/product names, including:
 
 ```text
 微信 / QQ / 支付宝 / 淘宝 / 京东 / 抖音 / 小红书 / 哔哩哔哩
@@ -100,13 +98,13 @@ GitHub / VS Code / Android Studio / Gradle / Kotlin / Python
 Docker / Vercel / Cloudflare / Supabase / Windows / Android / iOS
 ```
 
-These entries receive curated product-level frequencies rather than pretending an alphabetic word list is a corpus frequency source.
+The final ESDB/SCOWL `en_US-large` pass now accepts valid uppercase proper-name/acronym spellings under normalized lowercase lookup keys, fixing the old path that could stop around 81k entries by discarding all non-lowercase rows.
 
 ## Next-word / next-phrase association
 
-After a Chinese candidate is committed, Orbit no longer immediately falls back only to fixed quick phrases.
+After a Chinese candidate is committed, Orbit no longer returns only to fixed quick phrases.
 
-When the composing buffers are empty, the keyboard can read a bounded local text tail before the cursor and combine:
+When composing buffers are empty, the keyboard reads a bounded local text tail and combines:
 
 ```text
 project-authored high-confidence associations
@@ -125,27 +123,11 @@ Free base: 20,000 learned entries
 Future Pro capacity placeholder: 100,000 entries
 ```
 
-Learning uses app-private:
-
-```text
-files/orbit-user-dictionary/dictionary.tsv
-files/orbit-user-dictionary/journal.tsv
-```
-
-Normal selections append small journal rows and periodic compaction rewrites the base file. Old SharedPreferences JSON data is migrated locally once.
-
-Persisted learning fields remain only:
-
-```text
-pinyin
-candidate text
-frequency
-updatedAt
-```
+Learning uses app-private `dictionary.tsv + journal.tsv`, with periodic compaction and local migration from old SharedPreferences data. Persistent fields remain only Pinyin, candidate text, frequency and timestamp.
 
 ## English
 
-The mature path uses pinned ESDB/SCOWL `en_US-large`. English stays in Android composing state and now exposes up to 32 candidates. Project-authored common English, phrases and typo overlays remain available above the broad word-list coverage.
+The mature path uses pinned ESDB/SCOWL `en_US-large`. English stays in Android composing state and exposes up to 32 candidates. Project-authored common English, phrase and typo overlays remain stronger than broad SCOWL coverage.
 
 ## Translation
 
@@ -159,48 +141,29 @@ project exact phrase tables
 -> explicit unavailable state
 ```
 
-v0.20 adds an optional **Pro-gated context translation** switch. When available and explicitly enabled, Orbit reads at most the previous two sentences / a bounded cursor tail in memory and generates a local context/block translation preview alongside the current sentence translation. The current sentence translation is still inserted separately so old conversation text is not duplicated into the target app.
+v0.20 adds optional **Pro-gated local context/block translation**. When explicitly enabled, Orbit reads at most the previous two sentences / a bounded cursor tail in memory and shows a context/block translation reference alongside the current sentence translation. The current sentence remains the independently inserted translation so old conversation text is not duplicated.
 
-This feature is deterministic/local context assistance, not a claim of neural machine-translation parity with cloud systems. Ordinary/free users never read surrounding sentences for translation.
+This is deterministic local context/block assistance, not neural semantic disambiguation comparable to a cloud NMT/LLM system. Ordinary/free users never read previous sentences for translation.
 
 ## Stickers and WeChat/QQ compatibility
 
-Orbit has:
+Orbit has 16 pets × 8 sticker states = 128 local PNG sticker definitions.
+
+Sticker delivery uses:
 
 ```text
-16 pets
-8 sticker states per pet
-128 local PNG sticker definitions
+1. image/png supported -> InputContentInfo / commitContent
+2. unsupported -> PNG content URI copied to system clipboard + temporary read grant to current target package
+3. if image clipboard preparation also fails -> Emoji fallback
 ```
 
-Sticker delivery now uses a compatibility ladder:
-
-```text
-1. target editor advertises image/png
-   -> InputContentInfo / commitContent
-
-2. direct IME image content unsupported
-   -> generated PNG content URI copied to system clipboard
-   -> temporary read grant to current target package
-   -> user is prompted to long-press paste in WeChat/QQ/etc.
-
-3. target app also rejects image clipboard paste
-   -> Emoji fallback
-```
-
-Android target apps decide whether they accept image-content or URI-image paste, so no keyboard can guarantee the same path works in every WeChat/QQ build. Orbit does not use Accessibility, overlay, external storage or runtime downloading to bypass those app restrictions.
+For path 2, Orbit prompts the user to long-press paste in WeChat/QQ/etc. The target app ultimately controls whether image-content or URI-image clipboard paste is accepted, so this is a compatibility path rather than a guaranteed bypass. Orbit does not use Accessibility, overlay, external storage or runtime downloading to circumvent target-app restrictions.
 
 ## Emoji / kaomoji / symbols
 
 The expression panel contains Unicode Emoji 17.0, project categories, hundreds of project-authored kaomoji variants, Recent, and pet stickers.
 
-The `123` keyboard has seven symbol pages:
-
-```text
-常用 / 标点 / 括号 / 数学 / 货币 / 箭头 / 标记
-```
-
-26-key letters retain visible long-press digit/punctuation mappings.
+The `123` keyboard has seven symbol pages: 常用 / 标点 / 括号 / 数学 / 货币 / 箭头 / 标记. Letter keys retain visible long-press digit/punctuation mappings.
 
 ## Clipboard
 
@@ -208,34 +171,13 @@ Clipboard remains `Pinned + Recent`. Text capture is active only while the IME w
 
 ## Pets and outfits
 
-Current local catalog:
-
-```text
-16 pets
-24 outfits
-8 sticker states per pet
-128 local sticker definitions
-```
-
-New catalog pets map to stable visual archetypes; outfit variants map to visible accessory layers. Pet micro-feedback stores only a short action code/timestamp, not surrounding message text.
+Current local catalog: 16 pets, 24 outfits, 128 local sticker definitions. New pets map to stable renderer archetypes and outfits map to visible accessory layers. Pet micro-feedback stores only a short action code/timestamp, not surrounding message text.
 
 ## Runtime privacy boundary
 
-Orbit IME v0.20 intentionally has:
-
-- no `INTERNET` permission;
-- no ads/analytics/tracking;
-- no Accessibility permission;
-- no overlay/floating-window permission;
-- no cloud prediction/dictionary sync/translation;
-- no external translation API;
-- no background input/clipboard harvesting;
-- no full typed-stream persistence;
-- no external-storage permission.
+Orbit IME v0.20 intentionally has no INTERNET, ads/analytics/tracking, Accessibility, overlay/floating-window, cloud prediction/translation, external translation API, background input/clipboard harvesting, full typed-stream persistence, or external-storage permission.
 
 ## Data licenses
-
-Pinned third-party build data remains independently licensed:
 
 ```text
 AOSP PinyinIME             Apache-2.0
@@ -245,7 +187,7 @@ ESDB/SCOWL en_US-large     ESDB redistribution notice
 Unicode Emoji 17.0         Unicode License v3
 ```
 
-The four-character layer is a CC-CEDICT-derived data layer. Common software/platform names are project-authored vocabulary.
+The four-character layer is CC-CEDICT-derived; common software/platform names are project-authored vocabulary.
 
 ## Build
 
@@ -267,26 +209,18 @@ gradle assembleDebug --no-daemon
 
 Do not use `-PorbitSkipMatureImeData=true` for the user-test APK.
 
-Expected APK:
+Expected APK: `app/build/outputs/apk/debug/app-debug.apk`
 
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-Artifact:
-
-```text
-orbit-ime-v0.20-debug-apk
-```
+Artifact: `orbit-ime-v0.20-debug-apk`
 
 ## Post-build acceptance priorities
 
-1. Confirm raw Pinyin/English is replaced rather than retained before selected candidates.
-2. Test common short Pinyin queries and verify substantially more candidate choices are available.
-3. Test four-character idioms and common software/platform names.
-4. Select a Chinese word and verify the idle bar changes to meaningful next-word/phrase associations.
-5. Test long uninterrupted Pinyin latency after the wider short-input Beam tuning.
-6. Verify free translation remains single-sentence only.
-7. If Pro is enabled in a test build, toggle context translation and verify the previous two sentences appear only as in-memory context/block reference.
-8. In WeChat/QQ, test direct sticker commit; when unsupported, verify the PNG is copied and manual long-press image paste is offered before Emoji fallback.
-9. Re-test personal learning, clipboard, Emoji/kaomoji, symbols/long-press, pets and privacy mode.
+1. confirm raw Pinyin/English is replaced rather than retained;
+2. test common short queries and verify substantially more candidate choices;
+3. test four-character phrases/idioms and common software/platform names;
+4. select Chinese words and verify meaningful next-word/phrase association;
+5. test long uninterrupted Pinyin latency after wider short-input tuning;
+6. verify free translation remains single-sentence only;
+7. in a Pro-enabled test configuration, toggle context mode and verify only in-memory previous-two-sentence context/block reference;
+8. test direct sticker commit in WeChat/QQ; when unsupported, test PNG clipboard + long-press paste before Emoji fallback;
+9. re-test personal learning, clipboard, Emoji/kaomoji, symbols/long-press, pets and privacy mode.
