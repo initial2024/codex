@@ -40,14 +40,16 @@ Do not pass `-PorbitSkipMatureImeData=true`.
 ```text
 tools/test_ime_data_pipeline_v020.py
 -> tools/prepare_mature_ime_data.py
--> AOSP + Jieba + ESDB/SCOWL en_US-large
+-> AOSP + Jieba + pinned ESDB/SCOWL en_US-large
 -> tools/augment_v018_data.py
 -> CC-CEDICT lexicon/translation + Unicode Emoji 17.0
 -> tools/augment_v020_data.py
--> CC-CEDICT four-character idiom boost + project software vocabulary
+-> broad ESDB-large normalization + CC-CEDICT four-character boost + project software vocabulary
 -> tools/validate_mature_ime_assets.py
 -> Android compilation
 ```
+
+The v0.20 English stage deliberately re-parses the already-pinned `en_US-large` cache so valid proper-name/acronym spellings are not discarded solely because they contain uppercase letters. Do not remove that pass if the old `81,373` result reappears.
 
 ## Required data gates
 
@@ -67,14 +69,14 @@ EN->ZH >= 50,000
 3-gram >= 30,000
 ```
 
-Do not lower a gate simply to get a green build.
+Do not lower gates simply to get a green build.
 
 ## v0.20 behavior that must remain intact
 
 ### Candidate depth and association
 
 - Chinese and English visible candidate pools are up to 32.
-- `PinyinImeEngine` short-input internal search remains expanded (`MAX_RESULTS=32`, Beam result pool 32, prefix pool 64).
+- `PinyinImeEngine` short-input search remains expanded: `MAX_RESULTS=32`, `MAX_BEAM_RESULTS=32`, `PREFIX_POOL_LIMIT=64`.
 - long input still adaptively narrows Beam/segmentation to avoid latency regression.
 - after Chinese commit, `NextAssociationEngine` + `NextPhraseData` generate next-word/next-phrase suggestions from bounded local context and packaged N-grams.
 - surrounding context is not persisted.
@@ -82,7 +84,7 @@ Do not lower a gate simply to get a green build.
 ### Idioms/software vocabulary
 
 - `augment_v020_data.py` remains wired into preBuild.
-- it derives four-character phrase/idiom boost data from the pinned CC-CEDICT source.
+- it derives four-character phrase/idiom boost data from pinned CC-CEDICT.
 - it merges `data/ime_sources/seed_software.tsv`.
 - do not replace this with an unreviewed internet idiom dump.
 
@@ -98,13 +100,13 @@ Do not lower a gate simply to get a green build.
 
 - direct image path remains `InputContentInfo` / `commitContent` when `image/png` is supported.
 - if direct IME image commit fails/unsupported, Orbit copies the generated PNG content URI to the system clipboard and grants temporary read permission to the current target package.
-- user can then try long-press paste in WeChat/QQ/etc.
+- the user can then try long-press paste in WeChat/QQ/etc.
 - if image clipboard cannot be prepared, Emoji fallback remains.
-- do not claim or code a bypass around target-app restrictions using Accessibility/overlay.
+- do not add Accessibility/overlay workarounds around target-app restrictions.
 
 ### Existing protections
 
-Keep composing replacement, continuous long Pinyin, DP/adaptive Beam/N-gram/local learning, prefix/fuzzy recovery, 7-page symbols, letter long press, Unicode Emoji, personal file+journal learning, Recent/Pinned clipboard, 16 pets, 24 outfits, 128 stickers, privacy mode and non-exported sticker provider.
+Keep composing replacement, continuous long Pinyin, DP/adaptive Beam/N-gram/local learning, prefix/fuzzy recovery, 7-page symbols, letter long press, Unicode Emoji, file+journal personal learning, Recent/Pinned clipboard, 16 pets, 24 outfits, 128 stickers, privacy mode and non-exported sticker provider.
 
 ## If build fails
 
@@ -144,9 +146,9 @@ Return:
 3. v0.20 offline data-test result
 4. base mature-data result
 5. v0.18 licensed augmentation result
-6. v0.20 idiom/software augmentation result
+6. v0.20 augmentation result, including expanded English / idiom / software counts
 7. validation result
-8. mature-report counts including idiom/software rows
+8. mature-report counts
 9. any minimum repair files and why
 10. build result
 11. APK path and size
