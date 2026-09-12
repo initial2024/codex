@@ -19,8 +19,6 @@ object ProLicenseManager {
     private const val KEY_LICENSE_TYPE = "license_type"
     private const val KEY_ACTIVATED_AT = "activated_at"
 
-    // SHA-256 of the debug-only tester code. The clear-text code is documented
-    // only for local testing and is rejected by release builds.
     private const val DEBUG_TEST_CODE_SHA256 = "8e755b08acc3c95d59ece831c8823675cc1fffe55d7f4e2a3043f8478165f152"
 
     fun isUnlocked(context: Context): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -56,8 +54,9 @@ object ProLicenseManager {
     }
 
     fun deactivate(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        // Disable Pro-only remembered choices while the gate is still open, then clear license state.
         TranslationSettings.setContextTranslationEnabled(context, false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
