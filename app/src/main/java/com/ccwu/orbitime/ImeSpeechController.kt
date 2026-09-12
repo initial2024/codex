@@ -16,7 +16,9 @@ class ImeSpeechController(private val context: Context) {
     fun isBusy(): Boolean = busy.get()
     fun hasMicrophonePermission(): Boolean = capture.hasPermission()
 
-    fun cancel() {
+    fun cancelCapture() = capture.cancel()
+
+    fun shutdown() {
         capture.cancel()
         OrbitAudioPlayer.stop()
         busy.set(false)
