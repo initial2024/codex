@@ -51,13 +51,14 @@ object StickerPack {
 
 object StickerRenderer {
     fun fileFor(context: Context, sticker: StickerDefinition): File {
+        val skin = SkinManager.current(context)
         val dir = File(context.cacheDir, "orbit-stickers").apply { mkdirs() }
-        val file = File(dir, "${sticker.id}.png")
-        if (!file.isFile || file.length() <= 0L) render(context, sticker, file)
+        val file = File(dir, "${sticker.id}-${skin.id}.png")
+        if (!file.isFile || file.length() <= 0L) render(sticker, skin, file)
         return file
     }
 
-    private fun render(context: Context, sticker: StickerDefinition, target: File) {
+    private fun render(sticker: StickerDefinition, skin: OrbitSkin, target: File) {
         val size = 384
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(Color.TRANSPARENT)
@@ -68,7 +69,7 @@ object StickerRenderer {
             height = size.toFloat(),
             petId = sticker.petId,
             mood = sticker.mood,
-            skin = SkinManager.current(context),
+            skin = skin,
         )
         target.outputStream().use { output ->
             if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
