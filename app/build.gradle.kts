@@ -23,6 +23,8 @@ android {
             initWith(getByName("debug"))
             applicationIdSuffix = ".bundledmodels"
             versionNameSuffix = "-bundled-models-test"
+            resValue("string", "app_name", "Orbit IME Test")
+            resValue("string", "ime_name", "Orbit IME Test")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("debug")
         }

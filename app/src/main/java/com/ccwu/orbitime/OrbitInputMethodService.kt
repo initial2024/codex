@@ -17,7 +17,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -111,6 +110,25 @@ class OrbitInputMethodService : InputMethodService() {
         detachClipboardListener()
         if (this::speechController.isInitialized) speechController.cancelCapture()
         super.onWindowHidden()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        // Let the framework finish any active composing span first, then drop our
+        // mirrored buffers/UI state so a different IME receives a clean editor.
+        super.onFinishInputView(finishingInput)
+        resetSessionUiForImeHandoff()
+    }
+
+    override fun onFinishInput() {
+        super.onFinishInput()
+        resetSessionUiForImeHandoff()
+    }
+
+    override fun onUnbindInput() {
+        // Do not keep capture/listener/session state attached after Android hands
+        // the editor to another IME or client.
+        resetSessionUiForImeHandoff()
+        super.onUnbindInput()
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -1045,6 +1063,24 @@ class OrbitInputMethodService : InputMethodService() {
         invalidatePinyinUiCache()
     }
 
+    private fun resetSessionUiForImeHandoff() {
+        detachClipboardListener()
+        if (this::speechController.isInitialized) speechController.cancelCapture()
+        resetInternalCompositionState()
+        symbols = false
+        symbolPage = 0
+        shiftState = ShiftState.OFF
+        lastShiftTapAt = 0L
+        showClips = false
+        showPet = false
+        showPetCatalog = false
+        showMoreTools = false
+        showExpressions = false
+        petPanelMessage = null
+        speechStatusMessage = null
+        clearTranslateState()
+    }
+
     private fun toggleInputMode() {
         commitPendingForControl()
         inputMode = if (inputMode == InputMode.PINYIN) InputMode.ENGLISH else InputMode.PINYIN
@@ -1066,11 +1102,6 @@ class OrbitInputMethodService : InputMethodService() {
         val inputConnection = currentInputConnection ?: return
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
-    }
-
-    private fun showInputMethodPickerSafely() {
-        try { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker() }
-        catch (_: Exception) { toast("请从系统输入法按钮切换") }
     }
 
     private fun commitDirectText(text: String) {

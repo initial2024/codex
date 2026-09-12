@@ -203,6 +203,11 @@ def main() -> int:
     for token in ("ImeSpeechController", "handleLocalVoiceInput", "speakCurrentText", "cancelCapture", "LongFormTranslationEngine"):
         require(token in service, f"IME speech/core wiring missing: {token}")
     require("onWindowHidden" in service and "sensitiveMode" in service, "recording cancellation/privacy mode missing")
+    for token in ("onFinishInputView", "onFinishInput", "onUnbindInput", "resetSessionUiForImeHandoff"):
+        require(token in service, f"IME handoff lifecycle cleanup missing: {token}")
+    require("showInputMethodPickerSafely" not in service, "obsolete in-keyboard IME picker hook must remain removed")
+    method_xml = read(ROOT / "app/src/main/res/xml/method.xml")
+    require('android:supportsSwitchingToNextInputMethod="true"' in method_xml, "IME switching protocol declaration missing")
     main_activity = read(SRC / "MainActivity.kt")
     # Preserve the v0.24-v0.26 settings/runtime capabilities by checking their
     # concrete actions. Do not couple feature-regression checks to an obsolete
@@ -229,6 +234,8 @@ def main() -> int:
     require("workflow_dispatch:" in workflow, "GitHub Actions must remain manually triggered")
     require("orbit-ime-v0.27-debug-apk" in workflow, "v0.27 Actions artifact name missing")
     require("orbit-ime-v0.27-bundled-models-test-apk" in workflow, "v0.27 bundled test artifact name missing")
+    gradle = read(ROOT / "app/build.gradle.kts")
+    require('resValue("string", "ime_name", "Orbit IME Test")' in gradle, "bundled-model test IME picker label missing")
 
     summary = {
         "status": "PASS",
