@@ -46,17 +46,22 @@ data class OrbitModelPackManifest(
     val disclaimerRequired: Boolean,
     val description: String,
     val experimental: Boolean,
+    val modelFamily: String,
+    val runtimeConfig: Map<String, String>,
 ) {
     val permissionSummary: String
         get() = if (requiresPermissions.isEmpty()) "无额外运行时权限" else requiresPermissions.joinToString(", ")
 
     val commercialSummary: String
         get() = if (commercialUse) "清单声明允许商用（仍需遵守许可证）" else "清单声明不可商用/仅研究用途"
+
+    fun runtimeValue(key: String, fallback: String = ""): String = runtimeConfig[key]?.takeIf { it.isNotBlank() } ?: fallback
 }
 
 object OrbitModelPackManifestParser {
     private val packIdPattern = Regex("^[a-z0-9][a-z0-9._-]{2,79}$")
     private val languagePattern = Regex("^[A-Za-z0-9_-]{2,24}$")
+    private val runtimeKeyPattern = Regex("^[a-z0-9_]{1,64}$")
 
     fun parse(rawJson: String): OrbitModelPackManifest {
         val json = JSONObject(rawJson)
@@ -89,9 +94,25 @@ object OrbitModelPackManifestParser {
             disclaimerRequired = json.optBoolean("disclaimer_required", true),
             description = json.optString("description", "").trim(),
             experimental = json.optBoolean("experimental", false),
+            modelFamily = json.optString("model_family", "").trim().lowercase(),
+            runtimeConfig = json.optJSONObject("runtime_config")?.let(::readRuntimeConfig).orEmpty(),
         )
         validate(manifest)
         return manifest
+    }
+
+    private fun readRuntimeConfig(json: JSONObject): Map<String, String> {
+        val result = linkedMapOf<String, String>()
+        val iterator = json.keys()
+        while (iterator.hasNext()) {
+            val key = iterator.next().trim().lowercase()
+            require(runtimeKeyPattern.matches(key)) { "invalid runtime_config key: $key" }
+            val value = json.get(key).toString().trim()
+            require(value.length <= 800) { "runtime_config value too long: $key" }
+            result[key] = value
+        }
+        require(result.size <= 64) { "too many runtime_config entries" }
+        return result
     }
 
     private fun validate(manifest: OrbitModelPackManifest) {
@@ -112,11 +133,12 @@ object OrbitModelPackManifestParser {
         require(manifest.recommendedRamMb == 0 || manifest.minRamMb == 0 || manifest.recommendedRamMb >= manifest.minRamMb) {
             "recommended_ram_mb must be >= min_ram_mb"
         }
-        require(manifest.privacy == "offline_only") { "v0.22 accepts offline_only packs only" }
+        require(manifest.privacy == "offline_only") { "Orbit accepts offline_only packs only" }
         require(manifest.disclaimerRequired) { "disclaimer_required must be true" }
         require(manifest.requiresPermissions.none { it == "android.permission.INTERNET" }) { "model packs may not require INTERNET" }
         require(manifest.requiresPermissions.size <= 8) { "too many permissions" }
         require(manifest.description.length <= 1200) { "description too long" }
+        require(manifest.modelFamily.length <= 80) { "model_family too long" }
     }
 
     const val CURRENT_PACK_FORMAT = 1
