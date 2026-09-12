@@ -9,14 +9,15 @@ class PinyinImeEngine(
     context: Context,
     private val userDictionary: UserDictionaryStore,
 ) {
-    private val lexicon = CompactLexiconAsset(context.applicationContext)
-    private val languageModel = NGramLanguageModel(context.applicationContext)
+    private val appContext = context.applicationContext
+    private val lexicon = CompactLexiconAsset(appContext)
+    private val languageModel = NGramLanguageModel(appContext)
 
-    private val candidateCache = object : LinkedHashMap<String, List<String>>(64, 0.75f, true) {
+    private val candidateCache = object : LinkedHashMap<String, List<String>>(96, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean = size > MAX_QUERY_CACHE
     }
 
-    private val lexicalCache = object : LinkedHashMap<String, List<LexicalEntry>>(512, 0.75f, true) {
+    private val lexicalCache = object : LinkedHashMap<String, List<LexicalEntry>>(768, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<LexicalEntry>>?): Boolean = size > MAX_LEXICAL_CACHE
     }
 
@@ -24,7 +25,8 @@ class PinyinImeEngine(
     fun candidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
-        val cacheKey = cacheKey(query, contextBeforeCursor, limit)
+        val fuzzyLevel = ImePreferences.fuzzyLevel(appContext)
+        val cacheKey = cacheKey(query, contextBeforeCursor, limit, fuzzyLevel)
         candidateCache[cacheKey]?.let { return it }
 
         val contextTokens = extractContextTokens(contextBeforeCursor.orEmpty())
@@ -33,7 +35,9 @@ class PinyinImeEngine(
         addExact(query, contextTokens, pool)
         addSegmented(query, contextTokens, pool)
         addPrefixPredictions(query, contextTokens, pool)
-        if (query.length <= MAX_CORRECTION_QUERY_CHARS) addCorrections(query, contextTokens, pool)
+        if (fuzzyLevel != ImePreferences.FUZZY_OFF && query.length <= MAX_CORRECTION_QUERY_CHARS) {
+            addCorrections(query, contextTokens, pool, fuzzyLevel == ImePreferences.FUZZY_ENHANCED)
+        }
 
         val ranked = CandidateRanker.rank(pool, limit).map { it.text }.distinct()
         val result = if (ranked.isNotEmpty()) ranked.take(limit) else {
@@ -135,9 +139,16 @@ class PinyinImeEngine(
         }
     }
 
-    private fun addCorrections(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
-        PinyinCorrectionEngine.queryVariants(query).forEach { variant ->
-            lexicon.exact(variant.pinyin).take(MAX_CORRECTION_ENTRIES_PER_VARIANT).forEachIndexed { index, entry ->
+    private fun addCorrections(
+        query: String,
+        contextTokens: List<String>,
+        pool: MutableList<CandidateRanker.Candidate>,
+        enhanced: Boolean,
+    ) {
+        val variantLimit = if (enhanced) 72 else 36
+        val entriesPerVariant = if (enhanced) 7 else MAX_CORRECTION_ENTRIES_PER_VARIANT
+        PinyinCorrectionEngine.queryVariants(query, variantLimit, enhanced).forEach { variant ->
+            lexicon.exact(variant.pinyin).take(entriesPerVariant).forEachIndexed { index, entry ->
                 pool += makeCandidate(
                     query = query,
                     text = entry.text,
@@ -151,7 +162,7 @@ class PinyinImeEngine(
             }
         }
 
-        PinyinCorrectionEngine.candidatesFor(query).forEachIndexed { index, text ->
+        PinyinCorrectionEngine.candidatesFor(query, enhanced).forEachIndexed { index, text ->
             pool += makeCandidate(
                 query = query,
                 text = text,
@@ -294,8 +305,8 @@ class PinyinImeEngine(
         else -> MAX_BEAM_RESULTS
     }
 
-    private fun cacheKey(query: String, contextBeforeCursor: String?, limit: Int): String =
-        query + '\u0000' + contextBeforeCursor.orEmpty().takeLast(64) + '\u0000' + limit
+    private fun cacheKey(query: String, contextBeforeCursor: String?, limit: Int, fuzzyLevel: String): String =
+        query + '\u0000' + contextBeforeCursor.orEmpty().takeLast(64) + '\u0000' + limit + '\u0000' + fuzzyLevel
 
     private fun extractContextTokens(raw: String): List<String> {
         val tail = raw.takeLast(96)
@@ -335,12 +346,12 @@ class PinyinImeEngine(
         private const val MAX_ENTRIES_PER_SPAN = 8
         private const val BEAM_WIDTH = 72
         private const val MAX_BEAM_RESULTS = 32
-        private const val MAX_QUERY_CACHE = 64
-        private const val MAX_LEXICAL_CACHE = 512
+        private const val MAX_QUERY_CACHE = 96
+        private const val MAX_LEXICAL_CACHE = 768
         private const val MAX_CORRECTION_QUERY_CHARS = 48
         private const val MAX_CORRECTION_ENTRIES_PER_VARIANT = 5
         private const val MAX_PREFIX_QUERY_CHARS = 24
-        private const val PREFIX_POOL_LIMIT = 64
+        private const val PREFIX_POOL_LIMIT = 80
         private const val USER_BASE_STATIC_FREQUENCY = 700_000
         private const val CHARACTER_NGRAM_WEIGHT = 0.85
     }
