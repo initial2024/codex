@@ -18,24 +18,38 @@ data class StickerDefinition(
     val label: String,
     val petId: String,
     val mood: PetAvatarRenderer.StickerMood,
+    val variant: StickerVariant,
     val fallbackText: String,
 )
 
 object StickerPack {
+    private data class MoodMeta(
+        val variant: StickerVariant,
+        val baseMood: PetAvatarRenderer.StickerMood,
+        val name: String,
+        val fallback: String,
+    )
+
     private val moodMeta = listOf(
-        Triple(PetAvatarRenderer.StickerMood.HAPPY, "开心", "😄"),
-        Triple(PetAvatarRenderer.StickerMood.LOVE, "喜欢", "🥰"),
-        Triple(PetAvatarRenderer.StickerMood.ANGRY, "生气", "😤"),
+        MoodMeta(StickerVariant.HAPPY, PetAvatarRenderer.StickerMood.HAPPY, "开心", "😄"),
+        MoodMeta(StickerVariant.LOVE, PetAvatarRenderer.StickerMood.LOVE, "喜欢", "🥰"),
+        MoodMeta(StickerVariant.ANGRY, PetAvatarRenderer.StickerMood.ANGRY, "生气", "😤"),
+        MoodMeta(StickerVariant.SAD, PetAvatarRenderer.StickerMood.HAPPY, "难过", "😢"),
+        MoodMeta(StickerVariant.SURPRISED, PetAvatarRenderer.StickerMood.HAPPY, "惊讶", "😮"),
+        MoodMeta(StickerVariant.SLEEPY, PetAvatarRenderer.StickerMood.HAPPY, "困了", "😴"),
+        MoodMeta(StickerVariant.OK, PetAvatarRenderer.StickerMood.HAPPY, "好的", "👍"),
+        MoodMeta(StickerVariant.CONFUSED, PetAvatarRenderer.StickerMood.HAPPY, "疑惑", "🤔"),
     )
 
     val all: List<StickerDefinition> = PetRepository.PetCatalog.all.flatMap { pet ->
-        moodMeta.map { (mood, moodName, fallback) ->
+        moodMeta.map { meta ->
             StickerDefinition(
-                id = "${pet.id}_${mood.name.lowercase()}",
-                label = "${pet.name}·$moodName",
+                id = "${pet.id}_${meta.variant.name.lowercase()}",
+                label = "${pet.name}·${meta.name}",
                 petId = pet.id,
-                mood = mood,
-                fallbackText = fallback,
+                mood = meta.baseMood,
+                variant = meta.variant,
+                fallbackText = meta.fallback,
             )
         }
     }
@@ -69,6 +83,13 @@ object StickerRenderer {
             height = size.toFloat(),
             petId = sticker.petId,
             mood = sticker.mood,
+            skin = skin,
+        )
+        StickerOverlayRenderer.draw(
+            canvas = canvas,
+            width = size.toFloat(),
+            height = size.toFloat(),
+            variant = sticker.variant,
             skin = skin,
         )
         target.outputStream().use { output ->
