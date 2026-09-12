@@ -3,6 +3,7 @@ package com.ccwu.orbitime
 import android.content.Context
 import android.net.Uri
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -34,7 +35,7 @@ class VoiceReferenceStore(private val context: Context) {
 
         return runCatching {
             val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
-                val output = ArrayList<Byte>()
+                val output = ByteArrayOutputStream(512 * 1024)
                 val buffer = ByteArray(64 * 1024)
                 var total = 0
                 while (true) {
@@ -42,9 +43,9 @@ class VoiceReferenceStore(private val context: Context) {
                     if (read < 0) break
                     total += read
                     require(total <= MAX_WAV_BYTES) { "参考 WAV 超过 ${MAX_WAV_BYTES / (1024 * 1024)} MB" }
-                    for (index in 0 until read) output.add(buffer[index])
+                    output.write(buffer, 0, read)
                 }
-                ByteArray(output.size) { output[it] }
+                output.toByteArray()
             } ?: error("无法读取参考音频")
             val parsed = parsePcm16MonoWav(bytes)
             val duration = parsed.samples.size.toFloat() / parsed.sampleRate
@@ -52,7 +53,8 @@ class VoiceReferenceStore(private val context: Context) {
 
             val temp = File(directory, ".reference-${System.nanoTime()}.wav")
             temp.writeBytes(bytes)
-            require(temp.renameTo(wavFile) || run { wavFile.delete(); temp.renameTo(wavFile) }) { "无法保存参考 WAV" }
+            if (wavFile.exists()) wavFile.delete()
+            require(temp.renameTo(wavFile)) { "无法保存参考 WAV" }
             metaFile.writeText(
                 JSONObject()
                     .put("transcript", transcript)
@@ -71,6 +73,7 @@ class VoiceReferenceStore(private val context: Context) {
         if (!wavFile.isFile || !metaFile.isFile) return@runCatching null
         val meta = JSONObject(metaFile.readText(Charsets.UTF_8))
         if (!meta.optBoolean("consent_confirmed", false)) return@runCatching null
+        require(wavFile.length() in 1..MAX_WAV_BYTES.toLong()) { "参考 WAV 体积异常" }
         val parsed = parsePcm16MonoWav(wavFile.readBytes())
         Reference(
             transcript = meta.getString("transcript"),
@@ -81,8 +84,15 @@ class VoiceReferenceStore(private val context: Context) {
         )
     }.getOrNull()
 
-    fun summary(): String = load()?.let { "已保存参考声音 · %.1f 秒 · ${it.sampleRate}Hz · 对应原文 ${it.transcript.length} 字".format(it.durationSeconds) }
-        ?: "尚未保存参考声音"
+    fun summary(): String = runCatching {
+        if (!wavFile.isFile || !metaFile.isFile) return@runCatching "尚未保存参考声音"
+        val meta = JSONObject(metaFile.readText(Charsets.UTF_8))
+        if (!meta.optBoolean("consent_confirmed", false)) return@runCatching "尚未保存参考声音"
+        val duration = meta.optDouble("duration_seconds", 0.0)
+        val sampleRate = meta.optInt("sample_rate", 0)
+        val transcriptLength = meta.optString("transcript", "").length
+        "已保存参考声音 · %.1f 秒 · ${sampleRate}Hz · 对应原文 ${transcriptLength} 字".format(duration)
+    }.getOrDefault("尚未保存参考声音")
 
     fun clear(): Boolean {
         val a = !wavFile.exists() || wavFile.delete()
