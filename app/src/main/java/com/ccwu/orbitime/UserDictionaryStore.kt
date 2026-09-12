@@ -98,7 +98,7 @@ class UserDictionaryStore(private val context: Context) {
             entries.add(Entry(pinyin, text, 1, now))
         }
         saveEntries(trimEntries(entries))
-        if (this::imeEngine.isInitializedCompat()) imeEngine.clearCandidateCache()
+        imeEngine.clearCandidateCache()
         return true
     }
 
@@ -110,7 +110,7 @@ class UserDictionaryStore(private val context: Context) {
     fun clear() {
         cachedEntries = emptyList()
         prefs.edit().remove(KEY_ENTRIES_JSON).apply()
-        runCatching { imeEngine.clearCandidateCache() }
+        imeEngine.clearCandidateCache()
     }
 
     private fun canLearn(pinyin: String, text: String): Boolean {
@@ -168,10 +168,6 @@ class UserDictionaryStore(private val context: Context) {
         }
         prefs.edit().putString(KEY_ENTRIES_JSON, array.toString()).apply()
     }
-
-    // Kotlin lateinit does not apply to lazy delegates; this helper intentionally
-    // always returns true after first access through runCatching in callers.
-    private fun <T> Lazy<T>.isInitializedCompat(): Boolean = isInitialized()
 
     companion object {
         private const val PREFS = "orbit_user_dictionary"
