@@ -33,18 +33,21 @@ Jieba readings are not guessed indiscriminately. Exact AOSP phrase readings are 
 
 A full sentence does not need to exist as one dictionary key. `PinyinSegmenter` creates syllable paths, and `PinyinImeEngine` composes multiple lexical edges into sentence candidates.
 
-v0.16 bounds:
+v0.16 maximums / short-input settings:
 
 ```text
 Pinyin buffer: 192 letters
-segmentation paths: 6
-max lexical phrase span: 8 syllables
-entries per span: 6
-beam width: 56
-complete internal results: 20
+segmentation paths: up to 6
+max lexical phrase span: up to 8 syllables
+entries per span: up to 6
+beam width: up to 56
+complete internal results: up to 20
 visible candidates: 12
-candidate-query LRU: 24
+candidate-query LRU: 48
+phrase-lookup LRU: 384
 ```
+
+These are not fixed costs for every sentence. As input grows, v0.16 progressively reduces segmentation paths, beam width, phrase span, entries per span, and complete-result count. Whole-sentence fuzzy expansion is disabled beyond 48 normalized letters. This keeps long continuous input usable without forcing the user to commit every word.
 
 A sentence may exceed eight syllables because a beam hypothesis chains multiple lexical edges.
 
@@ -78,7 +81,7 @@ dynamic candidate/tool host
 
 During normal letter input and backspace, v0.16 refreshes only the dynamic host rather than removing/recreating every keyboard key. Full rebuilds remain for layout/mode changes such as symbols, language mode, or opening/closing top-level tools.
 
-`PinyinImeEngine` also caches recent query/context candidate lists with a bounded LRU, and `OrbitInputMethodService` caches the current visible Pinyin result.
+`PinyinImeEngine` caches recent query/context candidate lists and immutable phrase lookups with bounded LRUs. `OrbitInputMethodService` separately caches the current visible Pinyin result. Extending a sentence therefore reuses many of the same lexical lookups instead of reparsing the same asset rows on each keystroke.
 
 ## Local N-gram model
 
@@ -111,11 +114,11 @@ v0.16 accepts up to 192 normalized Pinyin letters and 96 text characters per lea
 
 ## Fuzzy correction
 
-`PinyinCorrectionEngine` remains a lower-confidence compatibility path. It is not treated as an exact spelling source.
+`PinyinCorrectionEngine` remains a lower-confidence compatibility path. It is not treated as an exact spelling source. Long input deliberately avoids whole-string fuzzy expansion because the search cost grows rapidly and full-sentence typo guesses are less trustworthy than exact segmentation.
 
 ## Clipboard runtime design
 
-Clipboard history is separate from the language model. `ClipboardStore` supports recent/pinned entries, one-hour expiration for unpinned history, use/copy counters, pin/unpin, removal, clear-recent, and clear-all. The system clipboard listener exists only while the IME window is shown.
+Clipboard history is separate from the language model. `ClipboardStore` supports Recent/Pinned entries, one-hour expiration for unpinned history, use/copy counters, pin/unpin, removal, clear-recent, and clear-all. The system clipboard listener exists only while the IME window is shown; it is detached when the IME window hides.
 
 ## Translation runtime design
 
@@ -124,15 +127,18 @@ Translation mode reuses the normal Chinese/English composing engines instead of 
 Chinese -> English:
 
 ```text
-Pinyin composing
--> Chinese candidate commit into temporary translation source
+continuous Pinyin composing
+-> current best candidate participates in source preview
+-> explicit candidate/space commit into temporary translation source
 -> exact local translation table
 -> conservative longest-phrase LocalTranslationComposer
--> visible translation preview
+-> visible 原文 / 译文 preview
 -> explicit translation commit to target app
 ```
 
-English -> Chinese follows the analogous path. If local coverage is too low, the composer returns `null`; the UI reports that the offline pack does not cover the sentence rather than presenting a prompt as a translation result.
+English -> Chinese follows the analogous path. English translation-lexicon keys are normalized for case/punctuation before matching.
+
+If local coverage is too low, the composer returns `null`; the UI reports that the offline pack does not cover the sentence rather than presenting a prompt as a translation result.
 
 ## Build-time pipeline
 
@@ -151,7 +157,7 @@ See `DATA_SOURCES.md` for pinned source/license rules.
 - no runtime network I/O;
 - no full typed-stream persistence;
 - no persisted surrounding sentence/app identity;
-- bounded shard caches, beam width, and query caches;
+- bounded shard caches, beam width, query caches, and lexical caches;
 - no dictionary parsing inside drawing callbacks;
 - exact paths rank ahead of fuzzy paths;
 - sensitive fields disable learning/tools/clipboard capture.
