@@ -1,0 +1,36 @@
+name: Patch v0.27 validator version
+
+on:
+  push:
+    branches:
+      - fix/v027-ime-usability
+    paths:
+      - tools/patch_v027_validator_version.py
+      - .github/workflows/patch-v027-validator-version.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v027-ime-usability
+      - name: Patch validator release version gate
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/patch_v027_validator_version.py
+      - name: Syntax check
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile tools/validate_mature_ime_assets.py
+      - name: Assert v0.27 gate
+        run: |
+          grep -F 'versionCode = 27' tools/validate_mature_ime_assets.py
+          grep -F 'versionName = "0.27.0"' tools/validate_mature_ime_assets.py
+      - name: Commit correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/validate_mature_ime_assets.py
+          git diff --cached --check
+          git commit -m "fix: validate v0.27 release version [v027-data]"
+          git push origin HEAD:fix/v027-ime-usability
