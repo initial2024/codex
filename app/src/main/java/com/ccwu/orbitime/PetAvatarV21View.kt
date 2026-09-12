@@ -61,8 +61,9 @@ class PetAvatarV21View @JvmOverloads constructor(
         super.onDraw(canvas)
         val p = profile ?: return
         val s = skin ?: return
-        val bob = sin(phase * Math.PI * 2.0).toFloat() * min(width, height) * 0.012f
-        val scale = 1f + sin(phase * Math.PI * 2.0).toFloat() * 0.008f
+        val wave = sin(phase.toDouble() * Math.PI * 2.0).toFloat()
+        val bob = wave * min(width, height) * 0.012f
+        val scale = 1f + wave * 0.008f
 
         canvas.save()
         canvas.translate(0f, bob)
@@ -111,8 +112,7 @@ private object PolishedPetOutfits {
             "aurora_tail" -> tail(canvas, cx, cy + size * 0.22f, size, accent, soft, paint)
         }
 
-        // Tiny catalog accent helps visually distinguish catalog variants sharing a base renderer.
-        catalogBadge(canvas, width, height, profile.catalogPetId, accent, soft, paint)
+        catalogBadge(canvas, width, profile.catalogPetId, accent, soft, paint)
     }
 
     private fun halo(canvas: Canvas, cx: Float, cy: Float, s: Float, accent: Int, soft: Int, p: Paint, phase: Float) {
@@ -123,7 +123,7 @@ private object PolishedPetOutfits {
         p.shader = null
         p.style = Paint.Style.FILL
         p.color = soft
-        val x = cx + sin(phase * Math.PI * 2).toFloat() * s * .28f
+        val x = cx + sin(phase.toDouble() * Math.PI * 2.0).toFloat() * s * .28f
         canvas.drawCircle(x, cy - s * .02f, s * .035f, p)
     }
 
@@ -186,7 +186,7 @@ private object PolishedPetOutfits {
         canvas.drawOval(RectF(cx - s*.52f, cy - s*.17f, cx + s*.52f, cy + s*.17f), p)
         p.style = Paint.Style.FILL
         p.color = soft
-        val angle = phase * Math.PI * 2.0
+        val angle = phase.toDouble() * Math.PI * 2.0
         canvas.drawCircle(cx + kotlin.math.cos(angle).toFloat()*s*.48f, cy + kotlin.math.sin(angle).toFloat()*s*.14f, s*.035f, p)
     }
 
@@ -212,9 +212,9 @@ private object PolishedPetOutfits {
         p.color = soft
     }
 
-    private fun catalogBadge(canvas: Canvas, width: Float, height: Float, catalogId: String, accent: Int, soft: Int, p: Paint) {
+    private fun catalogBadge(canvas: Canvas, width: Float, catalogId: String, accent: Int, soft: Int, p: Paint) {
         val hash = catalogId.hashCode()
-        val r = min(width, height) * .045f
+        val r = width.coerceAtMost(180f) * .045f
         val x = width - r * 2.1f
         val y = r * 2.1f
         p.style = Paint.Style.FILL
