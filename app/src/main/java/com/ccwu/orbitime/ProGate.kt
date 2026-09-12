@@ -20,4 +20,6 @@ object ProGate {
     fun isContextTranslationUnlocked(context: Context): Boolean = isProUnlocked(context)
 
     fun isLongFormTranslationUnlocked(context: Context): Boolean = isProUnlocked(context)
+
+    fun isLocalModelPackManagerUnlocked(context: Context): Boolean = isProUnlocked(context)
 }
