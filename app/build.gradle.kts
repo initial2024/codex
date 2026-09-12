@@ -25,14 +25,21 @@ kotlin {
     jvmToolchain(17)
 }
 
-// A normal release/debug build materializes the pinned mature offline dictionary
-// before Android packages assets. This uses network access only on the build
-// machine; the installed IME still has no INTERNET permission.
+// Builds materialize a pinned mature offline dictionary before Android packages
+// assets. Network access is build-time only; the installed IME has no INTERNET
+// permission. -PorbitSkipMatureImeData=true is reserved for offline development.
 val orbitSkipMatureImeData = providers.gradleProperty("orbitSkipMatureImeData")
     .map { it.toBoolean() }
     .orElse(false)
 val orbitPython = providers.environmentVariable("ORBIT_PYTHON").orNull
     ?: if (System.getProperty("os.name").lowercase().contains("windows")) "python" else "python3"
+
+val testImeDataPipeline by tasks.registering(Exec::class) {
+    group = "orbit ime"
+    description = "Run offline tests for Orbit IME dictionary parsing, licensing and packing"
+    workingDir(rootProject.projectDir)
+    commandLine(orbitPython, "tools/test_ime_data_pipeline.py")
+}
 
 val prepareMatureImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
@@ -44,6 +51,7 @@ val prepareMatureImeAssets by tasks.registering(Exec::class) {
         "--output",
         "app/src/main/assets/ime",
     )
+    dependsOn(testImeDataPipeline)
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
