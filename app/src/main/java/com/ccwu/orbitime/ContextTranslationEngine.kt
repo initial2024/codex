@@ -1,11 +1,9 @@
 package com.ccwu.orbitime
 
 /**
- * Local context translation helper.
- *
- * This is deliberately conservative: it reads at most the previous two sentences,
- * translates the block locally, and keeps the current sentence translation separate
- * for insertion. Nothing is persisted.
+ * Local context translation helper. Reads at most the previous two sentences in memory.
+ * v0.23 uses the paragraph-aware long-form engine for the context block while keeping
+ * the current sentence translation separate for safe insertion/replacement.
  */
 object ContextTranslationEngine {
     data class Bundle(
@@ -20,29 +18,27 @@ object ContextTranslationEngine {
         rawContext: String,
         direction: TranslatePromptBuilder.Direction,
     ): Bundle? {
-        val current = OfflineTranslationPack.translateOrNull(source, direction) ?: return null
+        val current = OfflineTranslationPack.translateOrNull(source, direction)
+            ?: FluentLocalTranslationEngine.translateOrNull(source, direction)?.let {
+                OfflineTranslationPack.Result(it.translatedText, "fluent-local", "v0.23 local context fallback")
+            }
+            ?: return null
         val previous = extractPreviousSentences(rawContext).takeLast(MAX_CONTEXT_SENTENCES)
         if (previous.isEmpty()) {
-            return Bundle(
-                currentTranslation = current.translatedText,
-                contextSourcePreview = "",
-                contextTranslationPreview = "",
-                contextSentenceCount = 0,
-            )
+            return Bundle(current.translatedText, "", "", 0)
         }
 
-        val contextSource = previous.joinToString(separatorFor(direction))
-        val blockSource = (previous + source.trim()).joinToString(separatorFor(direction))
-
-        val translatedBlock = OfflineTranslationPack.translateOrNull(blockSource, direction)?.translatedText
-        val translatedPrevious = previous.mapNotNull {
-            OfflineTranslationPack.translateOrNull(it, direction)?.translatedText
-        }.joinToString(if (direction == TranslatePromptBuilder.Direction.ZH_TO_EN) " " else "")
+        val separator = separatorFor(direction)
+        val contextSource = previous.joinToString(separator)
+        val blockSource = (previous + source.trim()).joinToString(separator)
+        val block = LongFormTranslationEngine.translate(blockSource, direction, MAX_CONTEXT_BLOCK_CHARS)
+        val previousOnly = LongFormTranslationEngine.translate(contextSource, direction, MAX_CONTEXT_BLOCK_CHARS)
 
         return Bundle(
             currentTranslation = current.translatedText,
             contextSourcePreview = contextSource.takeLast(MAX_CONTEXT_PREVIEW_CHARS),
-            contextTranslationPreview = (translatedBlock ?: translatedPrevious).take(MAX_TRANSLATION_PREVIEW_CHARS),
+            contextTranslationPreview = (block?.translatedText ?: previousOnly?.translatedText.orEmpty())
+                .take(MAX_TRANSLATION_PREVIEW_CHARS),
             contextSentenceCount = previous.size,
         )
     }
@@ -70,8 +66,9 @@ object ContextTranslationEngine {
 
     private val SENTENCE_ENDINGS = setOf('。', '！', '？', '.', '!', '?', '\n')
     private const val MAX_CONTEXT_SENTENCES = 2
-    private const val MAX_CONTEXT_SOURCE_CHARS = 720
-    private const val MAX_SINGLE_SENTENCE_CHARS = 280
-    private const val MAX_CONTEXT_PREVIEW_CHARS = 180
-    private const val MAX_TRANSLATION_PREVIEW_CHARS = 260
+    private const val MAX_CONTEXT_SOURCE_CHARS = 900
+    private const val MAX_CONTEXT_BLOCK_CHARS = 1400
+    private const val MAX_SINGLE_SENTENCE_CHARS = 360
+    private const val MAX_CONTEXT_PREVIEW_CHARS = 220
+    private const val MAX_TRANSLATION_PREVIEW_CHARS = 360
 }
