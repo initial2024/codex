@@ -43,9 +43,16 @@ object PrivacyGuard {
         return true
     }
 
-    private fun looksLikeSingleOtp(text: String): Boolean {
-        return Regex("^\\d{4,8}$").matches(text)
+    /** Local-only Pro translation may process a larger selected block, still with secret filtering. */
+    fun isSafeForLocalLongForm(raw: CharSequence?, maxChars: Int = 8000): Boolean {
+        val text = raw?.toString()?.trim() ?: return false
+        if (text.length !in 1..maxChars) return false
+        if (looksLikeSecret(text)) return false
+        if (looksLikeSingleOtp(text)) return false
+        return true
     }
+
+    private fun looksLikeSingleOtp(text: String): Boolean = Regex("^\\d{4,8}$").matches(text)
 
     private fun looksLikeSecret(text: String): Boolean {
         val secretWords = Regex(
