@@ -26,14 +26,19 @@ import kotlin.math.ceil
 
 class OrbitInputMethodService : InputMethodService() {
     private enum class InputMode { ENGLISH, PINYIN }
+    private enum class ShiftState { OFF, ONCE, LOCKED }
 
     private var inputMode = InputMode.PINYIN
-    private var caps = false
+    private var shiftState = ShiftState.OFF
+    private var lastShiftTapAt = 0L
     private var symbols = false
     private var symbolPage = 0
     private var showClips = false
     private var showTranslate = false
     private var showPet = false
+    private var showPetCatalog = false
+    private var petCatalogPage = 0
+    private var showMoreTools = false
     private var showExpressions = false
     private var sensitiveMode = false
     private var pinyinBuffer = ""
@@ -116,6 +121,8 @@ class OrbitInputMethodService : InputMethodService() {
             if (this::speechController.isInitialized) speechController.cancelCapture()
             showClips = false
             showPet = false
+            showPetCatalog = false
+            showMoreTools = false
             showExpressions = false
             petPanelMessage = null
             clearPinyinComposition()
@@ -171,6 +178,7 @@ class OrbitInputMethodService : InputMethodService() {
         host.removeAllViews()
         when {
             sensitiveMode -> Unit
+            showPetCatalog -> buildPetCatalogPanel(host)
             showPet -> buildPetPanel(host)
             showExpressions -> buildExpressionPanel(host)
             showTranslate -> buildTranslatePanel(host)
@@ -184,51 +192,69 @@ class OrbitInputMethodService : InputMethodService() {
     private fun buildTopBar(parent: LinearLayout) {
         val skin = activeSkin()
         if (sensitiveMode) {
-            parent.addView(labelBox("🔒 隐私模式 · 工具已隐藏", muted = false, accent = true, warning = true))
+            parent.addView(labelBox("🔒 隐私模式 · 语音/朗读/剪贴板/宠物工具已隐藏", muted = false, accent = true, warning = true))
             return
         }
-        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN", emphasized = true) { toggleInputMode() })
-        row.addView(chip(label("切换", "Switch")) { showInputMethodPickerSafely() })
-        row.addView(chip(label("粘贴", "Paste")) { pasteClipboard(saveAfterPaste = false) })
-        row.addView(chip(if (showClips) label("返回", "Keyboard") else label("剪贴板", "Clips"), emphasized = showClips) {
+
+        val primaryScroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val primary = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        primary.addView(chip(if (inputMode == InputMode.PINYIN) "拼音" else "EN", emphasized = true) { toggleInputMode() })
+        primary.addView(chip(if (showClips) label("返回", "Keyboard") else label("剪贴板", "Clips"), emphasized = showClips) {
             if (showClips) showClips = false else {
                 commitPendingPinyin(rawFallback = true)
                 commitPendingEnglish(rawFallback = true, appendSpace = false)
                 showClips = true
                 showPet = false
+                showPetCatalog = false
                 showExpressions = false
                 clearTranslateState()
                 captureVisibleClipboard()
             }
             root?.let { rebuild(it) }
         })
-        row.addView(chip(if (showTranslate) label("返回", "Keyboard") else label("翻译", "Translate"), emphasized = showTranslate) {
-            if (showTranslate) clearTranslateState() else startLiveTranslateMode()
-            showExpressions = false
-            root?.let { rebuild(it) }
-        })
-        row.addView(chip(if (showExpressions) label("返回", "Keyboard") else label("表情", "Emoji"), emphasized = showExpressions) {
+        primary.addView(chip(if (showExpressions) label("返回", "Keyboard") else label("表情", "Emoji"), emphasized = showExpressions) {
             if (showExpressions) showExpressions = false else {
                 commitPendingPinyin(rawFallback = true)
                 commitPendingEnglish(rawFallback = true, appendSpace = false)
                 showExpressions = true
                 showClips = false
                 showPet = false
+                showPetCatalog = false
                 clearTranslateState()
                 expressionPage = 0
             }
             root?.let { rebuild(it) }
         })
-        row.addView(chip(if (showPet) label("返回", "Keyboard") else label("宠物", "Pet"), emphasized = showPet) {
+        primary.addView(chip(if (speechController.isRecording()) label("停止语音", "Stop voice") else label("语音", "Voice"), emphasized = speechController.isRecording() || speechController.isBusy()) {
+            handleLocalVoiceInput()
+        })
+        primary.addView(chip(if (showMoreTools) label("收起", "Less") else label("更多", "More"), emphasized = showMoreTools) {
+            showMoreTools = !showMoreTools
+            root?.let { rebuild(it) }
+        })
+        primaryScroller.setBackgroundColor(skin.backgroundColor)
+        primaryScroller.addView(primary)
+        parent.addView(primaryScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
+
+        if (!showMoreTools) return
+        val moreScroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val more = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        more.addView(chip(if (showTranslate) label("返回", "Keyboard") else label("翻译", "Translate"), emphasized = showTranslate) {
+            if (showTranslate) clearTranslateState() else startLiveTranslateMode()
+            showExpressions = false
+            showPetCatalog = false
+            root?.let { rebuild(it) }
+        })
+        more.addView(chip(if (showPet || showPetCatalog) label("返回", "Keyboard") else label("宠物", "Pet"), emphasized = showPet || showPetCatalog) {
             commitPendingPinyin(rawFallback = true)
             commitPendingEnglish(rawFallback = true, appendSpace = false)
-            if (showPet) {
+            if (showPet || showPetCatalog) {
                 showPet = false
+                showPetCatalog = false
                 petPanelMessage = null
             } else {
                 showPet = true
+                showPetCatalog = false
                 showClips = false
                 showExpressions = false
                 clearTranslateState()
@@ -236,16 +262,12 @@ class OrbitInputMethodService : InputMethodService() {
             }
             root?.let { rebuild(it) }
         })
-        if (ProGate.isLocalAsrUnlocked(this)) {
-            row.addView(chip(if (speechController.isRecording()) label("停止语音", "Stop voice") else label("语音", "Voice"), emphasized = speechController.isRecording()) {
-                handleLocalVoiceInput()
-            })
-            row.addView(chip(label("朗读", "Read")) { speakCurrentText(cloned = false) })
-            row.addView(chip(label("音色", "Clone")) { speakCurrentText(cloned = true) })
-        }
-        scroller.setBackgroundColor(skin.backgroundColor)
-        scroller.addView(row)
-        parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
+        more.addView(chip(label("朗读", "Read")) { speakCurrentText(cloned = false) })
+        more.addView(chip(label("音色", "Clone")) { speakCurrentText(cloned = true) })
+        more.addView(chip(label("切换", "Switch")) { showInputMethodPickerSafely() })
+        more.addView(chip(label("粘贴", "Paste")) { pasteClipboard(saveAfterPaste = false) })
+        moreScroller.addView(more)
+        parent.addView(moreScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
     }
 
     private fun buildPetPanel(parent: LinearLayout) {
@@ -268,12 +290,43 @@ class OrbitInputMethodService : InputMethodService() {
         row.addView(chip("开蛋") { petPanelMessage = petRepository.adoptRandom().message; refreshDynamicHost() })
         row.addView(chip("切换") { petPanelMessage = petRepository.switchToNextOwned().message; refreshDynamicHost() })
         row.addView(chip("装扮") { petPanelMessage = petRepository.equipNextOutfit().message; refreshDynamicHost() })
-        row.addView(chip("图鉴") { petPanelMessage = petRepository.petCatalogLine(); refreshDynamicHost() })
+        row.addView(chip("图鉴") { petCatalogPage = 0; showPet = false; showPetCatalog = true; refreshDynamicHost() })
         row.addView(chip("装扮库") { petPanelMessage = petRepository.outfitCatalogLine(); refreshDynamicHost() })
         row.addView(chip(if (visible) "隐藏" else "显示") { petPanelMessage = petRepository.toggleHidden().message; refreshDynamicHost() })
-        row.addView(chip("关闭", warning = true) { showPet = false; petPanelMessage = null; root?.let { rebuild(it) } })
+        row.addView(chip("关闭", warning = true) { showPet = false; showPetCatalog = false; petPanelMessage = null; root?.let { rebuild(it) } })
         scroller.addView(row)
         parent.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+    }
+
+    private fun buildPetCatalogPanel(parent: LinearLayout) {
+        val entries = petRepository.petCatalogEntries()
+        val pageSize = 4
+        val pageCount = maxOf(1, ceil(entries.size / pageSize.toDouble()).toInt())
+        petCatalogPage = petCatalogPage.coerceIn(0, pageCount - 1)
+        parent.addView(labelBox("宠物图鉴 · ${petCatalogPage + 1}/$pageCount", muted = false, accent = true))
+        entries.drop(petCatalogPage * pageSize).take(pageSize).forEach { entry ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            row.addView(PetAvatarV21View(this).apply {
+                bind(entry.profile, activeSkin())
+                contentDescription = entry.profile.petName
+            }, LinearLayout.LayoutParams(dp(74), dp(54)).apply { setMargins(dp(2), dp(2), dp(6), dp(2)) })
+            val state = when {
+                entry.current -> "✓ 当前"
+                entry.owned -> "✓ 已拥有"
+                entry.proOnly && !ProGate.isProUnlocked(this) -> "🔒 Pro"
+                else -> "未解锁"
+            }
+            row.addView(labelBox("${entry.profile.petName} · ${entry.profile.species} · $state", muted = false, accent = entry.current), LinearLayout.LayoutParams(0, dp(34), 1f))
+            parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
+        }
+        val nav = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        if (petCatalogPage > 0) buttons.addView(chip("上一页") { petCatalogPage--; refreshDynamicHost() })
+        if (petCatalogPage + 1 < pageCount) buttons.addView(chip("下一页", emphasized = true) { petCatalogPage++; refreshDynamicHost() })
+        buttons.addView(chip("返回宠物") { showPetCatalog = false; showPet = true; refreshDynamicHost() })
+        buttons.addView(chip("关闭", warning = true) { showPetCatalog = false; showPet = false; root?.let { rebuild(it) } })
+        nav.addView(buttons)
+        parent.addView(nav, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
     }
 
     private fun buildExpressionPanel(parent: LinearLayout) {
@@ -608,7 +661,7 @@ class OrbitInputMethodService : InputMethodService() {
         rows.forEach { rowKeys ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
             rowKeys.forEach { key -> row.addView(keyView(key), keyLayoutParams(key)) }
-            parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+            parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         }
     }
 
@@ -623,8 +676,12 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun keyView(rawKey: String): TextView {
         val skin = activeSkin()
+        val shiftActive = shiftState != ShiftState.OFF
         val display = when {
             rawKey == "符号" -> SymbolLibrary.page(symbolPage).title
+            rawKey == "⇧" && shiftState == ShiftState.LOCKED -> "⇪"
+            rawKey == "space" && speechController.isRecording() -> "🎙 正在听…"
+            rawKey == "space" && speechController.isBusy() -> "正在识别…"
             rawKey == "space" && showTranslate -> when {
                 inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> "选词"
                 inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty() -> "select"
@@ -633,13 +690,13 @@ class OrbitInputMethodService : InputMethodService() {
             rawKey == "space" -> when {
                 inputMode == InputMode.PINYIN && pinyinBuffer.isNotEmpty() -> "选词"
                 inputMode == InputMode.ENGLISH && englishBuffer.isNotEmpty() -> "select"
-                else -> label("空格", "space")
+                else -> label("空格 · 长按语音", "space · hold voice")
             }
             rawKey == "↵" -> if (showTranslate) label("译文", "Translate") else label("回车", "Enter")
-            inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps -> rawKey.uppercase()
+            rawKey.length == 1 && rawKey[0].isLetter() && shiftActive -> rawKey.uppercase()
             else -> rawKey
         }
-        val longPress = if (!symbols) SymbolLibrary.longPressFor(rawKey) else null
+        val longPress = if (!symbols && rawKey != "space") SymbolLibrary.longPressFor(rawKey) else null
         val visualText: CharSequence = if (longPress == null) display else {
             SpannableString("$display $longPress").apply {
                 val start = display.length + 1
@@ -647,15 +704,24 @@ class OrbitInputMethodService : InputMethodService() {
                 setSpan(SuperscriptSpan(), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
+        val emphasized = (rawKey == "⇧" && shiftActive) || (rawKey == "space" && (speechController.isRecording() || speechController.isBusy()))
         return TextView(this).apply {
             text = visualText
             OrbitTheme.label(this, sizeSp = if (rawKey == "space" || rawKey == "↵" || rawKey == "符号") 13f else 18f, bold = rawKey.length == 1, skin = skin)
-            background = OrbitTheme.rounded(if (isControlKey(rawKey)) skin.controlKeyColor else skin.keyColor, dp(12).toFloat(), if (isControlKey(rawKey)) skin.accentColor else skin.borderColor, dp(1))
+            background = OrbitTheme.rounded(
+                if (emphasized) skin.panelAltColor else if (isControlKey(rawKey)) skin.controlKeyColor else skin.keyColor,
+                dp(12).toFloat(),
+                if (emphasized || isControlKey(rawKey)) skin.accentColor else skin.borderColor,
+                dp(1),
+            )
             setOnClickListener { handleKey(rawKey) }
-            if (longPress != null) setOnLongClickListener { handleLongPress(rawKey); true }
+            when {
+                rawKey == "space" -> setOnLongClickListener { handleLocalVoiceInput(); true }
+                longPress != null -> setOnLongClickListener { handleLongPress(rawKey); true }
+            }
             isClickable = true
             isFocusable = true
-            minHeight = dp(38)
+            minHeight = dp(42)
         }
     }
 
@@ -672,7 +738,7 @@ class OrbitInputMethodService : InputMethodService() {
 
     private fun handleKey(rawKey: String) {
         when (rawKey) {
-            "⇧" -> { if (inputMode == InputMode.ENGLISH) caps = !caps; root?.let { rebuild(it) } }
+            "⇧" -> handleShift()
             "⌫" -> handleBackspace()
             "123" -> { commitPendingForControl(); showExpressions = false; symbols = true; symbolPage = 0; root?.let { rebuild(it) } }
             "ABC" -> { showExpressions = false; symbols = false; root?.let { rebuild(it) } }
@@ -681,6 +747,21 @@ class OrbitInputMethodService : InputMethodService() {
             "↵" -> handleEnter()
             else -> handlePrintableKey(rawKey)
         }
+    }
+
+    private fun handleShift() {
+        val now = System.currentTimeMillis()
+        shiftState = if (now - lastShiftTapAt <= 420L && shiftState == ShiftState.ONCE) {
+            ShiftState.LOCKED
+        } else {
+            when (shiftState) {
+                ShiftState.OFF -> ShiftState.ONCE
+                ShiftState.ONCE -> ShiftState.OFF
+                ShiftState.LOCKED -> ShiftState.OFF
+            }
+        }
+        lastShiftTapAt = now
+        root?.let { rebuild(it) }
     }
 
     private fun handleLongPress(rawKey: String) {
@@ -713,6 +794,22 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun handlePrintableKey(rawKey: String) {
+        if (rawKey.length == 1 && rawKey[0].isLetter() && !symbols && shiftState != ShiftState.OFF) {
+            commitPendingForControl()
+            val upper = rawKey.uppercase()
+            if (showTranslate && translateLiveMode) {
+                longFormTranslationPreview = null
+                translateComposeText += upper
+                updateLiveTranslationPreview()
+            } else {
+                resetInternalCompositionState()
+                currentInputConnection?.commitText(upper, 1)
+                if (!sensitiveMode) petRepository.recordTypedChars(upper.length)
+            }
+            if (shiftState == ShiftState.ONCE) shiftState = ShiftState.OFF
+            root?.let { rebuild(it) }
+            return
+        }
         if (rawKey.length == 1 && rawKey[0].isLetter() && inputMode == InputMode.PINYIN && !symbols) { appendPinyin(rawKey); return }
         if (rawKey.length == 1 && rawKey[0].isLetter() && inputMode == InputMode.ENGLISH && !symbols) { appendEnglish(rawKey); return }
         commitPendingForControl()
@@ -732,7 +829,6 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun mapPrintableText(rawKey: String): String {
-        if (inputMode == InputMode.ENGLISH && rawKey.length == 1 && rawKey[0].isLetter() && caps) return rawKey.uppercase()
         if (inputMode == InputMode.PINYIN && !symbols) return when (rawKey) { "," -> "，"; "." -> "。"; else -> rawKey }
         return rawKey
     }
@@ -815,7 +911,7 @@ class OrbitInputMethodService : InputMethodService() {
     }
 
     private fun appendEnglish(letter: String) {
-        val text = if (caps) letter.uppercase() else letter.lowercase()
+        val text = letter.lowercase()
         if (englishBuffer.length + text.length > MAX_ENGLISH_BUFFER) { toast("word too long"); return }
         englishBuffer += text
         currentInputConnection?.setComposingText(englishBuffer, 1)
@@ -930,9 +1026,11 @@ class OrbitInputMethodService : InputMethodService() {
         ImePreferences.setInputMode(this, if (inputMode == InputMode.PINYIN) ImePreferences.MODE_PINYIN else ImePreferences.MODE_ENGLISH)
         if (showTranslate) translateDirection = if (inputMode == InputMode.PINYIN) TranslatePromptBuilder.Direction.ZH_TO_EN else TranslatePromptBuilder.Direction.EN_TO_ZH
         symbols = false
-        caps = false
+        shiftState = ShiftState.OFF
+        lastShiftTapAt = 0L
         showClips = false
         showPet = false
+        showPetCatalog = false
         showExpressions = false
         petPanelMessage = null
         if (!showTranslate) clearTranslateState() else updateLiveTranslationPreview()
@@ -960,6 +1058,7 @@ class OrbitInputMethodService : InputMethodService() {
         }
         clearTranslateState()
         showPet = false
+        showPetCatalog = false
         showExpressions = false
         petPanelMessage = null
         currentInputConnection?.commitText(text, 1)
@@ -982,6 +1081,7 @@ class OrbitInputMethodService : InputMethodService() {
         showTranslate = true
         showClips = false
         showPet = false
+        showPetCatalog = false
         showExpressions = false
         petPanelMessage = null
         longFormTranslationPreview = null

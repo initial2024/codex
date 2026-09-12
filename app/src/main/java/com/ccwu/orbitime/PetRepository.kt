@@ -55,6 +55,13 @@ class PetRepository(private val context: Context) {
         val profile: PetProfile,
     )
 
+    data class PetCatalogEntry(
+        val profile: PetProfile,
+        val owned: Boolean,
+        val proOnly: Boolean,
+        val current: Boolean,
+    )
+
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun profile(): PetProfile {
@@ -117,6 +124,29 @@ class PetRepository(private val context: Context) {
             val lock = if (pet.isPro && !ProGate.isProUnlocked(context)) "🔒" else ""
             val mark = if (pet.id in owned) "✓" else ""
             "$mark$lock${pet.name}"
+        }
+    }
+
+    fun petCatalogEntries(): List<PetCatalogEntry> {
+        val currentProfile = profile()
+        val owned = ownedPetIds()
+        return PetCatalog.all.map { pet ->
+            val isCurrent = pet.id == currentProfile.catalogPetId
+            val visualProfile = currentProfile.copy(
+                petId = pet.visualBaseId,
+                catalogPetId = pet.id,
+                petName = pet.name,
+                species = pet.species,
+                equippedOutfitId = if (isCurrent) currentProfile.equippedOutfitId else null,
+                catalogOutfitId = if (isCurrent) currentProfile.catalogOutfitId else null,
+                equippedOutfitName = if (isCurrent) currentProfile.equippedOutfitName else null,
+            )
+            PetCatalogEntry(
+                profile = visualProfile,
+                owned = pet.id in owned,
+                proOnly = pet.isPro,
+                current = isCurrent,
+            )
         }
     }
 

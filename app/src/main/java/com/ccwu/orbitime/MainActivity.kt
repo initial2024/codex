@@ -22,6 +22,8 @@ class MainActivity : Activity() {
     private lateinit var modelPackManager: ModelPackManager
     private lateinit var voiceReferenceStore: VoiceReferenceStore
     private var pendingVoiceTranscript: String? = null
+    private var mainScrollView: ScrollView? = null
+    private var savedScrollY: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +71,7 @@ class MainActivity : Activity() {
     }
 
     private fun render(statusMessage: String? = null) {
+        savedScrollY = mainScrollView?.scrollY ?: savedScrollY
         val skin = SkinManager.current(this)
         val userDictionary = UserDictionaryStore(this)
         val dictionaryStats = userDictionary.stats()
@@ -80,6 +83,7 @@ class MainActivity : Activity() {
         val isPro = ProGate.isProUnlocked(this)
         val installedPacks = if (isPro) modelPackManager.listInstalled() else emptyList()
         val scroll = ScrollView(this).apply { setBackgroundColor(skin.backgroundColor) }
+        mainScrollView = scroll
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(28), dp(22), dp(28))
@@ -87,7 +91,7 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("v0.26 保留 v0.23 的成熟输入/领域词/联想，并完成 v0.24 本地 ASR、v0.25 本地 TTS、v0.26 ZipVoice 零样本音色克隆运行时。模型仍由 Pro 用户自行导入并逐包核验来源/许可证。当前：${ProLicenseManager.licenseLabel(this)} · ${skin.name}。", skin))
+        container.addView(paragraph("v0.27 聚焦输入法可用性：保留 v0.23 成熟输入与 v0.24–v0.26 本地 ASR/TTS/ZipVoice，并把这些能力放回真实输入路径。模型仍由 Pro 用户自行导入并逐包核验来源/许可证。当前：${ProLicenseManager.licenseLabel(this)} · ${skin.name}。", skin))
         statusMessage?.let { container.addView(statusBox(it, skin)) }
 
         container.addView(section("输入法设置", skin))
@@ -127,12 +131,12 @@ class MainActivity : Activity() {
         container.addView(button("内置短语：${if (ImePreferences.builtInPhrasesEnabled(this)) "显示" else "隐藏"}", skin) {
             ImePreferences.setBuiltInPhrasesEnabled(this, !ImePreferences.builtInPhrasesEnabled(this)); render("内置短语设置已保存")
         })
-        val zhPhrase = editField("添加中文固定词/句子", skin)
+        val zhPhrase = editField("添加中文固定词/句子", skin, multiline = true)
         container.addView(zhPhrase)
         container.addView(button("添加中文短语", skin) {
             render(if (phraseStore.addPinyin(zhPhrase.text.toString())) "中文短语已保存" else "中文短语为空、过长或疑似敏感")
         })
-        val enPhrase = editField("Add English quick phrase", skin)
+        val enPhrase = editField("Add English quick phrase", skin, multiline = true)
         container.addView(enPhrase)
         container.addView(button("添加英文短语", skin) {
             render(if (phraseStore.addEnglish(enPhrase.text.toString())) "英文短语已保存" else "英文短语为空、过长或疑似敏感")
@@ -189,6 +193,7 @@ class MainActivity : Activity() {
         }
 
         container.addView(section("本地语音 · v0.24–v0.26", skin))
+        container.addView(paragraph("使用入口：长按输入法空格键启动/停止本地语音；选中文字后从输入法“更多 → 朗读”；ZipVoice 先在这里保存本人/已授权参考声音，再从“更多 → 音色”使用。入口会一直可见，并准确提示缺少 Pro、模型包、麦克风权限或参考声音中的哪一步。", skin))
         if (!isPro) {
             container.addView(paragraph("Pro 可安装 sherpa-onnx ASR/TTS/ZipVoice 包。本功能不联网；音色克隆只允许本人声音或已获明确授权的声音。", skin))
         } else {
@@ -201,18 +206,18 @@ class MainActivity : Activity() {
             })
             container.addView(paragraph("v0.24 语音输入固定为显式开始/停止，PCM 仅在内存保存，最长 ${LocalSpeechInputController.MAX_SECONDS} 秒；敏感输入框隐藏语音工具。", skin))
 
-            val ttsText = editField("TTS 试听文本（建议短句）", skin)
+            val ttsText = editField("TTS 试听文本（建议短句）", skin, multiline = true)
             container.addView(ttsText)
             container.addView(button("本地 TTS 试听", skin) { previewTts(ttsText.text.toString()) })
 
             container.addView(paragraph("v0.26 参考声音：${voiceReferenceStore.summary()}。只接受 2–30 秒单声道 PCM16 WAV，并要求填写完全对应的原文。", skin))
-            val referenceText = editField("参考 WAV 中实际说出的完整原文", skin)
+            val referenceText = editField("参考 WAV 中实际说出的完整原文", skin, multiline = true)
             container.addView(referenceText)
             container.addView(button("选择本人/已授权参考 WAV", skin) { confirmAndChooseVoiceReference(referenceText.text.toString()) })
             container.addView(button("删除本机参考声音", skin) {
                 render(if (voiceReferenceStore.clear()) "参考声音已删除" else "参考声音删除失败")
             })
-            val cloneText = editField("音色克隆试听文本", skin)
+            val cloneText = editField("音色克隆试听文本", skin, multiline = true)
             container.addView(cloneText)
             container.addView(button("本地克隆语音试听", skin) { previewVoiceClone(cloneText.text.toString()) })
             container.addView(paragraph("音色克隆免责声明：只能使用本人声音或已取得明确权利人授权的声音；禁止冒充、诈骗、骚扰、未经授权的商业配音。生成音频可能有错误、失真或偏差。", skin))
@@ -242,7 +247,7 @@ class MainActivity : Activity() {
         container.addView(button("开蛋 / 随机领养", skin) { render(petRepository.adoptRandom().message) })
         container.addView(button("切换已有宠物", skin) { render(petRepository.switchToNextOwned().message) })
         container.addView(button("轮换装扮", skin) { render(petRepository.equipNextOutfit().message) })
-        container.addView(button("查看宠物图鉴", skin) { render(petRepository.petCatalogLine()) })
+        container.addView(button("查看宠物图鉴", skin) { showPetCatalogDialog(petRepository, skin) })
         container.addView(button("查看装扮库", skin) { render(petRepository.outfitCatalogLine()) })
         container.addView(button(if (petProfile.displayMode == PetRepository.DISPLAY_HIDDEN) "显示键盘内宠物" else "隐藏键盘内宠物", skin) { render(petRepository.toggleHidden().message) })
 
@@ -272,8 +277,43 @@ class MainActivity : Activity() {
         container.addView(section("隐私", skin))
         container.addView(paragraph("仍不申请 INTERNET、Accessibility、悬浮窗或外部存储权限。v0.24 起仅增加 RECORD_AUDIO，用于用户主动触发的本地 ASR；没有后台录音。参考声音和模型都保存在 App 私有目录，文本/音频不上传。", skin))
 
-        container.addView(paragraph("About · v0.26.0", skin))
+        container.addView(paragraph("About · v0.27.0", skin))
         setContentView(scroll)
+        scroll.post { scroll.scrollTo(0, savedScrollY.coerceAtLeast(0)) }
+    }
+
+    private fun showPetCatalogDialog(repository: PetRepository, skin: OrbitSkin) {
+        val catalogScroll = ScrollView(this).apply { setBackgroundColor(skin.backgroundColor) }
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        repository.petCatalogEntries().forEach { entry ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = OrbitTheme.rounded(skin.panelColor, dp(14).toFloat(), if (entry.current) skin.accentColor else skin.borderColor, dp(1))
+                setPadding(dp(8), dp(6), dp(10), dp(6))
+            }
+            row.addView(PetAvatarV21View(this).apply {
+                bind(entry.profile, skin)
+                contentDescription = entry.profile.petName
+            }, LinearLayout.LayoutParams(dp(104), dp(82)))
+            val status = when {
+                entry.current -> "✓ 当前"
+                entry.owned -> "✓ 已拥有"
+                entry.proOnly && !ProGate.isProUnlocked(this) -> "🔒 Pro"
+                else -> "未解锁"
+            }
+            row.addView(paragraph("${entry.profile.petName} · ${entry.profile.species}\n$status${if (entry.proOnly) " · Pro" else " · Free"}", skin), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96)).apply { setMargins(0, dp(4), 0, dp(4)) })
+        }
+        catalogScroll.addView(list)
+        AlertDialog.Builder(this)
+            .setTitle("宠物图鉴")
+            .setView(catalogScroll)
+            .setPositiveButton("关闭", null)
+            .show()
     }
 
     private fun fuzzyLabel(): String = when (ImePreferences.fuzzyLevel(this)) {
@@ -440,10 +480,18 @@ class MainActivity : Activity() {
     private fun paragraph(text: String, skin: OrbitSkin): TextView = TextView(this).apply {
         this.text = text; setTextColor(skin.mutedTextColor); textSize = 15f; lineSpacing = dp(2).toFloat(); setPadding(0, 0, 0, dp(8))
     }
-    private fun editField(hint: String, skin: OrbitSkin): EditText = EditText(this).apply {
-        this.hint = hint; setHintTextColor(skin.mutedTextColor); setTextColor(skin.textColor); textSize = 15f; isSingleLine = true
-        background = OrbitTheme.rounded(skin.panelColor, dp(12).toFloat(), skin.borderColor, dp(1)); setPadding(dp(12), dp(8), dp(12), dp(8))
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(6)) }
+    private fun editField(hint: String, skin: OrbitSkin, multiline: Boolean = false): EditText = EditText(this).apply {
+        this.hint = hint
+        setHintTextColor(skin.mutedTextColor)
+        setTextColor(skin.textColor)
+        textSize = 16f
+        isSingleLine = !multiline
+        maxLines = if (multiline) 4 else 1
+        minHeight = dp(if (multiline) 82 else 54)
+        gravity = if (multiline) Gravity.TOP or Gravity.START else Gravity.CENTER_VERTICAL
+        background = OrbitTheme.rounded(skin.panelColor, dp(12).toFloat(), skin.borderColor, dp(1))
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(8)) }
     }
     private fun statusBox(text: String, skin: OrbitSkin): TextView = TextView(this).apply {
         this.text = text; setTextColor(skin.warningColor); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_VERTICAL
