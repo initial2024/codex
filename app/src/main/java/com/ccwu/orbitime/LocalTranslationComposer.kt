@@ -9,12 +9,14 @@ import java.util.Locale
 object LocalTranslationComposer {
     private val zhLexicon: Map<String, String> = buildMap {
         putAll(TranslationLexiconData.zhToEn)
+        putAll(TranslationCommonData.zhToEn)
         putAll(TranslationBoostData.zhTokens)
     }
     private val zhKeys: List<String> = zhLexicon.keys.sortedWith(compareByDescending<String> { it.length }.thenBy { it })
 
     private val enLexicon: Map<String, String> = buildMap {
         putAll(TranslationLexiconData.enToZh)
+        putAll(TranslationCommonData.enToZh)
         putAll(TranslationBoostData.enTokens)
     }
     private val enKeys: List<List<String>> = enLexicon.keys
