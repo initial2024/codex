@@ -11,8 +11,12 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.20.0"
+        versionCode = 21
+        versionName = "0.21.0"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
@@ -70,7 +74,7 @@ val augmentLicensedImeAssets by tasks.registering(Exec::class) {
 
 val augmentV020ImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
-    description = "Add CC-CEDICT four-character idiom boost and project software vocabulary"
+    description = "Add broad English normalization, four-character CC-CEDICT boost and project software vocabulary"
     workingDir(rootProject.projectDir)
     commandLine(
         orbitPython,
