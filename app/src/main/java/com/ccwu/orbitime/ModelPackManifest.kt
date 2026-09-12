@@ -9,7 +9,7 @@ enum class OrbitModelPackType(val wireValue: String) {
     VOICE_CLONE("voice_clone");
 
     companion object {
-        fun fromWire(raw: String): OrbitModelPackType = entries.firstOrNull { it.wireValue == raw }
+        fun fromWire(raw: String): OrbitModelPackType = values().firstOrNull { it.wireValue == raw }
             ?: throw IllegalArgumentException("unsupported pack type: $raw")
     }
 }
@@ -20,7 +20,7 @@ enum class OrbitModelRuntime(val wireValue: String) {
     SHERPA_ONNX("sherpa_onnx");
 
     companion object {
-        fun fromWire(raw: String): OrbitModelRuntime = entries.firstOrNull { it.wireValue == raw }
+        fun fromWire(raw: String): OrbitModelRuntime = values().firstOrNull { it.wireValue == raw }
             ?: throw IllegalArgumentException("unsupported runtime: $raw")
     }
 }
