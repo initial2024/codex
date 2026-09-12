@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build when Orbit v0.20 mature assets or local features regress."""
+"""Fail the build when Orbit v0.21 mature assets or local features regress."""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ASSETS = ROOT / "app/src/main/assets/ime"
 DEFAULT_CONFIG = ROOT / "data/ime_sources/mature_sources.json"
+SRC = ROOT / "app/src/main/java/com/ccwu/orbitime"
 
 
 def require(condition: bool, message: str) -> None:
@@ -117,54 +118,71 @@ def main() -> int:
     require('android:grantUriPermissions="true"' in android_manifest, "sticker provider URI grants missing")
 
     gradle = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-    require('versionCode = 20' in gradle, "versionCode is not 20")
-    require('versionName = "0.20.0"' in gradle, "versionName is not 0.20.0")
+    require('versionCode = 21' in gradle, "versionCode is not 21")
+    require('versionName = "0.21.0"' in gradle, "versionName is not 0.21.0")
+    require("buildConfig = true" in gradle, "BuildConfig must be generated for debug-only Pro tester gate")
     require("augment_v020_data.py" in gradle, "v0.20 idiom/software augmentation is not wired into preBuild")
 
-    pro_gate = (ROOT / "app/src/main/java/com/ccwu/orbitime/ProGate.kt").read_text(encoding="utf-8")
+    pro_gate = (SRC / "ProGate.kt").read_text(encoding="utf-8")
+    require("ProLicenseManager.isUnlocked" in pro_gate, "ProGate is not routed through license manager")
     require("100000 else 20000" in pro_gate, "user-dictionary capacities regressed")
-    user_store = (ROOT / "app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt").read_text(encoding="utf-8")
+    pro_license = (SRC / "ProLicenseManager.kt").read_text(encoding="utf-8")
+    require("BuildConfig.DEBUG" in pro_license and "DEBUG_TEST_CODE_SHA256" in pro_license, "debug Pro activation gate missing")
+    require("private signing key" in pro_license, "production signed-license boundary documentation missing")
+
+    user_store = (SRC / "UserDictionaryStore.kt").read_text(encoding="utf-8")
     require('STORE_DIR = "orbit-user-dictionary"' in user_store, "file-backed user dictionary missing")
     require("JOURNAL_COMPACT_WRITES" in user_store and "journal.tsv" in user_store, "user dictionary journal/compaction missing")
     require("MAX_CANDIDATES = 32" in user_store, "expanded Chinese candidate pool missing")
     require("nextSuggestions" in user_store and "NextAssociationEngine" in user_store, "next-phrase association wiring missing")
 
-    pinyin_engine = (ROOT / "app/src/main/java/com/ccwu/orbitime/PinyinImeEngine.kt").read_text(encoding="utf-8")
+    pinyin_engine = (SRC / "PinyinImeEngine.kt").read_text(encoding="utf-8")
     require("MAX_RESULTS = 32" in pinyin_engine, "Pinyin internal candidate pool regressed")
     require("MAX_BEAM_RESULTS = 32" in pinyin_engine, "Pinyin Beam result pool regressed")
     require("PREFIX_POOL_LIMIT = 64" in pinyin_engine, "Pinyin prefix pool regressed")
 
-    english_engine = (ROOT / "app/src/main/java/com/ccwu/orbitime/EnglishImeEngine.kt").read_text(encoding="utf-8")
+    english_engine = (SRC / "EnglishImeEngine.kt").read_text(encoding="utf-8")
     require("limit: Int = 32" in english_engine, "expanded English candidate pool missing")
 
-    service = (ROOT / "app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt").read_text(encoding="utf-8")
+    service = (SRC / "OrbitInputMethodService.kt").read_text(encoding="utf-8")
+    require("hasSelectedText()" in service and 'commitText("", 1)' in service, "selected-text deletion path missing")
+    require("deleteSurroundingTextInCodePoints" in service, "Unicode-safe no-selection backspace path missing")
+    require("QuickPhraseStore" in service and "ImePreferences" in service, "persistent/custom quick phrase wiring missing")
+    require("prepareLongFormTranslation" in service and "LongFormTranslationEngine" in service, "Pro long-form translation wiring missing")
+    require("PetAvatarV21View" in service, "polished v0.21 pet view is not used by IME")
     require("TranslationSettings.isContextTranslationEnabled" in service, "context translation toggle is not wired into IME")
     require("ContextTranslationEngine.translate" in service, "context translation engine is not wired into IME")
-    require("普通用户：单句本地翻译" in service, "free single-sentence translation boundary missing")
     require("userDictionary.nextSuggestions" in service and "联想" in service, "post-commit next-phrase UI missing")
     require("ClipData.newUri" in service and "grantUriPermission" in service, "image clipboard sticker compatibility fallback missing")
 
-    translation_settings = (ROOT / "app/src/main/java/com/ccwu/orbitime/TranslationSettings.kt").read_text(encoding="utf-8")
-    require("ProGate.isProUnlocked" in translation_settings, "context translation is not Pro-gated")
-    require((ROOT / "app/src/main/java/com/ccwu/orbitime/ContextTranslationEngine.kt").is_file(), "ContextTranslationEngine.kt missing")
-    require((ROOT / "app/src/main/java/com/ccwu/orbitime/NextAssociationEngine.kt").is_file(), "NextAssociationEngine.kt missing")
+    require((SRC / "ImePreferences.kt").is_file(), "ImePreferences.kt missing")
+    require((SRC / "QuickPhraseStore.kt").is_file(), "QuickPhraseStore.kt missing")
+    require((SRC / "LongFormTranslationEngine.kt").is_file(), "LongFormTranslationEngine.kt missing")
+    require((SRC / "PetAvatarV21View.kt").is_file(), "PetAvatarV21View.kt missing")
+    require((SRC / "ContextTranslationEngine.kt").is_file(), "ContextTranslationEngine.kt missing")
+    require((SRC / "NextAssociationEngine.kt").is_file(), "NextAssociationEngine.kt missing")
     require((ROOT / "data/ime_sources/seed_software.tsv").is_file(), "seed_software.tsv missing")
 
-    pet_source = (ROOT / "app/src/main/java/com/ccwu/orbitime/PetRepository.kt").read_text(encoding="utf-8")
+    privacy_guard = (SRC / "PrivacyGuard.kt").read_text(encoding="utf-8")
+    require("isSafeForLocalLongForm" in privacy_guard, "long-form translation privacy boundary missing")
+
+    pet_source = (SRC / "PetRepository.kt").read_text(encoding="utf-8")
     pet_count = len(re.findall(r'PetDefinition\("', pet_source))
     outfit_count = len(re.findall(r'OutfitDefinition\("', pet_source))
     require(pet_count >= 16, f"pet catalog regressed: {pet_count}")
     require(outfit_count >= 24, f"outfit catalog regressed: {outfit_count}")
-    require("KEY_LAST_EVENT" in pet_source and "FEEDBACK_TTL_MS" in pet_source, "pet micro-feedback state missing")
+    polished_pet = (SRC / "PetAvatarV21View.kt").read_text(encoding="utf-8")
+    require("equippedOutfitId = null" in polished_pet, "old outfit layer is not suppressed before v0.21 polish")
+    require("ValueAnimator" in polished_pet and "PolishedPetOutfits" in polished_pet, "pet idle motion/outfit polish missing")
 
-    sticker_source = (ROOT / "app/src/main/java/com/ccwu/orbitime/StickerPack.kt").read_text(encoding="utf-8")
+    sticker_source = (SRC / "StickerPack.kt").read_text(encoding="utf-8")
     mood_count = len(re.findall(r'MoodMeta\(StickerVariant\.', sticker_source))
     require(mood_count >= 8, f"sticker mood variants regressed: {mood_count}")
     require(pet_count * mood_count >= 128, f"local sticker definitions below 128: pets={pet_count}, moods={mood_count}")
 
     summary = {
         "status": "PASS",
-        "version": "0.20.0",
+        "version": "0.21.0",
         "aosp_lexicon_entries": stats["aosp_lexicon_entries"],
         "jieba_generated_entries": stats["jieba_generated_entries"],
         "cedict_entries": stats["cedict_entries"],
@@ -181,14 +199,14 @@ def main() -> int:
         "english_shards": len(en_shards),
         "translation_zh_shards": len(zh_translation_shards),
         "translation_en_shards": len(en_translation_shards),
-        "user_dictionary_free_capacity": 20000,
-        "user_dictionary_pro_capacity": 100000,
         "candidate_pool": 32,
+        "selected_text_editing": "replace/delete selection aware",
+        "quick_phrases": "persistent + custom + disableable",
+        "pro_translation": "context + selected long-form up to 8000 chars",
+        "pet_visuals": "polished idle animation + coherent outfit overlay",
         "pet_catalog": pet_count,
         "outfit_catalog": outfit_count,
         "local_stickers": pet_count * mood_count,
-        "context_translation": "Pro opt-in; free single-sentence",
-        "sticker_compatibility": "commitContent + image clipboard fallback",
     }
     print(json.dumps(summary, ensure_ascii=False))
     return 0
