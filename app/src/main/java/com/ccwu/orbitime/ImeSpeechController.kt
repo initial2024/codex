@@ -52,20 +52,16 @@ class ImeSpeechController(private val context: Context) {
         }
 
         val pack = executablePack(OrbitModelPackType.ASR)
-        val captured = capture.stop()
-        if (captured.isFailure) {
-            onState("录音停止失败：${captured.exceptionOrNull()?.message ?: "unknown"}")
-            return
-        }
         if (pack == null) {
+            capture.cancel()
             onState("ASR 模型包已不可用")
             return
         }
         if (!busy.compareAndSet(false, true)) return
-        onState("正在本地识别…")
+        onState("正在停止录音并本地识别…")
         Thread {
             val message = runCatching {
-                val audio = captured.getOrThrow()
+                val audio = capture.stop().getOrThrow()
                 val provider = OrbitModelProviderFactory.createAsr(pack) ?: error("无法创建 ASR 运行时")
                 try {
                     val text = provider.transcribePcm16(audio.samples, audio.sampleRate, language).orEmpty().trim()
