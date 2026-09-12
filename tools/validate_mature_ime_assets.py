@@ -200,8 +200,11 @@ def main() -> int:
         require(token in service, f"IME speech/core wiring missing: {token}")
     require("onWindowHidden" in service and "sensitiveMode" in service, "recording cancellation/privacy mode missing")
     main_activity = read(SRC / "MainActivity.kt")
-    for token in ("requestMicrophonePermission", "previewTts", "confirmAndChooseVoiceReference", "previewVoiceClone", "v0.26.0"):
-        require(token in main_activity, f"v0.26 settings/runtime action missing: {token}")
+    # Preserve the v0.24-v0.26 settings/runtime capabilities by checking their
+    # concrete actions. Do not couple feature-regression checks to an obsolete
+    # release-label string in the UI.
+    for token in ("requestMicrophonePermission", "previewTts", "confirmAndChooseVoiceReference", "previewVoiceClone"):
+        require(token in main_activity, f"historical settings/runtime action missing: {token}")
 
     for example in (
         "docs/orbitpack-asr-sherpa.example.json",
@@ -220,11 +223,11 @@ def main() -> int:
 
     workflow = read(ROOT / ".github/workflows/build-apk.yml")
     require("workflow_dispatch:" in workflow, "GitHub Actions must remain manually triggered")
-    require("orbit-ime-v0.26-debug-apk" in workflow, "v0.26 Actions artifact name missing")
+    require("orbit-ime-v0.27-debug-apk" in workflow, "v0.27 Actions artifact name missing")
 
     summary = {
         "status": "PASS",
-        "version": "0.26.0",
+        "version": "0.27.0",
         "runtime_chinese": counts.get("lexicon", 0),
         "runtime_english": counts.get("english", 0),
         "thuocl_source": stats.get("thuocl_source_entries", 0),
