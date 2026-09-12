@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "sources": {
     "aosp_pinyin": {
       "name": "AOSP PinyinIME raw dictionary",
@@ -73,7 +73,10 @@
     "jieba_polyphone_ratio": 2.5,
     "minimum_jieba_generated_entries": 40000,
     "cedict_default_frequency": 25000,
+    "cedict_idiom_frequency": 180000,
     "minimum_cedict_entries": 110000,
+    "minimum_cedict_idiom_entries": 3000,
+    "minimum_project_software_entries": 100,
     "minimum_runtime_lexicon_entries": 150000,
     "english_min_key_length": 2,
     "english_max_key_length": 32,
