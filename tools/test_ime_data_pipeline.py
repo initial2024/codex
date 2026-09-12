@@ -36,14 +36,7 @@ def test_aosp_parser(root: Path) -> None:
     ).encode("utf-8")
     lexicon = root / "aosp.tsv"
     ngrams = root / "aosp_ngram.tsv"
-    stats = mature.parse_aosp_pinyin(
-        raw,
-        lexicon,
-        ngrams,
-        frequency_scale=100,
-        max_phrase_chars=12,
-        ngram_limits={"1": 100, "2": 100, "3": 100},
-    )
+    stats = mature.parse_aosp_pinyin(raw, lexicon, ngrams, 100, 12, {"1": 100, "2": 100, "3": 100})
     text = lexicon.read_text(encoding="utf-8")
     assert "nihao\t你好\t2072864" in text
     assert "nihaoma\t你好吗\t18242" in text
@@ -53,6 +46,43 @@ def test_aosp_parser(root: Path) -> None:
     ngram_text = ngrams.read_text(encoding="utf-8")
     assert "你\t好\t" in ngram_text
     assert "你\t好\t吗\t" in ngram_text
+
+
+def test_jieba_conservative_derivation(root: Path) -> None:
+    aosp = (
+        "你 1000 0 ni\n"
+        "我 900 0 wo\n"
+        "好 800 0 hao\n"
+        "你我好 700 0 ni wo hao\n"
+        "重 100 0 zhong\n"
+        "重 90 0 chong\n"
+        "要 800 0 yao\n"
+    ).encode("utf-8")
+    jieba = (
+        "你我 500 n\n"
+        "你我好 400 n\n"
+        "重要 300 n\n"
+    ).encode("utf-8")
+    target = root / "jieba.tsv"
+    ngrams = root / "jieba_ngram.tsv"
+    stats = mature.parse_jieba_chinese(
+        jieba,
+        aosp,
+        target,
+        ngrams,
+        frequency_scale=18,
+        min_phrase_chars=2,
+        max_phrase_chars=12,
+        polyphone_ratio=2.5,
+        ngram_limits={"1": 100, "2": 100, "3": 100},
+    )
+    text = target.read_text(encoding="utf-8")
+    assert "niwo\t你我\t9000" in text
+    assert "你我好" not in text  # already covered by exact AOSP phrase data
+    assert "重要" not in text  # 重 is intentionally ambiguous in the synthetic AOSP source
+    assert stats["jieba_generated_entries"] == 1
+    assert stats["jieba_skipped_existing_aosp"] == 1
+    assert stats["jieba_skipped_ambiguous_or_missing_reading"] == 1
 
 
 def test_esdb_parser(root: Path) -> None:
@@ -99,41 +129,16 @@ def test_importer_and_english_sharding(root: Path) -> None:
         json.dumps(
             {
                 "sources": [
-                    {
-                        "name": "lexicon",
-                        "path": "lexicon.tsv",
-                        "format": "orbit-tsv",
-                        "license": "PROJECT",
-                        "redistribution_allowed": True,
-                        "attribution": "test",
-                    },
-                    {
-                        "name": "english",
-                        "path": "english.tsv",
-                        "format": "english-tsv",
-                        "license": "PROJECT",
-                        "redistribution_allowed": True,
-                        "attribution": "test",
-                    },
-                    {
-                        "name": "ngram",
-                        "path": "ngram.tsv",
-                        "format": "ngram-tsv",
-                        "license": "PROJECT",
-                        "redistribution_allowed": True,
-                        "attribution": "test",
-                    },
+                    {"name": "lexicon", "path": "lexicon.tsv", "format": "orbit-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
+                    {"name": "english", "path": "english.tsv", "format": "english-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
+                    {"name": "ngram", "path": "ngram.tsv", "format": "ngram-tsv", "license": "PROJECT", "redistribution_allowed": True, "attribution": "test"},
                 ]
             }
         ),
         encoding="utf-8",
     )
     output = root / "out"
-    args = argparse.Namespace(
-        manifest=str(manifest),
-        output=str(output),
-        allow_unknown_license=False,
-    )
+    args = argparse.Namespace(manifest=str(manifest), output=str(output), allow_unknown_license=False)
     assert ime_importer.build(args) == 0
     runtime = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert runtime["counts"]["lexicon"] == 2
@@ -151,6 +156,7 @@ def main() -> int:
         root = Path(temp)
         test_git_blob_hash()
         test_aosp_parser(root)
+        test_jieba_conservative_derivation(root)
         test_esdb_parser(root)
         test_license_gate(root)
         test_importer_and_english_sharding(root)
