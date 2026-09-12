@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "sources": {
     "aosp_pinyin": {
       "name": "AOSP PinyinIME raw dictionary",
@@ -32,9 +32,9 @@
       "redistribution_allowed": true
     },
     "esdb_en_us": {
-      "name": "ESDB/SCOWL generated US English word list",
-      "url": "https://raw.githubusercontent.com/en-wl/wordlist-diff/rel-2026.02.25/en_US.txt",
-      "git_blob_sha1": "b4222bda8be5826fce1635230f9503234ec31e5a",
+      "name": "ESDB/SCOWL generated US English large word list",
+      "url": "https://raw.githubusercontent.com/en-wl/wordlist-diff/rel-2026.02.25/en_US-large.txt",
+      "git_blob_sha1": "f802304dc6e436964094cdb6c6b743092e7af971",
       "license": "ESDB-2026",
       "attribution": "Copyright 2000-2026 by Kevin Atkinson; generated from the English Speller Database (ESDB/SCOWL)",
       "redistribution_allowed": true
@@ -44,6 +44,22 @@
       "url": "https://raw.githubusercontent.com/en-wl/wordlist-diff/rel-2026.02.25/Copyright",
       "git_blob_sha1": "562ec7df17753481162f2b993e2dbd47cea77b2f",
       "license": "ESDB-2026",
+      "redistribution_allowed": true
+    },
+    "cedict": {
+      "name": "CC-CEDICT Chinese-English dictionary 2026-09-10",
+      "url": "https://raw.githubusercontent.com/rhcarvalho/cedict/9118dab4ea21849c571a20d56f1f1621a0423d07/cedict_1_0_ts_utf-8_mdbg.txt",
+      "git_blob_sha1": "2b05f59d39ed57b4ca3512f9210aa8f11a402cc8",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "CC-CEDICT community dictionary, published by MDBG; referenced work Copyright (C) Paul Andrew Denisowski",
+      "redistribution_allowed": true
+    },
+    "unicode_emoji": {
+      "name": "Unicode Emoji 17.0 emoji-test data",
+      "url": "https://www.unicode.org/Public/emoji/17.0/emoji-test.txt",
+      "sha256": "07ee0565612af5d8cf36ea7d2cd7d255429441059133c60f863e97e648ebeb29",
+      "license": "Unicode-3.0",
+      "attribution": "Copyright © 1991-2026 Unicode, Inc. Unicode Data Files and Software",
       "redistribution_allowed": true
     }
   },
@@ -56,15 +72,20 @@
     "jieba_max_phrase_chars": 12,
     "jieba_polyphone_ratio": 2.5,
     "minimum_jieba_generated_entries": 40000,
-    "minimum_runtime_lexicon_entries": 90000,
+    "cedict_default_frequency": 25000,
+    "minimum_cedict_entries": 110000,
+    "minimum_runtime_lexicon_entries": 150000,
     "english_min_key_length": 2,
-    "english_max_key_length": 28,
-    "english_base_frequency": 40000,
-    "minimum_english_entries": 50000,
+    "english_max_key_length": 32,
+    "english_base_frequency": 35000,
+    "minimum_english_entries": 100000,
+    "minimum_unicode_emoji_entries": 3000,
+    "minimum_translation_zh_entries": 80000,
+    "minimum_translation_en_entries": 50000,
     "ngram_limits": {
-      "1": 12000,
-      "2": 40000,
-      "3": 40000
+      "1": 16000,
+      "2": 60000,
+      "3": 60000
     }
   }
 }
