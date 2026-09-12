@@ -15,12 +15,18 @@ object LocalTranslationComposer {
     private val zhKeys: List<String> = zhLexicon.keys.sortedWith(compareByDescending<String> { it.length }.thenBy { it })
 
     private val enLexicon: Map<String, String> = buildMap {
-        putAll(TranslationLexiconData.enToZh)
-        putAll(TranslationCommonData.enToZh)
-        putAll(TranslationBoostData.enTokens)
+        fun merge(source: Map<String, String>) {
+            source.forEach { (rawKey, value) ->
+                val key = normalizeEnglishLexiconKey(rawKey)
+                if (key.isNotBlank()) put(key, value)
+            }
+        }
+        merge(TranslationLexiconData.enToZh)
+        merge(TranslationCommonData.enToZh)
+        merge(TranslationBoostData.enTokens)
     }
     private val enKeys: List<List<String>> = enLexicon.keys
-        .map { key -> key.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() } }
+        .map { key -> key.split(Regex("\\s+")).filter { it.isNotBlank() } }
         .filter { it.isNotEmpty() }
         .sortedWith(compareByDescending<List<String>> { it.size }.thenByDescending { it.joinToString(" ").length })
 
@@ -170,6 +176,12 @@ object LocalTranslationComposer {
         if (coverage < MIN_COVERAGE || unknown > MAX_UNKNOWN_UNITS) return null
         return out.toString().trim().ifBlank { null }
     }
+
+    private fun normalizeEnglishLexiconKey(raw: String): String = raw
+        .lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9'\\s-]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 
     private fun normalizeEnglish(raw: String): String? {
         var text = raw.replace(Regex("\\s+"), " ").trim()
