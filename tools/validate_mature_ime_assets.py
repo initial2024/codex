@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build when Orbit v0.19 mature assets or local features regress."""
+"""Fail the build when Orbit v0.20 mature assets or local features regress."""
 from __future__ import annotations
 
 import argparse
@@ -35,11 +35,13 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     stats = report.get("stats", {})
     counts = report.get("runtime_counts", {})
-    require(int(report.get("version", 0)) >= 3, f"mature report is stale: {report.get('version')}")
+    require(int(report.get("version", 0)) >= 4, f"mature report is stale: {report.get('version')}")
 
     min_aosp = int(policy["minimum_aosp_entries"])
     min_jieba = int(policy["minimum_jieba_generated_entries"])
     min_cedict = int(policy["minimum_cedict_entries"])
+    min_idiom = int(policy["minimum_cedict_idiom_entries"])
+    min_software = int(policy["minimum_project_software_entries"])
     min_runtime_cn = int(policy["minimum_runtime_lexicon_entries"])
     min_en = int(policy["minimum_english_entries"])
     min_emoji = int(policy["minimum_unicode_emoji_entries"])
@@ -49,6 +51,8 @@ def main() -> int:
     require(int(stats.get("aosp_lexicon_entries", 0)) >= min_aosp, f"AOSP lexicon too small: {stats.get('aosp_lexicon_entries')}")
     require(int(stats.get("jieba_generated_entries", 0)) >= min_jieba, f"Jieba derived lexicon too small: {stats.get('jieba_generated_entries')}")
     require(int(stats.get("cedict_entries", 0)) >= min_cedict, f"CC-CEDICT pack too small: {stats.get('cedict_entries')}")
+    require(int(stats.get("cedict_four_char_entries", 0)) >= min_idiom, f"CC-CEDICT idiom layer too small: {stats.get('cedict_four_char_entries')}")
+    require(int(stats.get("project_software_entries", 0)) >= min_software, f"project software vocabulary too small: {stats.get('project_software_entries')}")
     require(int(stats.get("esdb_english_entries", 0)) >= min_en, f"ESDB English pack too small: {stats.get('esdb_english_entries')}")
     require(int(stats.get("unicode_emoji_entries", 0)) >= min_emoji, f"Unicode emoji pack too small: {stats.get('unicode_emoji_entries')}")
     require(int(stats.get("translation_zh_entries", 0)) >= min_translate_zh, f"ZH->EN translation pack too small: {stats.get('translation_zh_entries')}")
@@ -85,10 +89,13 @@ def main() -> int:
         require(path.is_file() and path.stat().st_size > minimum_bytes, f"{name} notice missing/incomplete")
 
     source_licenses = {str(item.get("license")) for item in manifest.get("sources", [])}
+    source_names = {str(item.get("name")) for item in manifest.get("sources", [])}
     require("Apache-2.0" in source_licenses, "AOSP Apache-2.0 source missing from runtime manifest")
     require("MIT" in source_licenses, "Jieba MIT source missing from runtime manifest")
     require("ESDB-2026" in source_licenses, "ESDB source missing from runtime manifest")
     require("CC-BY-SA-4.0" in source_licenses, "CC-CEDICT source missing from runtime manifest")
+    require("orbit-project-software-vocabulary" in source_names, "project software vocabulary source missing")
+    require("cc-cedict-four-char-boost" in source_names, "CC-CEDICT idiom boost source missing")
 
     pins = report.get("pins", {})
     for key in ("aosp_pinyin", "aosp_notice", "jieba_dict", "jieba_license", "esdb_en_us", "esdb_copyright", "cedict"):
@@ -110,17 +117,34 @@ def main() -> int:
     require('android:grantUriPermissions="true"' in android_manifest, "sticker provider URI grants missing")
 
     gradle = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
-    require('versionCode = 19' in gradle, "versionCode is not 19")
-    require('versionName = "0.19.0"' in gradle, "versionName is not 0.19.0")
+    require('versionCode = 20' in gradle, "versionCode is not 20")
+    require('versionName = "0.20.0"' in gradle, "versionName is not 0.20.0")
+    require("augment_v020_data.py" in gradle, "v0.20 idiom/software augmentation is not wired into preBuild")
 
-    # v0.19 local personalization must remain file-backed and large enough for daily use.
     pro_gate = (ROOT / "app/src/main/java/com/ccwu/orbitime/ProGate.kt").read_text(encoding="utf-8")
-    require("100000 else 20000" in pro_gate, "v0.19 user-dictionary capacities regressed")
+    require("100000 else 20000" in pro_gate, "user-dictionary capacities regressed")
     user_store = (ROOT / "app/src/main/java/com/ccwu/orbitime/UserDictionaryStore.kt").read_text(encoding="utf-8")
     require('STORE_DIR = "orbit-user-dictionary"' in user_store, "file-backed user dictionary missing")
     require("JOURNAL_COMPACT_WRITES" in user_store and "journal.tsv" in user_store, "user dictionary journal/compaction missing")
+    require("MAX_CANDIDATES = 32" in user_store, "expanded Chinese candidate pool missing")
+    require("nextSuggestions" in user_store and "NextAssociationEngine" in user_store, "next-phrase association wiring missing")
 
-    # v0.19 pet/outfit/sticker scale gates.
+    english_engine = (ROOT / "app/src/main/java/com/ccwu/orbitime/EnglishImeEngine.kt").read_text(encoding="utf-8")
+    require("limit: Int = 32" in english_engine, "expanded English candidate pool missing")
+
+    service = (ROOT / "app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt").read_text(encoding="utf-8")
+    require("TranslationSettings.isContextTranslationEnabled" in service, "context translation toggle is not wired into IME")
+    require("ContextTranslationEngine.translate" in service, "context translation engine is not wired into IME")
+    require("普通用户：单句本地翻译" in service, "free single-sentence translation boundary missing")
+    require("userDictionary.nextSuggestions" in service and "联想" in service, "post-commit next-phrase UI missing")
+    require("ClipData.newUri" in service and "grantUriPermission" in service, "image clipboard sticker compatibility fallback missing")
+
+    translation_settings = (ROOT / "app/src/main/java/com/ccwu/orbitime/TranslationSettings.kt").read_text(encoding="utf-8")
+    require("ProGate.isProUnlocked" in translation_settings, "context translation is not Pro-gated")
+    require((ROOT / "app/src/main/java/com/ccwu/orbitime/ContextTranslationEngine.kt").is_file(), "ContextTranslationEngine.kt missing")
+    require((ROOT / "app/src/main/java/com/ccwu/orbitime/NextAssociationEngine.kt").is_file(), "NextAssociationEngine.kt missing")
+    require((ROOT / "data/ime_sources/seed_software.tsv").is_file(), "seed_software.tsv missing")
+
     pet_source = (ROOT / "app/src/main/java/com/ccwu/orbitime/PetRepository.kt").read_text(encoding="utf-8")
     pet_count = len(re.findall(r'PetDefinition\("', pet_source))
     outfit_count = len(re.findall(r'OutfitDefinition\("', pet_source))
@@ -135,10 +159,12 @@ def main() -> int:
 
     summary = {
         "status": "PASS",
-        "version": "0.19.0",
+        "version": "0.20.0",
         "aosp_lexicon_entries": stats["aosp_lexicon_entries"],
         "jieba_generated_entries": stats["jieba_generated_entries"],
         "cedict_entries": stats["cedict_entries"],
+        "cedict_four_char_entries": stats["cedict_four_char_entries"],
+        "project_software_entries": stats["project_software_entries"],
         "runtime_lexicon": counts["lexicon"],
         "english_entries": stats["esdb_english_entries"],
         "runtime_english": counts["english"],
@@ -152,9 +178,12 @@ def main() -> int:
         "translation_en_shards": len(en_translation_shards),
         "user_dictionary_free_capacity": 20000,
         "user_dictionary_pro_capacity": 100000,
+        "candidate_pool": 32,
         "pet_catalog": pet_count,
         "outfit_catalog": outfit_count,
         "local_stickers": pet_count * mood_count,
+        "context_translation": "Pro opt-in; free single-sentence",
+        "sticker_compatibility": "commitContent + image clipboard fallback",
     }
     print(json.dumps(summary, ensure_ascii=False))
     return 0
