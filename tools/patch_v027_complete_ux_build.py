@@ -62,26 +62,53 @@ if 'create("bundledModelsDebug")' not in s:
     if needle not in s:
         raise SystemExit('buildFeatures marker not found')
     s = s.replace(needle, repl, 1)
-# Keep exactly one sherpa Android module declaration. Its transitive graph stays off,
-# which retains the Android AAR while excluding JVM/desktop native artifacts.
-if 'implementation("com.github.k2-fsa:sherpa-onnx:1.13.8")' not in s or 'isTransitive = false' not in s:
-    raise SystemExit('pinned non-transitive sherpa dependency missing')
+
+# Keep the aggregate module non-transitive so it cannot pull JVM/desktop artifacts,
+# then add sherpa's official Android AAR coordinate used by the v1.13.8 Android demo.
+aggregate = '''    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8") {
+        isTransitive = false
+    }
+'''
+android_aar = '''    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8") {
+        isTransitive = false
+    }
+'''
+if aggregate not in s:
+    raise SystemExit('pinned non-transitive sherpa aggregate dependency missing')
+if 'com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8' not in s:
+    s = s.replace(aggregate, aggregate + android_aar, 1)
+# Remove the previously rejected same-coordinate @aar experiment if it is present.
+s = s.replace('''    implementation("com.github.k2-fsa:sherpa-onnx:1.13.8@aar") {
+        isTransitive = false
+    }
+''', '')
 p.write_text(s, encoding='utf-8')
 
-# Validator: assert test variant and both CI artifacts without weakening any existing gates.
+# Validator: assert test variant, official Android AAR, and both CI artifacts without weakening any existing gates.
 p = ROOT / 'tools/validate_mature_ime_assets.py'
 s = p.read_text(encoding='utf-8')
 needle = '''    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 dependency missing")
 '''
-repl = '''    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 dependency missing")
+repl = '''    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 aggregate dependency missing")
+    require('com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8' in gradle, "official sherpa Android AAR dependency missing")
     require('create("bundledModelsDebug")' in gradle, "bundledModelsDebug build type missing")
     require('applicationIdSuffix = ".bundledmodels"' in gradle, "bundled test applicationId suffix missing")
     require('versionNameSuffix = "-bundled-models-test"' in gradle, "bundled test version suffix missing")
 '''
-if 'bundledModelsDebug build type missing' not in s:
-    if needle not in s:
-        raise SystemExit('validator gradle marker not found')
-    s = s.replace(needle, repl, 1)
+if 'official sherpa Android AAR dependency missing' not in s:
+    if 'bundledModelsDebug build type missing' in s:
+        old_block = '''    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 dependency missing")
+    require('create("bundledModelsDebug")' in gradle, "bundledModelsDebug build type missing")
+    require('applicationIdSuffix = ".bundledmodels"' in gradle, "bundled test applicationId suffix missing")
+    require('versionNameSuffix = "-bundled-models-test"' in gradle, "bundled test version suffix missing")
+'''
+        if old_block not in s:
+            raise SystemExit('existing validator bundled block not found')
+        s = s.replace(old_block, repl, 1)
+    else:
+        if needle not in s:
+            raise SystemExit('validator gradle marker not found')
+        s = s.replace(needle, repl, 1)
 needle = '''    require("orbit-ime-v0.27-debug-apk" in workflow, "v0.27 Actions artifact name missing")
 '''
 repl = '''    require("orbit-ime-v0.27-debug-apk" in workflow, "v0.27 Actions artifact name missing")
