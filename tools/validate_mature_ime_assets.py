@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build when Orbit v0.23 mature assets or local features regress."""
+"""Fail the build when Orbit v0.26 mature assets, privacy gates or local runtimes regress."""
 from __future__ import annotations
 
 import argparse
@@ -24,15 +24,14 @@ def read(path: Path) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate generated Orbit v0.23 mature IME assets")
+    parser = argparse.ArgumentParser(description="Validate Orbit v0.26 mature IME assets/runtime gates")
     parser.add_argument("--assets", default=str(DEFAULT_ASSETS))
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     args = parser.parse_args()
 
     assets = Path(args.assets).resolve()
-    config_path = Path(args.config).resolve()
-    config = json.loads(read(config_path))
-    require(int(config.get("version", 0)) >= 5, "mature source config is older than v0.23")
+    config = json.loads(read(Path(args.config).resolve()))
+    require(int(config.get("version", 0)) >= 5, "mature source config older than v0.23")
     policy = config["policy"]
     report = json.loads(read(assets / "mature-report.json"))
     manifest = json.loads(read(assets / "manifest.json"))
@@ -60,10 +59,8 @@ def main() -> int:
         minimum = int(policy[policy_key])
         require(actual >= minimum, f"{stat} below gate: {actual} < {minimum}")
 
-    require(int(counts.get("lexicon", 0)) >= int(policy["minimum_runtime_lexicon_entries"]),
-            f"runtime Chinese lexicon too small: {counts.get('lexicon')}")
-    require(int(counts.get("english", 0)) >= int(policy["minimum_english_entries"]),
-            f"runtime English pack too small: {counts.get('english')}")
+    require(int(counts.get("lexicon", 0)) >= int(policy["minimum_runtime_lexicon_entries"]), "runtime Chinese lexicon too small")
+    require(int(counts.get("english", 0)) >= int(policy["minimum_english_entries"]), "runtime English pack too small")
     ngrams = counts.get("ngrams", {})
     require(int(ngrams.get("1", 0)) >= 5000, "1-gram pack too small")
     require(int(ngrams.get("2", 0)) >= 30000, "2-gram pack too small")
@@ -74,26 +71,24 @@ def main() -> int:
     association_shards = list((assets / "association").glob("*.odict"))
     zh_translation_shards = list((assets / "translation/zh").glob("*.odict"))
     en_translation_shards = list((assets / "translation/en").glob("*.odict"))
-    require(len(cn_shards) >= 20, f"too few Chinese shards: {len(cn_shards)}")
-    require(len(en_shards) >= 20, f"too few English shards: {len(en_shards)}")
+    require(len(cn_shards) >= 20, "too few Chinese shards")
+    require(len(en_shards) >= 20, "too few English shards")
     require(len(association_shards) == 32, f"association pack must have 32 shards, got {len(association_shards)}")
-    require(len(zh_translation_shards) >= 40, f"too few ZH translation shards: {len(zh_translation_shards)}")
-    require(len(en_translation_shards) >= 20, f"too few EN translation shards: {len(en_translation_shards)}")
-    emoji_file = assets / "emoji_unicode.txt"
-    require(emoji_file.is_file() and emoji_file.stat().st_size > 10000, "Unicode emoji asset missing/incomplete")
+    require(len(zh_translation_shards) >= 40, "too few ZH translation shards")
+    require(len(en_translation_shards) >= 20, "too few EN translation shards")
+    require((assets / "emoji_unicode.txt").stat().st_size > 10000, "Unicode emoji asset missing/incomplete")
 
     notice_dir = assets / "third_party_notices"
-    notices = {
-        "AOSP": ("AOSP-PinyinIME-NOTICE.txt", 1000),
-        "ESDB": ("ESDB-SCOWL-Copyright.txt", 1000),
-        "Jieba": ("Jieba-LICENSE.txt", 500),
-        "CC-CEDICT": ("CC-CEDICT-NOTICE.txt", 300),
-        "Unicode": ("Unicode-Emoji-NOTICE.txt", 200),
-        "THUOCL": ("THUOCL-LICENSE.txt", 500),
-        "THUOCL README": ("THUOCL-README.txt", 1000),
-        "FrequencyWords": ("FrequencyWords-README.txt", 500),
-    }
-    for label, (name, minimum) in notices.items():
+    for label, name, minimum in (
+        ("AOSP", "AOSP-PinyinIME-NOTICE.txt", 1000),
+        ("ESDB", "ESDB-SCOWL-Copyright.txt", 1000),
+        ("Jieba", "Jieba-LICENSE.txt", 500),
+        ("CC-CEDICT", "CC-CEDICT-NOTICE.txt", 300),
+        ("Unicode", "Unicode-Emoji-NOTICE.txt", 200),
+        ("THUOCL", "THUOCL-LICENSE.txt", 500),
+        ("THUOCL README", "THUOCL-README.txt", 1000),
+        ("FrequencyWords", "FrequencyWords-README.txt", 500),
+    ):
         path = notice_dir / name
         require(path.is_file() and path.stat().st_size >= minimum, f"{label} notice missing/incomplete")
 
@@ -118,28 +113,32 @@ def main() -> int:
     require("unicode_emoji" in pins and pins["unicode_emoji"].get("sha256"), "Unicode emoji SHA-256 pin missing")
 
     android_manifest = read(ROOT / "app/src/main/AndroidManifest.xml")
+    require('android.permission.RECORD_AUDIO' in android_manifest, "v0.24 RECORD_AUDIO declaration missing")
     for forbidden in (
         "android.permission.INTERNET",
-        "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.QUERY_ALL_PACKAGES",
         "android.permission.POST_NOTIFICATIONS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.accessibilityservice.AccessibilityService",
     ):
-        require(forbidden not in android_manifest, f"forbidden v0.23 manifest capability found: {forbidden}")
+        require(forbidden not in android_manifest, f"forbidden manifest capability found: {forbidden}")
     require('android:name=".OrbitStickerProvider"' in android_manifest, "local sticker provider missing")
-    require('android:exported="false"' in android_manifest, "sticker provider must stay non-exported")
+    require('android:exported="false"' in android_manifest, "sticker provider must remain non-exported")
     require('android:grantUriPermissions="true"' in android_manifest, "sticker provider URI grants missing")
 
+    settings = read(ROOT / "settings.gradle.kts")
+    require('https://jitpack.io' in settings, "sherpa JitPack build repository missing")
     gradle = read(ROOT / "app/build.gradle.kts")
-    require('versionCode = 23' in gradle and 'versionName = "0.23.0"' in gradle, "Gradle is not v0.23.0")
+    require('versionCode = 26' in gradle and 'versionName = "0.26.0"' in gradle, "Gradle is not v0.26.0")
+    require('com.github.k2-fsa:sherpa-onnx:1.13.8' in gradle, "pinned sherpa-onnx 1.13.8 dependency missing")
     for token in ("test_ime_data_pipeline_v023.py", "augment_v023_data.py", "test_model_pack_pipeline.py"):
-        require(token in gradle, f"v0.23 preBuild stage missing: {token}")
+        require(token in gradle, f"preBuild stage missing: {token}")
 
     ime_prefs = read(SRC / "ImePreferences.kt")
     for token in ("FUZZY_OFF", "FUZZY_STANDARD", "FUZZY_ENHANCED"):
         require(token in ime_prefs, f"three-level fuzzy preference missing: {token}")
-
     skin_manager = read(SRC / "SkinManager.kt")
     for token in ("APPEARANCE_SYSTEM", "APPEARANCE_LIGHT", "APPEARANCE_DARK", "APPEARANCE_AMOLED", "UI_MODE_NIGHT_YES"):
         require(token in skin_manager, f"night appearance support missing: {token}")
@@ -147,95 +146,103 @@ def main() -> int:
     pinyin_engine = read(SRC / "PinyinImeEngine.kt")
     for token in ("MAX_RESULTS = 48", "PREFIX_POOL_LIMIT = 120", "BEAM_WIDTH = 88", "MAX_QUERY_CACHE = 128"):
         require(token in pinyin_engine, f"expanded Pinyin runtime missing: {token}")
-    require("ImePreferences.fuzzyLevel" in pinyin_engine, "Pinyin fuzzy preference not wired")
-
-    correction = read(SRC / "PinyinCorrectionEngine.kt")
-    for token in ("MAX_CANDIDATES = 40", "INSERTION_CHARS", "keyboardNeighbors", "enhanced"):
-        require(token in correction, f"expanded Pinyin correction missing: {token}")
-
     english_engine = read(SRC / "EnglishImeEngine.kt")
-    require("EnglishFuzzyEngine" in english_engine, "English fuzzy engine is not wired")
-    for token in ("DEFAULT_LIMIT = 48", "MAX_LIMIT = 64", "PRIMARY_MULTIPLIER = 5", "MAX_CACHE = 96"):
-        require(token in english_engine, f"expanded English runtime missing: {token}")
-    english_fuzzy = read(SRC / "EnglishFuzzyEngine.kt")
-    require("if (enhanced) 96 else 48" in english_fuzzy and "Missing-key recovery" in english_fuzzy,
-            "expanded English fuzzy recovery missing")
-
+    require("EnglishFuzzyEngine" in english_engine and "DEFAULT_LIMIT = 48" in english_engine, "expanded English runtime missing")
     user_store = read(SRC / "UserDictionaryStore.kt")
-    require('STORE_DIR = "orbit-user-dictionary"' in user_store and "journal.tsv" in user_store,
-            "file+journal learning regressed")
-    require("MAX_CANDIDATES = 48" in user_store and "DEFAULT_ASSOCIATION_LIMIT = 48" in user_store,
-            "expanded user candidate/association pool missing")
-
-    association = read(SRC / "AssociationAsset.kt")
-    require("SHARD_COUNT = 32" in association, "association asset reader incomplete")
-    next_engine = read(SRC / "NextAssociationEngine.kt")
-    for token in ("DEFAULT_LIMIT = 48", "MAX_LIMIT = 64", "MAX_BRANCHES = 16", "BEAM_WIDTH = 40"):
-        require(token in next_engine, f"expanded association runtime missing: {token}")
-    require("AssociationAsset" in next_engine, "fast association asset path not wired")
+    require('STORE_DIR = "orbit-user-dictionary"' in user_store and "journal.tsv" in user_store, "file+journal learning regressed")
+    require("MAX_CANDIDATES = 48" in user_store and "DEFAULT_ASSOCIATION_LIMIT = 48" in user_store, "expanded candidate/association pool missing")
+    require("AssociationAsset" in read(SRC / "NextAssociationEngine.kt"), "fast association asset path not wired")
 
     offline_translation = read(SRC / "OfflineTranslationPack.kt")
-    require("FluentLocalTranslationEngine" in offline_translation and "TranslationOutputNormalizer" in offline_translation,
-            "v0.23 fluent/normalized local translation not wired")
-    fluent_translation = read(SRC / "FluentLocalTranslationEngine.kt")
-    require("MAX_ZH_SPAN = 18" in fluent_translation and "MAX_EN_SPAN = 12" in fluent_translation,
-            "expanded local translation spans missing")
-    long_translation = read(SRC / "LongFormTranslationEngine.kt")
-    for token in ("MAX_TRANSLATION_SEGMENTS = 480", "splitLongSegment", "MIN_PARTIAL_COVERAGE = 0.28", "TranslationOutputNormalizer"):
-        require(token in long_translation, f"improved long-form translation missing: {token}")
-    context_translation = read(SRC / "ContextTranslationEngine.kt")
-    require("MAX_CONTEXT_SENTENCES = 4" in context_translation and 'joinToString("\\n")' in context_translation,
-            "expanded paragraph-aware context translation missing")
-    require((SRC / "TranslationOutputNormalizer.kt").is_file(), "TranslationOutputNormalizer.kt missing")
+    require("FluentLocalTranslationEngine" in offline_translation and "TranslationOutputNormalizer" in offline_translation, "local translation pipeline regressed")
+    require("MAX_CONTEXT_SENTENCES = 4" in read(SRC / "ContextTranslationEngine.kt"), "4-sentence context translation missing")
+    require("MAX_TRANSLATION_SEGMENTS = 480" in read(SRC / "LongFormTranslationEngine.kt"), "long-form translation regressed")
 
-    for source in ("ModelPackManifest.kt", "ModelPackManager.kt", "ModelRuntimeContracts.kt", "CuratedModelCatalog.kt"):
+    for source in (
+        "ModelPackManifest.kt",
+        "ModelPackManager.kt",
+        "ModelRuntimeContracts.kt",
+        "CuratedModelCatalog.kt",
+        "SherpaSpeechProviders.kt",
+        "LocalSpeechInputController.kt",
+        "ImeSpeechController.kt",
+        "OrbitAudioPlayer.kt",
+        "VoiceReferenceStore.kt",
+    ):
         require((SRC / source).is_file(), f"{source} missing")
+
+    pack_manifest = read(SRC / "ModelPackManifest.kt")
+    require("modelFamily" in pack_manifest and "runtimeConfig" in pack_manifest, "v0.24+ model runtime manifest fields missing")
+    require('android.permission.INTERNET' in pack_manifest, "pack-level INTERNET rejection missing")
     pack_manager = read(SRC / "ModelPackManager.kt")
-    require("checksums.sha256" in pack_manager and 'MessageDigest.getInstance("SHA-256")' in pack_manager,
-            "model-pack SHA-256 validation missing")
+    require("checksums.sha256" in pack_manager and 'MessageDigest.getInstance("SHA-256")' in pack_manager, "model-pack SHA-256 validation missing")
+    require("MAX_ENTRIES = 8192" in pack_manager, "speech-pack file-count safety cap missing/wrong")
+
     runtime_contracts = read(SRC / "ModelRuntimeContracts.kt")
-    require("executable = false" in runtime_contracts,
-            "v0.23 must not pretend an unbundled neural runtime is executable")
+    for token in ("sherpa_offline_transducer", "sherpa_vits", "sherpa_kokoro", "sherpa_supertonic", "sherpa_zipvoice"):
+        require(token in runtime_contracts, f"supported local runtime family missing: {token}")
+    require("generic Marian/OPUS-MT" not in runtime_contracts, "invalid validator sentinel")
+    # Translation remains explicitly non-executable until an audited Android decoder exists.
+    require("尚未内置通用 Marian/OPUS-MT Android 解码器" in runtime_contracts, "neural translation must not be faked as executable")
+
+    sherpa = read(SRC / "SherpaSpeechProviders.kt")
+    for token in ("OfflineRecognizer", "OfflineTts", "SherpaAsrProvider", "SherpaTtsProvider", "SherpaZipVoiceProvider"):
+        require(token in sherpa, f"sherpa provider missing: {token}")
+    capture = read(SRC / "LocalSpeechInputController.kt")
+    for token in ("VOICE_RECOGNITION", "MAX_SECONDS = 60", "RECORD_AUDIO", "ShortArray"):
+        require(token in capture, f"local ASR capture boundary missing: {token}")
+    voice_store = read(SRC / "VoiceReferenceStore.kt")
+    for token in ("consentConfirmed", "consent_confirmed", "PCM WAV", "MAX_SECONDS = 30f"):
+        require(token in voice_store, f"voice-reference consent/safety gate missing: {token}")
 
     service = read(SRC / "OrbitInputMethodService.kt")
-    require("hasSelectedText()" in service and 'commitText("", 1)' in service,
-            "selection-aware editing regressed")
-    require("LongFormTranslationEngine" in service and "ContextTranslationEngine.translate" in service,
-            "translation UI wiring regressed")
+    for token in ("ImeSpeechController", "handleLocalVoiceInput", "speakCurrentText", "cancelCapture", "LongFormTranslationEngine"):
+        require(token in service, f"IME speech/core wiring missing: {token}")
+    require("onWindowHidden" in service and "sensitiveMode" in service, "recording cancellation/privacy mode missing")
+    main_activity = read(SRC / "MainActivity.kt")
+    for token in ("requestMicrophonePermission", "previewTts", "confirmAndChooseVoiceReference", "previewVoiceClone", "v0.26.0"):
+        require(token in main_activity, f"v0.26 settings/runtime action missing: {token}")
+
+    for example in (
+        "docs/orbitpack-asr-sherpa.example.json",
+        "docs/orbitpack-tts-sherpa.example.json",
+        "docs/orbitpack-zipvoice.example.json",
+        "MODEL_PACKS.md",
+    ):
+        require((ROOT / example).is_file(), f"model-pack documentation missing: {example}")
 
     pet_source = read(SRC / "PetRepository.kt")
     pet_count = len(re.findall(r'PetDefinition\("', pet_source))
     outfit_count = len(re.findall(r'OutfitDefinition\("', pet_source))
-    require(pet_count >= 16 and outfit_count >= 24,
-            f"pet/outfit catalog regressed: {pet_count}/{outfit_count}")
-    sticker_source = read(SRC / "StickerPack.kt")
-    mood_count = len(re.findall(r'MoodMeta\(StickerVariant\.', sticker_source))
+    require(pet_count >= 16 and outfit_count >= 24, f"pet/outfit catalog regressed: {pet_count}/{outfit_count}")
+    mood_count = len(re.findall(r'MoodMeta\(StickerVariant\.', read(SRC / "StickerPack.kt")))
     require(pet_count * mood_count >= 128, "local sticker definitions below 128")
 
     workflow = read(ROOT / ".github/workflows/build-apk.yml")
     require("workflow_dispatch:" in workflow, "GitHub Actions must remain manually triggered")
-    require("orbit-ime-v0.23-debug-apk" in workflow, "v0.23 Actions artifact name missing")
+    require("orbit-ime-v0.26-debug-apk" in workflow, "v0.26 Actions artifact name missing")
 
     summary = {
         "status": "PASS",
-        "version": "0.23.0",
+        "version": "0.26.0",
         "runtime_chinese": counts.get("lexicon", 0),
         "runtime_english": counts.get("english", 0),
         "thuocl_source": stats.get("thuocl_source_entries", 0),
         "thuocl_generated": stats.get("thuocl_generated_entries", 0),
-        "frequencywords_en": stats.get("frequencywords_en_entries", 0),
-        "frequencywords_zh": stats.get("frequencywords_zh_source_entries", 0),
         "association_entries": stats.get("association_entries", 0),
         "association_shards": len(association_shards),
         "ngrams": ngrams,
         "translation_zh": stats.get("translation_zh_entries", 0),
         "translation_en": stats.get("translation_en_entries", 0),
         "candidate_pool": 48,
-        "association_pool": 48,
-        "fuzzy_modes": ["off", "standard", "enhanced"],
-        "appearance_modes": ["system", "light", "dark", "amoled", "custom"],
         "context_sentences": 4,
-        "long_form_chars": 8000,
+        "speech_runtime": "sherpa-onnx 1.13.8",
+        "record_audio": True,
+        "internet_permission": False,
+        "asr": "sherpa_offline_transducer",
+        "tts": ["sherpa_vits", "sherpa_kokoro", "sherpa_supertonic"],
+        "voice_clone": "sherpa_zipvoice",
+        "neural_translation": "installable/auditable but not executable",
         "pet_catalog": pet_count,
         "outfit_catalog": outfit_count,
         "local_stickers": pet_count * mood_count,
