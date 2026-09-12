@@ -11,8 +11,8 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.17.0"
+        versionCode = 18
+        versionName = "0.18.0"
     }
 
     compileOptions {
@@ -44,7 +44,7 @@ val testImeDataPipeline by tasks.registering(Exec::class) {
 
 val prepareMatureImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
-    description = "Download pinned audited dictionaries and generate compact offline IME assets"
+    description = "Download pinned audited base dictionaries and generate compact offline IME assets"
     workingDir(rootProject.projectDir)
     commandLine(
         orbitPython,
@@ -53,6 +53,20 @@ val prepareMatureImeAssets by tasks.registering(Exec::class) {
         "app/src/main/assets/ime",
     )
     dependsOn(testImeDataPipeline)
+    onlyIf { !orbitSkipMatureImeData.get() }
+}
+
+val augmentV018ImeAssets by tasks.registering(Exec::class) {
+    group = "orbit ime"
+    description = "Add pinned CC-CEDICT translation/lexicon data and Unicode Emoji 17.0 assets"
+    workingDir(rootProject.projectDir)
+    commandLine(
+        orbitPython,
+        "tools/augment_v018_data.py",
+        "--output",
+        "app/src/main/assets/ime",
+    )
+    dependsOn(prepareMatureImeAssets)
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
@@ -66,7 +80,7 @@ val validateMatureImeAssets by tasks.registering(Exec::class) {
         "--assets",
         "app/src/main/assets/ime",
     )
-    dependsOn(prepareMatureImeAssets)
+    dependsOn(augmentV018ImeAssets)
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
