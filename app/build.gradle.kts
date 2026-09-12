@@ -11,8 +11,8 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.21.0"
+        versionCode = 22
+        versionName = "0.22.0"
     }
 
     buildFeatures {
@@ -42,6 +42,13 @@ val testImeDataPipeline by tasks.registering(Exec::class) {
     description = "Run offline tests for Orbit IME mature + v0.20 dictionary preparation"
     workingDir(rootProject.projectDir)
     commandLine(orbitPython, "tools/test_ime_data_pipeline_v020.py")
+}
+
+val testModelPackPipeline by tasks.registering(Exec::class) {
+    group = "orbit ime"
+    description = "Run offline tests for the v0.22 .orbitpack builder/integrity format"
+    workingDir(rootProject.projectDir)
+    commandLine(orbitPython, "tools/test_model_pack_pipeline.py")
 }
 
 val prepareMatureImeAssets by tasks.registering(Exec::class) {
@@ -96,10 +103,10 @@ val validateMatureImeAssets by tasks.registering(Exec::class) {
         "--assets",
         "app/src/main/assets/ime",
     )
-    dependsOn(augmentV020ImeAssets)
+    dependsOn(augmentV020ImeAssets, testModelPackPipeline)
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
 tasks.named("preBuild") {
-    dependsOn(validateMatureImeAssets)
+    dependsOn(validateMatureImeAssets, testModelPackPipeline)
 }
