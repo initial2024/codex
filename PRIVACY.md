@@ -4,11 +4,11 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.20.0`.
+This policy applies to Orbit IME `0.21.0`.
 
 ## Network
 
-Orbit IME `0.20.0` does not request `INTERNET` permission. The installed app does not upload input text, clipboard text, composing buffers, translation source/result text, candidate-ranking state, personal dictionary entries, pet data, expression history, skins, saved clips, or generated sticker images.
+Orbit IME `0.21.0` does not request `INTERNET` permission. The installed app does not upload input text, clipboard text, composing buffers, translation source/result text, candidate-ranking state, personal dictionary entries, pet data, expression history, skins, saved clips, custom phrases or generated sticker images.
 
 Public dictionary/Emoji files are downloaded only by the build machine, hash-verified, converted to packaged offline assets, and read locally by the installed IME.
 
@@ -16,92 +16,69 @@ Public dictionary/Emoji files are downloaded only by the build machine, hash-ver
 
 Orbit contains no ad SDK, analytics SDK, tracking SDK, or remote-configuration SDK.
 
+## Selection and composing
+
+Android cursor selection and composing state are independent. Orbit v0.21 explicitly checks editor selection before Backspace. A non-empty selection is deleted by committing an empty replacement; only when no selection exists does Orbit delete the previous Unicode code point. Normal text, space, candidates, paste, Emoji, quick phrases and translated text use Android commit/composing APIs that replace the selected region.
+
+No selected text is persisted merely because it was selected or replaced.
+
 ## Input engine and next-phrase association
 
-Local candidate generation can use AOSP/Jieba/CC-CEDICT Chinese assets, ESDB/SCOWL English assets, project fallback vocabulary, project-maintained software/platform names, DP Pinyin segmentation, adaptive Beam Search, packaged 1/2/3-gram counts, local explicit selection frequency, prefix association and lower-confidence fuzzy/keyboard-typo recovery.
+Local candidate generation uses the existing v0.20 mature assets and ranking pipeline. Next-word/phrase association reads only a bounded text tail before the cursor and is optional. The user can turn association off; that setting is stored locally.
 
-v0.20 expands the visible and short-input internal candidate pools to up to 32 entries and can show next-word/next-phrase associations after a Chinese candidate is committed. Association reads only a bounded text tail before the cursor, combines packaged local 2/3-gram evidence with project-authored high-confidence mappings, and does not persist the surrounding sentence.
+## Persistent user preferences and custom phrases
 
-Pinyin/English composing buffers are temporary. Candidate commit replaces Android's active composing region; Orbit does not persist a raw key stream. Context used for ranking/association is not saved with app/package identity.
+v0.21 remembers local user choices such as the last Chinese/English input mode, quick-phrase visibility, built-in phrase visibility, next-association toggle, context-translation toggle, skin, pet/outfit state and Pro activation state.
+
+Custom Chinese/English quick phrases are stored locally in `SharedPreferences` as user-authored text. They can be disabled or cleared by the user. They are never uploaded or used as hidden training data.
 
 ## Personal learning library
 
-Local learning supports 20,000 entries for the free base and 100,000 for the future Pro capacity placeholder. The store uses app-private files:
-
-```text
-files/orbit-user-dictionary/dictionary.tsv
-files/orbit-user-dictionary/journal.tsv
-```
-
-Normal learning appends a small local journal record; the store periodically compacts into a base file. Old SharedPreferences learning data is migrated locally once.
-
-Persistent learning records remain limited to Pinyin, committed candidate text, frequency and updatedAt. Orbit does not persist the full conversation, surrounding sentence, target app/package, target-field identity, or complete typed stream.
+Local learning supports 20,000 entries for Free and 100,000 for Pro. The store uses app-private `dictionary.tsv + journal.tsv` files and periodic compaction. Persistent learning records remain limited to Pinyin, committed candidate text, frequency and updatedAt. Orbit does not persist full conversations, app/package identity, target-field identity or a complete typed stream.
 
 ## Clipboard
 
 Orbit provides local Recent and Pinned sections. The text clipboard listener exists only while the IME window is visibly shown. There is no background clipboard-harvesting service. Suspicious OTP/password/API-key/session-like text is rejected before persistence.
 
-Image sticker clipboard fallback is separate from text history: a sticker PNG URI can be placed on the system clipboard only after the user explicitly taps/long-presses a sticker. That URI is not converted into a text history item.
+Sticker image clipboard fallback is separate from text history and only occurs after explicit user action.
 
-## Emoji / kaomoji / symbols
+## Emoji / kaomoji / stickers
 
-Orbit packages Unicode Emoji 17.0 fully-qualified sequences under the Unicode License v3 alongside project-authored categorized Emoji/kaomoji and symbol mappings. Recent expression storage contains only the selected expression itself. Long-press copy happens only after explicit user action.
-
-## Local pet stickers
-
-Orbit has 16 catalog pets and 8 local sticker states per pet, producing 128 local sticker definitions. PNGs are generated into app-private cache.
-
-Sticker delivery uses two local image paths:
-
-1. if the target editor advertises `image/png`, Orbit tries Android `InputContentInfo` / `commitContent`;
-2. if direct IME image content is unsupported, Orbit can put the generated PNG content URI on the system clipboard and temporarily grant the current target package read access, so apps such as some WeChat/QQ versions may accept manual long-press paste.
-
-Clipboard-image paste support is controlled by the target app; Orbit cannot guarantee that every WeChat/QQ version accepts URI image paste. If neither image path works, Orbit falls back to the sticker's Emoji text.
-
-`OrbitStickerProvider` remains `exported=false` with `grantUriPermissions=true`. No external-storage permission or runtime sticker download is used.
+Orbit keeps Unicode Emoji 17.0, project-authored kaomoji and 128 local pet sticker definitions. Sticker PNGs are generated into app-private cache. `OrbitStickerProvider` remains `exported=false` with `grantUriPermissions=true`. No external-storage permission or runtime sticker download is used.
 
 ## Pet and outfit state
 
-The pet module stores only local state such as catalog pet id, owned ids, EXP, Stars, streak, typed-character counters, display mode, current outfit and a short recent-action code/timestamp used for temporary micro-feedback. The catalog contains 16 pets and 24 outfits. It does not store the surrounding message that caused a feedback line.
+The pet module stores only local pet/progression/outfit state and short feedback event codes. v0.21 uses a polished local renderer with a lightweight idle float/breath animation. Stable pet silhouettes remain; the old outfit layer is suppressed in the v0.21 view and replaced with a coherent local accessory overlay. No overlay permission, screenshot capture, camera input, cloud pet service or AI pet chat is used.
 
-No overlay permission, screenshot capture, camera input, cloud pet service or AI pet chat is used.
+## Translation
 
-## Imported data assets
+Free translation remains one sentence and fully local.
 
-Normal builds use pinned/audited AOSP PinyinIME (Apache-2.0), Jieba frequency data (MIT), CC-CEDICT (CC BY-SA 4.0), ESDB/SCOWL en_US-large (ESDB notice), and Unicode Emoji 17.0 (Unicode License v3).
+Pro can optionally enable:
 
-v0.20 derives a four-character idiom/phrase boost layer from the already-audited CC-CEDICT pack and adds project-authored common software/platform/product vocabulary. Orbit does not add a separate internet-scraped idiom database.
+- previous-context translation using up to the previous two sentences in memory;
+- selected-text long-form translation, up to 8,000 characters, split sentence-by-sentence locally.
 
-Required third-party notices are packaged under `assets/ime/third_party_notices/`. CC-CEDICT-derived lexicon, idiom and translation data remains CC BY-SA 4.0 data and is documented separately from application source code.
+Long-form translation is activated only after the user explicitly selects/all-selects text and taps the Pro long-form action. The selected block is not saved by the translation module. Segments that the offline dictionaries cannot translate are preserved as source text rather than being falsely reported as translated.
 
-## Translation and optional context mode
+All translation modes remain local and use project tables + CC-CEDICT + local composition. Orbit has no cloud translation endpoint or external translation API.
 
-Base/free translation remains single-sentence and fully local at runtime:
+## Pro activation
 
-```text
-project exact phrase tables
--> CC-CEDICT exact lookup
--> CC-CEDICT sharded conservative longest-match composition
--> project local sentence composer
--> explicit unavailable state
-```
+v0.21 debug builds include a local tester-code path to exercise Pro features. That tester code is rejected by release builds.
 
-v0.20 adds an optional **Pro-gated local context/block translation** setting. It is disabled by default and unavailable to ordinary/free users. When explicitly enabled, Orbit may temporarily read up to the previous two sentences (bounded to a short cursor tail) and translate them together/as a local block reference while also translating the current sentence separately.
+For production, the intended design is a signed activation/license token: the APK contains only a public verification key, while the private signing key stays outside the repository and APK. Orbit intentionally does not use a plain reusable invite code as the production security boundary.
 
-This is deterministic local context/block assistance; it is not represented as neural semantic disambiguation equivalent to a cloud machine-translation model. The previous text and context/block translation preview are kept in memory only and are not written to the personal dictionary, clipboard history, analytics, account storage or any network service.
-
-The current sentence translation remains the text inserted into the target editor. Orbit does not automatically resend previous conversation text.
-
-`前一句`, selected text and clipboard text are read only after explicit user action. Orbit has no cloud translation endpoint or external translation API.
+No payment, account login or license server is implemented in v0.21.
 
 ## Sensitive fields
 
-For password-like/no-personalized-learning fields, Orbit hides extra tools, detaches clipboard listening, clears composing/translation state, disables pet growth and blocks personal-dictionary learning. Context translation is therefore unavailable in sensitive fields.
+For password-like/no-personalized-learning fields, Orbit hides extra tools, detaches clipboard listening, clears composing/translation state, disables pet growth and blocks personal-dictionary learning.
 
 ## Permissions intentionally not requested
 
 Orbit does not request Internet, Accessibility, overlay/floating window, contacts, SMS, location, camera, microphone, external storage, or notifications.
 
-## Commercial boundary
+## Imported data assets
 
-Orbit IME `0.20.0` still contains Pro capacity/feature placeholders only. It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, paid gacha, or a skin marketplace.
+Normal builds keep the audited AOSP PinyinIME, Jieba, CC-CEDICT, ESDB/SCOWL and Unicode Emoji sources and packaged notices. v0.21 does not add a new scraped third-party corpus.
