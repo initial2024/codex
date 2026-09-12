@@ -31,34 +31,21 @@ class UserDictionaryStore(private val context: Context) {
     ): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return staticCandidates.take(MAX_CANDIDATES)
-
         val engineCandidates = runCatching {
             imeEngine.candidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
         }.getOrElse { emptyList() }
-        if (engineCandidates.isNotEmpty()) {
-            return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
-        }
+        if (engineCandidates.isNotEmpty()) return (engineCandidates + staticCandidates).distinct().take(MAX_CANDIDATES)
 
         val entries = loadEntries()
-        val exactUser = entries
-            .filter { it.pinyin == query }
-            .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
-            .map { it.text }
-        val prefixUser = entries
-            .filter { it.pinyin != query && it.pinyin.startsWith(query) }
-            .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
-            .map { it.text }
+        val exactUser = entries.filter { it.pinyin == query }
+            .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt }).map { it.text }
+        val prefixUser = entries.filter { it.pinyin != query && it.pinyin.startsWith(query) }
+            .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt }).map { it.text }
         val containsUser = if (exactUser.isEmpty() && prefixUser.size < 4) {
-            entries
-                .filter { it.pinyin != query && it.pinyin.contains(query) }
-                .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
-                .map { it.text }
-        } else {
-            emptyList()
-        }
-        return (exactUser + staticCandidates + prefixUser + containsUser)
-            .distinct()
-            .take(MAX_CANDIDATES)
+            entries.filter { it.pinyin != query && it.pinyin.contains(query) }
+                .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt }).map { it.text }
+        } else emptyList()
+        return (exactUser + staticCandidates + prefixUser + containsUser).distinct().take(MAX_CANDIDATES)
     }
 
     fun exactCandidatesFor(
@@ -71,29 +58,19 @@ class UserDictionaryStore(private val context: Context) {
         val engineCandidates = runCatching {
             imeEngine.exactCandidates(query, contextBeforeCursor = contextBeforeCursor, limit = MAX_CANDIDATES)
         }.getOrElse { emptyList() }
-        if (engineCandidates.isNotEmpty()) {
-            return engineCandidates.distinct().take(MAX_CANDIDATES)
-        }
-        // Do not reuse outer prefix/fuzzy static candidates here. This API is
-        // used by raw-fallback commits (Enter, punctuation, panel switches), so
-        // guessing a non-exact candidate would silently replace user input.
-        return loadEntries()
-            .filter { it.pinyin == query }
+        if (engineCandidates.isNotEmpty()) return engineCandidates.distinct().take(MAX_CANDIDATES)
+        return loadEntries().filter { it.pinyin == query }
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
-            .map { it.text }
-            .distinct()
-            .take(MAX_CANDIDATES)
+            .map { it.text }.distinct().take(MAX_CANDIDATES)
     }
 
     fun frequencyFor(rawPinyin: String, rawText: String): Int {
         val pinyin = PinyinDictionary.normalize(rawPinyin)
         val text = rawText.trim()
         if (pinyin.isEmpty() || text.isEmpty()) return 0
-        return loadEntries()
-            .asSequence()
+        return loadEntries().asSequence()
             .filter { it.pinyin == pinyin && it.text == text }
-            .maxOfOrNull { it.frequency }
-            ?: 0
+            .maxOfOrNull { it.frequency } ?: 0
     }
 
     fun learnedEntriesFor(rawInput: String, limit: Int = MAX_CANDIDATES): List<Entry> {
@@ -104,28 +81,24 @@ class UserDictionaryStore(private val context: Context) {
         val prefix = entries.filter { it.pinyin != query && it.pinyin.startsWith(query) }
         return (exact + prefix)
             .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
-            .distinctBy { it.pinyin to it.text }
-            .take(limit)
+            .distinctBy { it.pinyin to it.text }.take(limit)
     }
 
     fun learn(rawPinyin: String, rawText: String): Boolean {
         val pinyin = PinyinDictionary.normalize(rawPinyin)
         val text = rawText.trim()
         if (!canLearn(pinyin, text)) return false
-
         val now = System.currentTimeMillis()
         val entries = loadEntries().toMutableList()
         val index = entries.indexOfFirst { it.pinyin == pinyin && it.text == text }
         if (index >= 0) {
             val old = entries[index]
-            entries[index] = old.copy(
-                frequency = (old.frequency + 1).coerceAtMost(MAX_FREQUENCY),
-                updatedAt = now,
-            )
+            entries[index] = old.copy(frequency = (old.frequency + 1).coerceAtMost(MAX_FREQUENCY), updatedAt = now)
         } else {
             entries.add(Entry(pinyin, text, 1, now))
         }
         saveEntries(trimEntries(entries))
+        if (this::imeEngine.isInitializedCompat()) imeEngine.clearCandidateCache()
         return true
     }
 
@@ -137,32 +110,27 @@ class UserDictionaryStore(private val context: Context) {
     fun clear() {
         cachedEntries = emptyList()
         prefs.edit().remove(KEY_ENTRIES_JSON).apply()
+        runCatching { imeEngine.clearCandidateCache() }
     }
 
     private fun canLearn(pinyin: String, text: String): Boolean {
-        if (pinyin.length !in 1..64) return false
-        if (text.length !in 1..40) return false
-        if (text == pinyin) return false
-        if (!containsCjk(text)) return false
-        if (!PrivacyGuard.isSafeToUseForPrompt(text)) return false
-        return true
+        if (pinyin.length !in 1..MAX_PINYIN_LENGTH) return false
+        if (text.length !in 1..MAX_TEXT_LENGTH) return false
+        if (text == pinyin || !containsCjk(text)) return false
+        return PrivacyGuard.isSafeToUseForPrompt(text)
     }
 
-    private fun containsCjk(text: String): Boolean {
-        return text.any { char ->
-            val block = Character.UnicodeBlock.of(char)
-            block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
-                block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
-                block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
-                block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-        }
+    private fun containsCjk(text: String): Boolean = text.any { char ->
+        val block = Character.UnicodeBlock.of(char)
+        block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
+            block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
+            block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
+            block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
     }
 
-    private fun trimEntries(entries: List<Entry>): List<Entry> {
-        return entries
-            .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
-            .take(maxEntries())
-    }
+    private fun trimEntries(entries: List<Entry>): List<Entry> = entries
+        .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.updatedAt })
+        .take(maxEntries())
 
     private fun maxEntries(): Int = ProGate.maxUserDictionaryItems(context)
 
@@ -196,21 +164,21 @@ class UserDictionaryStore(private val context: Context) {
         cachedEntries = entries
         val array = JSONArray()
         entries.forEach { entry ->
-            array.put(
-                JSONObject()
-                    .put("pinyin", entry.pinyin)
-                    .put("text", entry.text)
-                    .put("frequency", entry.frequency)
-                    .put("updatedAt", entry.updatedAt),
-            )
+            array.put(JSONObject().put("pinyin", entry.pinyin).put("text", entry.text).put("frequency", entry.frequency).put("updatedAt", entry.updatedAt))
         }
         prefs.edit().putString(KEY_ENTRIES_JSON, array.toString()).apply()
     }
+
+    // Kotlin lateinit does not apply to lazy delegates; this helper intentionally
+    // always returns true after first access through runCatching in callers.
+    private fun <T> Lazy<T>.isInitializedCompat(): Boolean = isInitialized()
 
     companion object {
         private const val PREFS = "orbit_user_dictionary"
         private const val KEY_ENTRIES_JSON = "entries_json"
         private const val MAX_CANDIDATES = 12
         private const val MAX_FREQUENCY = 9999
+        private const val MAX_PINYIN_LENGTH = 192
+        private const val MAX_TEXT_LENGTH = 96
     }
 }
