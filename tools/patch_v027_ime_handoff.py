@@ -2,6 +2,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Validation rerun marker: normal build-apk.yml now retains both v0.27 APK variants.
 
 # 1) Participate in Android's standard IME switching protocol.
 p = ROOT / "app/src/main/res/xml/method.xml"
