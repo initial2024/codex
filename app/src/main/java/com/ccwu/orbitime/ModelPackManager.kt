@@ -102,9 +102,14 @@ class ModelPackManager(private val context: Context) {
             }
 
             staged.tempFile.delete()
+            val status = OrbitModelRuntimeRegistry.statusFor(inspected.manifest)
             OperationResult(
                 true,
-                "已安装 ${inspected.manifest.displayName}。v0.22 只完成安全安装/管理；神经推理将在后续运行时版本接入。",
+                if (status.executable) {
+                    "已安装 ${inspected.manifest.displayName}。${status.label}；请在模型包列表中设为首选后使用。"
+                } else {
+                    "已安装 ${inspected.manifest.displayName}。${status.label}"
+                },
             )
         }.getOrElse { OperationResult(false, "安装失败：${it.message ?: it.javaClass.simpleName}") }
     }
@@ -209,7 +214,7 @@ class ModelPackManager(private val context: Context) {
                 if (!manifest.commercialUse) add("该包声明不可商用/仅研究用途。")
                 if (manifest.redistribution != "allowed") add("再分发状态：${manifest.redistribution}；请自行核对许可证义务。")
                 if (manifest.experimental) add("该包标记为 experimental。")
-                if (manifest.requiresPermissions.isNotEmpty()) add("未来运行时可能需要：${manifest.permissionSummary}。v0.22 不会自动申请这些权限。")
+                if (manifest.requiresPermissions.isNotEmpty()) add("运行该包可能需要：${manifest.permissionSummary}；Orbit 只会在对应功能被主动使用时申请其允许的权限。")
                 add(OrbitModelRuntimeRegistry.statusFor(manifest).label)
             }
 
@@ -367,13 +372,15 @@ class ModelPackManager(private val context: Context) {
         private val CHECKSUM_LINE = Regex("^([0-9A-Fa-f]{64})\\s+(.+)$")
         private const val BUFFER_SIZE = 128 * 1024
         private const val PREVIEW_CHARS = 2200
-        private const val MAX_ENTRIES = 1024
+        // ZipVoice/espeak-ng-data and some multilingual TTS packs contain many small files.
+        // Keep a hard cap, but high enough for audited speech packs.
+        private const val MAX_ENTRIES = 8192
         private const val MB = 1024L * 1024L
         private const val MAX_PACK_BYTES = 8L * 1024L * MB
         private const val MAX_UNPACKED_BYTES = 12L * 1024L * MB
         private const val MAX_ENTRY_BYTES = 8L * 1024L * MB
         private const val MAX_MANIFEST_BYTES = 256L * 1024L
         private const val MAX_TEXT_BYTES = 1024L * 1024L
-        private const val MAX_CHECKSUM_BYTES = 4L * 1024L * 1024L
+        private const val MAX_CHECKSUM_BYTES = 16L * 1024L * 1024L
     }
 }
