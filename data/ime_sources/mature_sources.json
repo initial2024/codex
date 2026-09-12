@@ -56,8 +56,8 @@
     },
     "unicode_emoji": {
       "name": "Unicode Emoji 17.0 emoji-test data",
-      "url": "https://www.unicode.org/Public/emoji/17.0/emoji-test.txt",
-      "sha256": "07ee0565612af5d8cf36ea7d2cd7d255429441059133c60f863e97e648ebeb29",
+      "url": "https://www.unicode.org/Public/17.0.0/emoji/emoji-test.txt",
+      "sha256": "1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda",
       "license": "Unicode-3.0",
       "attribution": "Copyright © 1991-2026 Unicode, Inc. Unicode Data Files and Software",
       "redistribution_allowed": true
@@ -78,40 +78,106 @@
       "attribution": "Shiyi Han, Yuhui Zhang, Yunshan Ma, Cunchao Tu, Zhipeng Guo, Zhiyuan Liu, Maosong Sun. THUOCL. 2016.",
       "redistribution_allowed": true
     },
-    "thuocl_it": {"name":"THUOCL IT","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_IT.txt","git_blob_sha1":"0209242c6f47eec97301656ce6fd8b8a091a4a8f","license":"MIT","redistribution_allowed":true},
-    "thuocl_animal": {"name":"THUOCL animal","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_animal.txt","git_blob_sha1":"f46cabb011bb3c06f0af5be6622c306da0021d5f","license":"MIT","redistribution_allowed":true},
-    "thuocl_finance": {"name":"THUOCL finance","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_caijing.txt","git_blob_sha1":"9dbd206ef6f740cdbe5015675c22298973878037","license":"MIT","redistribution_allowed":true},
-    "thuocl_car": {"name":"THUOCL car","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_car.txt","git_blob_sha1":"72b4340083038d6d86b88951b557291a2913a787","license":"MIT","redistribution_allowed":true},
-    "thuocl_idiom": {"name":"THUOCL idiom","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_chengyu.txt","git_blob_sha1":"44d91b3349753dc7f43b53e8cf64cda790c9ea22","license":"MIT","redistribution_allowed":true},
-    "thuocl_place": {"name":"THUOCL place names","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_diming.txt","git_blob_sha1":"c854976734d6fd81d7370ddd2e59f0591671ccab","license":"MIT","redistribution_allowed":true},
-    "thuocl_food": {"name":"THUOCL food","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_food.txt","git_blob_sha1":"2551f910c56a0f3bb62366824371b191b45bf859","license":"MIT","redistribution_allowed":true},
-    "thuocl_law": {"name":"THUOCL law","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_law.txt","git_blob_sha1":"a18fa182de8257e919eb1094aa4c0064621c343e","license":"MIT","redistribution_allowed":true},
-    "thuocl_people": {"name":"THUOCL historical people","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_lishimingren.txt","git_blob_sha1":"abeb572f40406edd2ece2e81a5442a2f0ee48784","license":"MIT","redistribution_allowed":true},
-    "thuocl_medical": {"name":"THUOCL medical","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_medical.txt","git_blob_sha1":"5995f4143c9e6943a5b6d073261299049874666d","license":"MIT","redistribution_allowed":true},
-    "thuocl_poem": {"name":"THUOCL poetry","url":"https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_poem.txt","git_blob_sha1":"bc15cec44ccfab0fc342e954dc8dfe1bfa40815d","license":"MIT","redistribution_allowed":true},
+    "thuocl_it": {
+      "name": "THUOCL IT",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_IT.txt",
+      "git_blob_sha1": "0209242c6f47eec97301656ce6fd8b8a091a4a8f",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_animal": {
+      "name": "THUOCL animal",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_animal.txt",
+      "git_blob_sha1": "f46cabb011bb3c06f0af5be6622c306da0021d5f",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_finance": {
+      "name": "THUOCL finance",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_caijing.txt",
+      "git_blob_sha1": "9dbd206ef6f740cdbe5015675c22298973878037",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_car": {
+      "name": "THUOCL car",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_car.txt",
+      "git_blob_sha1": "72b4340083038d6d86b88951b557291a2913a787",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_idiom": {
+      "name": "THUOCL idiom",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_chengyu.txt",
+      "git_blob_sha1": "44d91b3349753dc7f43b53e8cf64cda790c9ea22",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_place": {
+      "name": "THUOCL place names",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_diming.txt",
+      "git_blob_sha1": "c854976734d6fd81d7370ddd2e59f0591671ccab",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_food": {
+      "name": "THUOCL food",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_food.txt",
+      "git_blob_sha1": "2551f910c56a0f3bb62366824371b191b45bf859",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_law": {
+      "name": "THUOCL law",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_law.txt",
+      "git_blob_sha1": "a18fa182de8257e919eb1094aa4c0064621c343e",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_people": {
+      "name": "THUOCL historical people",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_lishimingren.txt",
+      "git_blob_sha1": "abeb572f40406edd2ece2e81a5442a2f0ee48784",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_medical": {
+      "name": "THUOCL medical",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_medical.txt",
+      "git_blob_sha1": "5995f4143c9e6943a5b6d073261299049874666d",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
+    "thuocl_poem": {
+      "name": "THUOCL poetry",
+      "url": "https://raw.githubusercontent.com/thunlp/THUOCL/master/data/THUOCL_poem.txt",
+      "git_blob_sha1": "bc15cec44ccfab0fc342e954dc8dfe1bfa40815d",
+      "license": "MIT",
+      "redistribution_allowed": true
+    },
     "frequencywords_readme": {
-      "name":"FrequencyWords content license notice",
-      "url":"https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/README.md",
-      "git_blob_sha1":"699216f2874089f5ac0bf487c5c8ab9cf5a613d6",
-      "license":"CC-BY-SA-4.0",
-      "attribution":"Hermit Dave FrequencyWords; processed OpenSubtitles frequency lists",
-      "redistribution_allowed":true
+      "name": "FrequencyWords content license notice",
+      "url": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/README.md",
+      "git_blob_sha1": "699216f2874089f5ac0bf487c5c8ab9cf5a613d6",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Hermit Dave FrequencyWords; processed OpenSubtitles frequency lists",
+      "redistribution_allowed": true
     },
     "frequencywords_en": {
-      "name":"FrequencyWords English 50k",
-      "url":"https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/en/en_50k.txt",
-      "git_blob_sha1":"bbf5fa991058ff642732784b31af023f66462e1d",
-      "license":"CC-BY-SA-4.0",
-      "attribution":"Hermit Dave FrequencyWords; OpenSubtitles-derived English frequency content",
-      "redistribution_allowed":true
+      "name": "FrequencyWords English 50k",
+      "url": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/en/en_50k.txt",
+      "git_blob_sha1": "bbf5fa991058ff642732784b31af023f66462e1d",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Hermit Dave FrequencyWords; OpenSubtitles-derived English frequency content",
+      "redistribution_allowed": true
     },
     "frequencywords_zh": {
-      "name":"FrequencyWords Simplified Chinese 50k",
-      "url":"https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/zh_cn/zh_cn_50k.txt",
-      "git_blob_sha1":"8ca5b62558f5e507e45ef7e56b5a95bbaae0bb39",
-      "license":"CC-BY-SA-4.0",
-      "attribution":"Hermit Dave FrequencyWords; OpenSubtitles-derived Simplified Chinese frequency content",
-      "redistribution_allowed":true
+      "name": "FrequencyWords Simplified Chinese 50k",
+      "url": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/zh_cn/zh_cn_50k.txt",
+      "git_blob_sha1": "8ca5b62558f5e507e45ef7e56b5a95bbaae0bb39",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Hermit Dave FrequencyWords; OpenSubtitles-derived Simplified Chinese frequency content",
+      "redistribution_allowed": true
     }
   },
   "policy": {
