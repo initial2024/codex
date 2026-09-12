@@ -2,22 +2,25 @@
 
 Orbit IME builds a reproducible offline data pack on the build machine. The installed keyboard itself remains offline.
 
-## v0.18 pipeline
+## v0.19 pipeline
 
 ```text
 tools/test_ime_data_pipeline.py
 -> tools/prepare_mature_ime_data.py
 -> base AOSP/Jieba/ESDB pack
 -> tools/augment_v018_data.py
+-> broader ESDB/SCOWL large repack
 -> CC-CEDICT lexicon + translation shards
 -> Unicode Emoji 17.0 asset
 -> tools/validate_mature_ime_assets.py
 -> Android compilation
 ```
 
+`augment_v018_data.py` is the historical filename of the licensed augmentation stage and remains mandatory in v0.19.
+
 Pinned source metadata is stored in `data/ime_sources/mature_sources.json`.
 
-## Chinese source 1: AOSP PinyinIME
+## AOSP PinyinIME
 
 ```text
 Repository: LineageOS/android_packages_inputmethods_PinyinIME
@@ -27,9 +30,9 @@ Git blob SHA-1: 28805ba68eb8df265c1d227fb99e841ff3302aef
 License: Apache-2.0
 ```
 
-AOSP provides direct Pinyin/frequency rows and remains the highest-confidence general pronunciation source.
+AOSP provides direct Pinyin/frequency rows and remains the highest-confidence pronunciation source.
 
-## Chinese source 2: Jieba frequency dictionary
+## Jieba frequency dictionary
 
 ```text
 Repository: fxsjy/jieba
@@ -39,9 +42,9 @@ Git blob SHA-1: fc6075f64943e1861c420db4da38063de9d8afc5
 License: MIT
 ```
 
-Jieba adds frequency coverage but does not provide Pinyin. Orbit only derives a reading when AOSP phrase/single-character evidence is sufficiently unambiguous; otherwise the row is skipped.
+Jieba adds broad Chinese frequency coverage but does not provide Pinyin. Orbit derives a reading only when AOSP phrase/single-character evidence is sufficiently unambiguous; otherwise the row is skipped.
 
-## Chinese + translation source 3: CC-CEDICT
+## CC-CEDICT
 
 ```text
 Mirror: rhcarvalho/cedict
@@ -49,18 +52,14 @@ Pinned commit: 9118dab4ea21849c571a20d56f1f1621a0423d07
 File: cedict_1_0_ts_utf-8_mdbg.txt
 Git blob SHA-1: 2b05f59d39ed57b4ca3512f9210aa8f11a402cc8
 Release metadata: 2026-09-10T22:27:42Z
-Entries reported by source: 125,050
 License: CC BY-SA 4.0
 ```
 
-CC-CEDICT is used in two separate ways:
+CC-CEDICT contributes lower-confidence Chinese lexical rows and generates sharded local Chinese->English / English->Chinese translation assets. v0.19 also indexes conservative variants such as English glosses without a leading `to` and simple comma/or alternatives, improving local translation lookup coverage without a cloud model.
 
-1. its Pinyin + simplified word rows enter the packaged Chinese lexicon at a deliberately lower synthetic frequency than true corpus-frequency sources;
-2. its English glosses generate sharded local Chinese->English and English->Chinese lexical translation assets.
+CC-CEDICT-derived assets remain CC BY-SA 4.0 data and keep a separate packaged notice.
 
-CC-CEDICT-derived assets remain CC BY-SA 4.0 data. The generated `CC-CEDICT-NOTICE.txt` is packaged separately from application source code.
-
-## English source: ESDB / SCOWL large US English
+## ESDB / SCOWL en_US-large
 
 ```text
 Repository: en-wl/wordlist-diff
@@ -71,11 +70,11 @@ License identifier in Orbit: ESDB-2026
 Copyright blob: 562ec7df17753481162f2b993e2dbd47cea77b2f
 ```
 
-v0.18 moves from `en_US.txt` to `en_US-large.txt`. This intentionally increases vocabulary/completion coverage. ESDB ordering is not treated as a real frequency corpus; project-authored common English overlays and exact-prefix behavior keep stronger ranking weight where appropriate.
+The stale v0.17 build used a smaller English path and produced 81,373 entries. v0.19 re-reads pinned `en_US-large` during augmentation and keeps valid lowercase vocabulary plus useful proper-name/acronym spellings under normalized lowercase lookup keys. SCOWL ordering is not treated as real usage frequency; project-authored common words/phrases remain ranking overlays.
 
 AOSP/Lineage LatinIME's bundled dictionary remains rejected because its NOTICE contains third-party dictionary material marked `Used by permission`.
 
-## Emoji source: Unicode Emoji 17.0
+## Unicode Emoji 17.0
 
 ```text
 Source: https://www.unicode.org/Public/emoji/17.0/emoji-test.txt
@@ -83,11 +82,9 @@ SHA-256: 07ee0565612af5d8cf36ea7d2cd7d255429441059133c60f863e97e648ebeb29
 License: Unicode License v3
 ```
 
-Only `fully-qualified` sequences are packaged into `ime/emoji_unicode.txt`. Project-authored categorized Emoji and kaomoji remain as curated overlays.
+Only `fully-qualified` sequences are packaged into `ime/emoji_unicode.txt`. Project-authored categorized Emoji and kaomoji remain curated overlays.
 
-The Unicode copyright/permission notice is packaged in `ime/third_party_notices/Unicode-Emoji-NOTICE.txt`.
-
-## Required v0.18 minimums
+## Required v0.19 minimums
 
 ```text
 AOSP Chinese >= 40,000
@@ -112,8 +109,8 @@ Exact generated counts are written to `app/src/main/assets/ime/mature-report.jso
 ## Runtime layout
 
 ```text
-ime/lexicon/a.odict ... z.odict
-ime/english/a.odict ... z.odict
+ime/lexicon/*.odict
+ime/english/*.odict
 ime/ngram1.odict
 ime/ngram2.odict
 ime/ngram3.odict
@@ -123,9 +120,9 @@ ime/emoji_unicode.txt
 ime/third_party_notices/*
 ```
 
-Chinese/English and translation readers use bounded shard caches; the full data pack is not loaded as one giant Kotlin map.
+Readers use bounded shard caches; the full data pack is not loaded as one giant Kotlin map.
 
-## Project-authored fallback data
+## Project-authored local data
 
 ```text
 data/ime_sources/seed_lexicon.tsv
@@ -135,23 +132,13 @@ ExpressionLibrary.kt
 SymbolLibrary.kt
 ```
 
-These provide deterministic product vocabulary, kaomoji and symbol behavior even when a development build intentionally skips the mature external data pack.
+These provide deterministic product vocabulary, kaomoji and symbol behavior even in deliberately reduced development builds.
 
-## Offline tests and fail-closed validation
+## Validation
 
-`python tools/test_ime_data_pipeline.py` covers:
+`tools/test_ime_data_pipeline.py` covers source hashing/parsing, CC-CEDICT translation sharding, Unicode Emoji parsing, license fail-closed behavior, compact packing, N-grams and English sharding.
 
-- Git blob hashing;
-- AOSP parsing;
-- conservative Jieba pronunciation derivation;
-- ESDB normalization;
-- CC-CEDICT parsing and translation sharding;
-- Unicode Emoji fully-qualified parsing;
-- license fail-closed behavior;
-- compact lexicon/N-gram packing;
-- large English sharding.
-
-`validate_mature_ime_assets.py` rejects missing/suspiciously small packs, missing source pins/notices, insufficient shards, wrong app version or forbidden Android manifest capabilities.
+`tools/validate_mature_ime_assets.py` rejects stale or suspiciously small packs, missing pins/notices/shards, wrong app version, forbidden manifest capabilities, and v0.19 local-feature regressions such as a tiny personal dictionary, missing pets/outfits, or too few local sticker definitions.
 
 ## Runtime privacy boundary
 
