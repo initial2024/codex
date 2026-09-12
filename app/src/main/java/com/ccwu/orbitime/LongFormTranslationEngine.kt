@@ -15,7 +15,7 @@ object LongFormTranslationEngine {
         maxChars: Int = MAX_SOURCE_CHARS,
     ): Result? {
         val source = rawSource.trim().take(maxChars)
-        if (source.isBlank() || !PrivacyGuard.isSafeToUseForPrompt(source)) return null
+        if (source.isBlank() || !PrivacyGuard.isSafeForLocalLongForm(source, maxChars)) return null
         val segments = splitSentences(source)
         if (segments.isEmpty()) return null
 
@@ -23,7 +23,7 @@ object LongFormTranslationEngine {
         var uncovered = 0
         val output = buildString {
             segments.forEach { segment ->
-                val result = OfflineTranslationPack.translateOrNull(segment.text, direction)
+                val result = OfflineTranslationPack.translateOrNull(segment.text.take(1200), direction)
                 val value = result?.translatedText?.trim().orEmpty()
                 if (value.isNotBlank()) {
                     append(value.trimEnd('。', '.', '！', '!', '？', '?'))
