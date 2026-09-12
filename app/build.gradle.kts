@@ -11,8 +11,8 @@ android {
         applicationId = "com.ccwu.orbitime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.18.0"
+        versionCode = 19
+        versionName = "0.19.0"
     }
 
     compileOptions {
@@ -25,10 +25,8 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Builds materialize and validate pinned mature offline dictionaries before
-// Android packages assets. Network access is build-time only; the installed IME
-// has no INTERNET permission. -PorbitSkipMatureImeData=true is reserved for
-// deliberately offline development and must not be used for the user-test APK.
+// Normal user-test builds must materialize and validate every pinned mature
+// offline data pack. Runtime still has no INTERNET permission.
 val orbitSkipMatureImeData = providers.gradleProperty("orbitSkipMatureImeData")
     .map { it.toBoolean() }
     .orElse(false)
@@ -56,7 +54,9 @@ val prepareMatureImeAssets by tasks.registering(Exec::class) {
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
-val augmentV018ImeAssets by tasks.registering(Exec::class) {
+// Introduced in v0.18 and retained by v0.19: CC-CEDICT lexicon/translation
+// plus Unicode Emoji. The task name is historical; the stage is mandatory.
+val augmentLicensedImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
     description = "Add pinned CC-CEDICT translation/lexicon data and Unicode Emoji 17.0 assets"
     workingDir(rootProject.projectDir)
@@ -72,7 +72,7 @@ val augmentV018ImeAssets by tasks.registering(Exec::class) {
 
 val validateMatureImeAssets by tasks.registering(Exec::class) {
     group = "orbit ime"
-    description = "Reject incomplete mature dictionary packs, missing notices, wrong versions or forbidden manifest capabilities"
+    description = "Reject incomplete mature packs, feature regressions, wrong versions or forbidden capabilities"
     workingDir(rootProject.projectDir)
     commandLine(
         orbitPython,
@@ -80,7 +80,7 @@ val validateMatureImeAssets by tasks.registering(Exec::class) {
         "--assets",
         "app/src/main/assets/ime",
     )
-    dependsOn(augmentV018ImeAssets)
+    dependsOn(augmentLicensedImeAssets)
     onlyIf { !orbitSkipMatureImeData.get() }
 }
 
