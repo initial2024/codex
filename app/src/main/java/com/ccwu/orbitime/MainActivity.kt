@@ -33,43 +33,39 @@ class MainActivity : Activity() {
         scroll.addView(container)
 
         container.addView(title("Orbit IME", skin))
-        container.addView(paragraph("隐私优先的本地输入法。v0.18 重点修复候选上屏追加原始拼音的问题，并扩大中文、英文、翻译、Emoji、符号和模糊联想数据。当前皮肤：${skin.name}。", skin))
+        container.addView(paragraph("隐私优先的本地输入法。v0.19 在 v0.18 大词库、翻译、Emoji、符号和 composing 修复基础上，重点扩大本地个人学习、宠物、装扮和微反馈。当前皮肤：${skin.name}。", skin))
         statusMessage?.let { container.addView(statusBox(it, skin)) }
 
         container.addView(section("输入法设置", skin))
-        container.addView(paragraph("先在系统输入法设置中启用 Orbit IME。键盘顶部有“切换”按钮，可以打开系统输入法切换器。Android 左下角自带的小地球/切换气泡不是 Orbit 自己绘制的。", skin))
+        container.addView(paragraph("先在系统输入法设置中启用 Orbit IME。键盘顶部“切换”按钮打开系统输入法切换器；Android 左下角系统小地球/切换气泡不是 Orbit 自己绘制的。", skin))
         container.addView(button("打开输入法设置", skin) { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) })
         container.addView(button("显示输入法切换器", skin) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         })
 
-        container.addView(section("本地输入引擎", skin))
-        container.addView(paragraph("v0.18 默认构建合并 AOSP PinyinIME、Jieba 和 CC-CEDICT 中文数据；英文使用 ESDB/SCOWL en_US-large。候选综合词频、1/2/3-gram、拼音切分、Beam Search、个人学习、前缀联想以及低置信度模糊/误按纠错。", skin))
+        container.addView(section("成熟本地数据", skin))
+        container.addView(paragraph("正常构建必须经过 AOSP PinyinIME + Jieba + CC-CEDICT 中文、ESDB/SCOWL en_US-large 英文、Unicode Emoji 17.0 和 CC-CEDICT 双语翻译索引。构建验证器会拒绝旧 v0.17 数据包或缩水包。", skin))
 
         container.addView(section("候选替换与长句", skin))
-        container.addView(paragraph("中文/英文候选现在直接覆盖 Android composing 区，不再先提交原始拼音再追加候选。支持 26 键连续长句拼音，长句搜索会按输入长度自适应收窄 Beam 和分词路径，并复用查询/词组缓存。", skin))
-
-        container.addView(section("模糊联想", skin))
-        container.addView(paragraph("模糊候选会实际查询成熟本地大词库，包括 zh/z、ch/c、sh/s、n/l、f/h、r/l、u/v 等兼容变体，以及相邻键误按、相邻字母交换、重复/多按一个键和拼音前缀联想。精确候选始终比猜测候选优先。", skin))
+        container.addView(paragraph("中文/英文候选直接覆盖 Android composing 区，不先提交原始拼音。支持连续长句拼音、DP 切分、自适应 Beam、1/2/3-gram、前缀联想、低置信度模糊纠错和个人本地排序。", skin))
 
         container.addView(section("长按与符号", skin))
-        container.addView(paragraph("26 键会显示长按提示：q~p 对应 1~0，其他字母对应 @、#、$、%、&、括号、感叹号、问号等常用符号。123 键盘扩充为常用、标点、括号、数学、货币、箭头、标记 7 页，可通过“符号”键轮换。", skin))
+        container.addView(paragraph("26 键保留长按数字/符号提示；123 符号键盘保留常用、标点、括号、数学、货币、箭头、标记 7 页。", skin))
 
         container.addView(section("表情 / 颜文字 / 贴图", skin))
-        container.addView(paragraph("“表情/Emoji”保留项目内置分类与大量颜文字，并增加构建时打包的 Unicode 17.0 fully-qualified Emoji 全量页、最近使用和分页。长按文本表情可复制。", skin))
-        container.addView(paragraph("“🪐 贴图”提供 8 个宠物 × 3 种情绪，共 24 个本地生成 PNG 宠物贴图。支持图片内容的目标 App 直接接收 PNG；不支持时自动退回对应 Emoji。", skin))
+        container.addView(paragraph("表情面板包含 Unicode 17.0 全量页、项目分类 Emoji、数百级颜文字、最近使用和分页。当前宠物目录 16 种，每种 8 个贴图状态，共 128 个本地 PNG 贴图定义；目标 App 不支持图片时自动回退 Emoji。", skin))
 
         container.addView(section("剪贴板", skin))
-        container.addView(paragraph("键盘窗口可见时，Orbit 会把系统当前复制的非敏感文字加入本地“最近”历史；未固定记录约 1 小时后自动过期。长按条目可以固定/取消固定。Orbit 不在后台采集剪贴板。", skin))
+        container.addView(paragraph("键盘窗口可见时，Orbit 会把系统当前复制的非敏感文字加入本地 Recent；支持 Pinned、固定/取消固定、清最近和清全部。IME 隐藏后移除监听，不做后台剪贴板采集。", skin))
 
         container.addView(section("翻译键盘", skin))
-        container.addView(paragraph("翻译运行时仍完全离线。v0.18 在项目短句表之外接入 CC-CEDICT 分片词典：先做精确词/短语查找，再做保守最长词组拼接；覆盖不足时明确提示，不把提示词冒充译文。", skin))
+        container.addView(paragraph("翻译完全离线：项目高质量短句 → CC-CEDICT 精确词/短语 → CC-CEDICT 分片最长匹配 → 本地 composer → 明确 unavailable。不会把提示词冒充译文。", skin))
 
         container.addView(section("可视化宠物", skin))
         val petPreview = PetAvatarView(this).apply { bind(petProfile, skin) }
         container.addView(petPreview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180)).apply { setMargins(0, dp(4), 0, dp(10)) })
         container.addView(paragraph("当前宠物：${petProfile.petName}（${petProfile.species}），${petProfile.stageName}，Lv.${petProfile.level}，${petProfile.exp} EXP，${petProfile.stars} Stars。今日 ${petProfile.todayTypedChars} 字，累计 ${petProfile.totalTypedChars} 字，心情：${petProfile.moodLabel}，装扮：${petProfile.equippedOutfitName ?: "无"}。", skin))
-        container.addView(paragraph("8 个宠物都有独立轮廓，成长阶段会改变体量/光环/轨道细节，装扮会实际叠加到宠物图形上。", skin))
+        container.addView(paragraph("v0.19 宠物目录扩到 16 种，新增种类复用经过验证的 8 套本地图形骨架，确保每只都能实际显示；装扮扩到 24 套并映射到可见的帽子、眼镜、披风、领结、轨道、光效和尾迹层。宠物会对选词、剪贴板、翻译、签到、开蛋、切换和换装给短时本地反馈。", skin))
         container.addView(button("今日签到", skin) { render(petRepository.checkIn().message) })
         container.addView(button("开蛋 / 随机领养", skin) { render(petRepository.adoptRandom().message) })
         container.addView(button("切换已有宠物", skin) { render(petRepository.switchToNextOwned().message) })
@@ -79,21 +75,23 @@ class MainActivity : Activity() {
         container.addView(button(if (petProfile.displayMode == PetRepository.DISPLAY_HIDDEN) "显示键盘内宠物" else "隐藏键盘内宠物", skin) { render(petRepository.toggleHidden().message) })
         container.addView(button("重置宠物本地数据", skin) { petRepository.clear(); render("宠物本地数据已重置") })
 
-        container.addView(section("用户词库", skin))
-        container.addView(paragraph("当前本地词库：${dictionaryStats.entryCount}/${dictionaryStats.maxEntries} 条映射，累计选择 ${dictionaryStats.totalFrequency} 次。只保存拼音、候选文本、频次和更新时间，不保存完整聊天历史。", skin))
-        container.addView(button("清空用户词库", skin) { userDictionary.clear(); render("用户本地词库已清空") })
+        container.addView(section("个人学习库", skin))
+        container.addView(paragraph("当前本地学习：${dictionaryStats.entryCount}/${dictionaryStats.maxEntries} 条，累计选择 ${dictionaryStats.totalFrequency} 次。v0.19 免费容量 20,000 条，Pro 占位容量 100,000 条；存储改为 app 私有文件 + 增量 journal + 定期压缩，不再把几万条词塞进一个 SharedPreferences JSON。", skin))
+        container.addView(paragraph("学习记录仍只包含拼音、候选文本、频次和更新时间；不保存完整聊天、目标 App、输入框身份或完整按键流。旧版个人词库会在首次读取时自动迁移。", skin))
+        container.addView(button("压缩个人学习库", skin) { userDictionary.compactNow(); render("个人学习库已本地压缩") })
+        container.addView(button("清空个人学习库", skin) { userDictionary.clear(); render("个人学习库已清空") })
 
         container.addView(section("皮肤", skin))
-        container.addView(paragraph("皮肤选择只保存在本机。宠物和贴图渲染会沿用当前皮肤的强调色。Pro Aurora 是占位皮肤，当前未接支付。", skin))
+        container.addView(paragraph("皮肤选择只保存在本机。宠物与贴图沿用当前皮肤强调色。Pro Aurora 仍是付费占位，当前未接支付。", skin))
         OrbitSkins.all.forEach { option -> container.addView(skinButton(option, SkinManager.selectedSkinId(this) == option.id, skin)) }
 
         container.addView(section("隐私", skin))
-        container.addView(paragraph("不申请 INTERNET 权限；不上传输入内容；不接广告和 analytics；密码输入框会隐藏宠物、表情、翻译和剪贴板工具。大词库只在构建机下载并打包进 APK，运行时不联网。", skin))
+        container.addView(paragraph("不申请 INTERNET 权限；不上传输入内容；不接广告和 analytics；密码输入框隐藏宠物、表情、翻译和剪贴板工具。成熟数据只在构建机下载并打包进 APK。", skin))
 
         container.addView(section("数据许可", skin))
-        container.addView(paragraph("AOSP、Jieba、ESDB/SCOWL、CC-CEDICT 和 Unicode Emoji 数据分别保留独立来源与许可证说明。CC-CEDICT 派生词典/翻译数据仍按 CC BY-SA 4.0 处理，不与应用代码许可证混淆。", skin))
+        container.addView(paragraph("AOSP、Jieba、ESDB/SCOWL、CC-CEDICT 和 Unicode Emoji 保留独立来源与许可证说明。CC-CEDICT 派生数据按 CC BY-SA 4.0 单独处理。", skin))
 
-        container.addView(paragraph("About · v0.18.0", skin))
+        container.addView(paragraph("About · v0.19.0", skin))
         setContentView(scroll)
     }
 
