@@ -1,6 +1,7 @@
 package com.ccwu.orbitime
 
 import android.content.Context
+import java.util.LinkedHashMap
 import kotlin.math.ln
 import kotlin.math.min
 
@@ -10,10 +11,18 @@ class PinyinImeEngine(
 ) {
     private val lexicon = CompactLexiconAsset(context.applicationContext)
     private val languageModel = NGramLanguageModel(context.applicationContext)
+    private val candidateCache = object : LinkedHashMap<String, List<String>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean =
+            size > MAX_QUERY_CACHE
+    }
 
+    @Synchronized
     fun candidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
         val query = PinyinDictionary.normalize(rawInput)
         if (query.isEmpty()) return emptyList()
+        val cacheKey = cacheKey(query, contextBeforeCursor, limit)
+        candidateCache[cacheKey]?.let { return it }
+
         val contextTokens = extractContextTokens(contextBeforeCursor.orEmpty())
         val pool = mutableListOf<CandidateRanker.Candidate>()
         addUser(query, contextTokens, pool, exactOnly = false)
@@ -21,9 +30,14 @@ class PinyinImeEngine(
         addSegmented(query, contextTokens, pool)
         addCorrections(query, contextTokens, pool)
         val ranked = CandidateRanker.rank(pool, limit).map { it.text }.distinct()
-        if (ranked.isNotEmpty()) return ranked.take(limit)
-        return (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query))
-            .distinct().take(limit)
+        val result = if (ranked.isNotEmpty()) {
+            ranked.take(limit)
+        } else {
+            (PinyinSentenceDictionary.candidatesFor(query) + PinyinDictionary.candidatesFor(query))
+                .distinct().take(limit)
+        }
+        candidateCache[cacheKey] = result
+        return result
     }
 
     fun exactCandidates(rawInput: String, contextBeforeCursor: String? = null, limit: Int = MAX_RESULTS): List<String> {
@@ -36,14 +50,14 @@ class PinyinImeEngine(
         return CandidateRanker.rank(pool, limit).map { it.text }.distinct().take(limit)
     }
 
+    @Synchronized
+    fun clearCandidateCache() {
+        candidateCache.clear()
+    }
+
     fun debugSegmentation(rawInput: String): List<PinyinSegmenter.Segmentation> = PinyinSegmenter.segment(rawInput)
 
-    private fun addUser(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-        exactOnly: Boolean,
-    ) {
+    private fun addUser(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>, exactOnly: Boolean) {
         userDictionary.learnedEntriesFor(query, MAX_RESULTS * 2)
             .asSequence()
             .filter { !exactOnly || it.pinyin == query }
@@ -62,11 +76,7 @@ class PinyinImeEngine(
             }
     }
 
-    private fun addExact(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-    ) {
+    private fun addExact(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
         lexicon.exact(query).forEachIndexed { index, entry ->
             pool += makeCandidate(
                 query, entry.text, listOf(entry.text), entry.frequency, 4.0, contextTokens,
@@ -87,11 +97,7 @@ class PinyinImeEngine(
         }
     }
 
-    private fun addSegmented(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-    ) {
+    private fun addSegmented(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
         PinyinSegmenter.segment(query, MAX_SEGMENTATIONS).forEachIndexed { segmentationIndex, segmentation ->
             beamGenerate(segmentation, contextTokens).forEachIndexed { beamIndex, hypothesis ->
                 if (hypothesis.text.isBlank()) return@forEachIndexed
@@ -101,19 +107,15 @@ class PinyinImeEngine(
                     text = hypothesis.text,
                     tokens = hypothesis.tokens,
                     staticFrequency = averageFrequency.coerceAtLeast(1),
-                    segmentationScore = segmentation.score - segmentationIndex * 0.35,
+                    segmentationScore = segmentation.score - segmentationIndex * 0.28,
                     contextTokens = contextTokens,
-                    sourcePriority = (4 - min(beamIndex, 2)).coerceAtLeast(1),
+                    sourcePriority = (5 - min(beamIndex, 3)).coerceAtLeast(1),
                 )
             }
         }
     }
 
-    private fun addCorrections(
-        query: String,
-        contextTokens: List<String>,
-        pool: MutableList<CandidateRanker.Candidate>,
-    ) {
+    private fun addCorrections(query: String, contextTokens: List<String>, pool: MutableList<CandidateRanker.Candidate>) {
         PinyinCorrectionEngine.candidatesFor(query).forEachIndexed { index, text ->
             pool += makeCandidate(
                 query = query,
@@ -139,10 +141,7 @@ class PinyinImeEngine(
 
     private data class LexicalEntry(val text: String, val frequency: Int)
 
-    private fun beamGenerate(
-        segmentation: PinyinSegmenter.Segmentation,
-        contextTokens: List<String>,
-    ): List<Hypothesis> {
+    private fun beamGenerate(segmentation: PinyinSegmenter.Segmentation, contextTokens: List<String>): List<Hypothesis> {
         val syllables = segmentation.syllables
         if (syllables.isEmpty()) return emptyList()
         var beam = listOf(Hypothesis(0, "", emptyList(), 0, 0, 0.0))
@@ -168,7 +167,7 @@ class PinyinImeEngine(
                             tokens = hypothesis.tokens + entry.text,
                             totalFrequency = hypothesis.totalFrequency + entry.frequency,
                             parts = hypothesis.parts + 1,
-                            beamScore = hypothesis.beamScore + lm + freqScore + span * 0.20,
+                            beamScore = hypothesis.beamScore + lm + freqScore + span * 0.22,
                         )
                     }
                 }
@@ -199,9 +198,7 @@ class PinyinImeEngine(
             val frequency = syntheticFrequency(index, if (syllableSpan > 1) 650_000 else 540_000)
             merged[text] = maxOf(merged[text] ?: 0, frequency)
         }
-        return merged.entries
-            .sortedByDescending { it.value }
-            .map { LexicalEntry(it.key, it.value) }
+        return merged.entries.sortedByDescending { it.value }.map { LexicalEntry(it.key, it.value) }
     }
 
     private fun makeCandidate(
@@ -217,9 +214,7 @@ class PinyinImeEngine(
     ): CandidateRanker.Candidate {
         val tokenScore = languageModel.scoreSequence(contextTokens, tokens)
         val chars = text.filter(::isCjk).map(Char::toString)
-        val charScore = if (chars.size >= 2) {
-            languageModel.scoreSequence(contextTokens, chars) * CHARACTER_NGRAM_WEIGHT
-        } else 0.0
+        val charScore = if (chars.size >= 2) languageModel.scoreSequence(contextTokens, chars) * CHARACTER_NGRAM_WEIGHT else 0.0
         return CandidateRanker.Candidate(
             text = text,
             tokens = tokens,
@@ -232,8 +227,11 @@ class PinyinImeEngine(
         )
     }
 
+    private fun cacheKey(query: String, contextBeforeCursor: String?, limit: Int): String =
+        query + '\u0000' + contextBeforeCursor.orEmpty().takeLast(48) + '\u0000' + limit
+
     private fun extractContextTokens(raw: String): List<String> {
-        val tail = raw.takeLast(48)
+        val tail = raw.takeLast(64)
         if (tail.isBlank()) return emptyList()
         val tokens = mutableListOf<String>()
         val latin = StringBuilder()
@@ -254,7 +252,7 @@ class PinyinImeEngine(
             }
         }
         flushLatin()
-        return tokens.takeLast(4)
+        return tokens.takeLast(8)
     }
 
     private fun isCjk(char: Char): Boolean {
@@ -264,16 +262,16 @@ class PinyinImeEngine(
             block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
     }
 
-    private fun syntheticFrequency(index: Int, base: Int): Int =
-        (base - index * 28_000).coerceAtLeast(25_000)
+    private fun syntheticFrequency(index: Int, base: Int): Int = (base - index * 28_000).coerceAtLeast(25_000)
 
     companion object {
         private const val MAX_RESULTS = 12
-        private const val MAX_SEGMENTATIONS = 5
-        private const val MAX_PHRASE_SYLLABLES = 4
-        private const val MAX_ENTRIES_PER_SPAN = 5
-        private const val BEAM_WIDTH = 36
-        private const val MAX_BEAM_RESULTS = 16
+        private const val MAX_SEGMENTATIONS = 6
+        private const val MAX_PHRASE_SYLLABLES = 8
+        private const val MAX_ENTRIES_PER_SPAN = 6
+        private const val BEAM_WIDTH = 56
+        private const val MAX_BEAM_RESULTS = 20
+        private const val MAX_QUERY_CACHE = 24
         private const val USER_BASE_STATIC_FREQUENCY = 700_000
         private const val CHARACTER_NGRAM_WEIGHT = 0.85
     }
