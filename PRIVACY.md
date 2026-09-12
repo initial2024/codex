@@ -4,13 +4,13 @@ Orbit IME is designed as a local-first input method.
 
 ## Version
 
-This policy applies to Orbit IME `0.16.0`.
+This policy applies to Orbit IME `0.17.0`.
 
 ## Network
 
-Orbit IME `0.16.0` does not request `INTERNET` permission.
+Orbit IME `0.17.0` does not request `INTERNET` permission.
 
-The installed app does not upload input text, clipboard text, Pinyin/English buffers, translation source/result text, candidate-ranking state, user dictionary entries, N-gram state, pet data, skin choice, or saved clips.
+The installed app does not upload input text, clipboard text, Pinyin/English buffers, translation source/result text, candidate-ranking state, user dictionary entries, N-gram state, pet data, expression history, skin choice, saved clips, or generated sticker images.
 
 Public dictionary files are downloaded only by the build machine, verified against pinned Git blob SHA values, converted to packaged offline assets, and then read locally by the installed IME.
 
@@ -20,7 +20,7 @@ Orbit IME includes no ad SDK, analytics SDK, tracking SDK, or remote-configurati
 
 ## Clipboard history
 
-v0.16 provides local `Recent` and `Pinned` clipboard sections.
+Orbit provides local `Recent` and `Pinned` clipboard sections.
 
 - Orbit attaches a clipboard-change listener only while the IME window is visibly shown.
 - The listener is removed when the IME window hides and when the service is destroyed.
@@ -42,7 +42,7 @@ Candidate generation runs locally and can use:
 - AOSP/Jieba-derived packaged Chinese data;
 - project-authored fallback data;
 - dynamic-programming Pinyin segmentation;
-- bounded phrase-level beam search;
+- bounded/adaptive phrase-level beam search;
 - packaged 1/2/3-gram counts;
 - explicit local user-selection frequency;
 - lower-confidence fuzzy/typo correction.
@@ -62,7 +62,28 @@ frequency
 updatedAt
 ```
 
-v0.16 allows longer personal phrase/sentence mappings, but does not persist the full conversation or raw key stream. Parsed entries may be cached in process memory for performance.
+Orbit allows longer personal phrase/sentence mappings, but does not persist the full conversation or raw key stream. Parsed entries may be cached in process memory for performance.
+
+## Emoji and kaomoji
+
+v0.17 adds a local expression panel containing packaged Unicode Emoji and project-authored/curated kaomoji strings.
+
+- Selecting an Emoji/kaomoji commits only that selected string to the current input field.
+- A small recent-expression list is stored locally in app-private `SharedPreferences` for convenience.
+- Recent-expression storage contains only the selected expression itself, not the surrounding message or target app.
+- The user can clear the recent-expression list.
+- Long-pressing a text expression explicitly copies that expression to the Android clipboard.
+
+## Local pet sticker images
+
+v0.17 also provides 24 locally generated pet stickers (8 pets × 3 moods).
+
+- Sticker PNGs are rendered on-device into the app's private cache directory.
+- Orbit does not download sticker images and does not request external-storage permission.
+- The sticker ContentProvider is `exported=false` and `grantUriPermissions=true`.
+- A target app receives temporary read access only when the user explicitly taps a sticker and the target editor advertises compatible image-content support.
+- If the target editor does not support `image/png` content, Orbit falls back to the sticker's Emoji text instead of granting content access.
+- Cached sticker files are not treated as user input history and contain only Orbit-generated pet artwork.
 
 ## Imported dictionary assets
 
@@ -76,7 +97,7 @@ English letters are held in a temporary composing buffer until the user chooses 
 
 ## Translation keyboard
 
-v0.16 translation is a local keyboard mode.
+Translation remains a local keyboard mode.
 
 - Chinese/Pinyin or English text is accumulated in a temporary translation source buffer.
 - The panel can show the current source and a local translation result.
@@ -94,15 +115,18 @@ The selected skin ID is stored locally using app-private preferences. Skin selec
 
 ## Keyboard Pet
 
-The local pet panel stores only local counters/state such as pet id, owned ids, EXP, Stars, streak, typed-character counters, display mode, and equipped outfit. It does not store full input streams, surrounding sentences, app names, or target-field identity.
+The local pet module stores only local counters/state such as pet id, owned ids, EXP, Stars, streak, typed-character counters, display mode, and equipped outfit.
 
-The pet does not request overlay permission, cannot draw outside the IME, and does not use cloud/AI chat.
+v0.17 adds a local visual renderer for the pet. The renderer uses the existing pet id/stage/outfit state to draw the pet inside the IME or settings screen. It does not capture screenshots, camera input, or user images.
+
+The pet does not request overlay permission, cannot draw outside the IME/settings UI, and does not use cloud/AI chat.
 
 ## Sensitive fields
 
 Orbit enters privacy mode for password-like fields and fields requesting no personalized learning. In privacy mode:
 
 - Hub tools are hidden;
+- expression/Emoji/kaomoji/sticker panels are hidden;
 - clipboard capture/history actions are disabled;
 - clipboard listener is detached;
 - Pinyin/English composition is cleared;
@@ -125,6 +149,8 @@ Orbit IME does not request:
 - External storage
 - Notifications
 
+The sticker provider is an application component, not a new runtime permission.
+
 ## Commercial boundary
 
-Orbit IME `0.16.0` contains only Pro placeholders. It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
+Orbit IME `0.17.0` contains only Pro placeholders. It does not implement billing, advertising, analytics, cloud sync, cloud translation, account login, external translation APIs, AI pet chat, or a skin marketplace.
