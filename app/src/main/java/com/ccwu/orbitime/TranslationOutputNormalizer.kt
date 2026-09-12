@@ -14,8 +14,8 @@ object TranslationOutputNormalizer {
     private fun normalizeEnglish(raw: String): String {
         var value = raw
             .replace(Regex("\\s+"), " ")
-            .replace(Regex("\\s+([,.;:!?])"), "$1")
-            .replace(Regex("([,.;:!?])(?=[A-Za-z])"), "$1 ")
+            .replace(Regex("\\s+([,.;:!?])"), "\$1")
+            .replace(Regex("([,.;:!?])(?=[A-Za-z])"), "\$1 ")
             .trim()
         val firstLetter = value.indexOfFirst { it in 'a'..'z' || it in 'A'..'Z' }
         if (firstLetter >= 0 && value[firstLetter].isLowerCase()) {
