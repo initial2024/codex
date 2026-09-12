@@ -1,0 +1,31 @@
+name: Patch v0.27 English shift
+
+on:
+  push:
+    branches:
+      - fix/v027-ime-usability
+    paths:
+      - tools/patch_v027_english_shift.py
+      - .github/workflows/patch-v027-english-shift.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v027-ime-usability
+      - name: Patch English shift
+        run: python3 tools/patch_v027_english_shift.py
+      - name: Commit correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/ccwu/orbitime/OrbitInputMethodService.kt
+          git diff --cached --check
+          git commit -m "fix: preserve English composition under Shift [v027-shift]"
+          git push origin HEAD:fix/v027-ime-usability
